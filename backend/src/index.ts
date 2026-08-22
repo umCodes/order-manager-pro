@@ -8,15 +8,22 @@ import { customersRouter } from "./routes/customers.routes.js";
 import { connectRedis } from './config/redis.js';
 import telegramRouter from "./routes/telegram.routes.js";
 import zohoUsageRouter from "./routes/zoho-usage.routes.js";
+import { IS_PRODUCTION, FRONTEND_URL } from "./constants/env.js";
 
 connectRedis().catch((error) => console.error('Failed to connect to Redis', error));
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+if (IS_PRODUCTION && !FRONTEND_URL) {
+    throw new Error("FRONTEND_URL must be set in production");
+}
+
 app.use(express.json());
 app.use(cors({
-    origin: [/^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/, /^http:\/\/localhost:\d+$/]
+    origin: IS_PRODUCTION
+        ? FRONTEND_URL
+        : [/^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/, /^http:\/\/localhost:\d+$/]
 }));
 
 app.use(express.json());

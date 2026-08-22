@@ -19,3 +19,8 @@ export const ENV = {
 
   REDIS_URL: process.env.REDIS_URL,
 };
+
+// Not part of ENV/validateEnv: NODE_ENV is optional (absence means dev), and
+// FRONTEND_URL is only required in production, not on every request.
+export const IS_PRODUCTION = process.env.NODE_ENV === "production";
+export const FRONTEND_URL = process.env.FRONTEND_URL;

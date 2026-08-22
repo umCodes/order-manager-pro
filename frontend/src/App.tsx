@@ -8,7 +8,7 @@ import InvoiceDetailsPage from "./pages/InvoiceDetailsPage";
 import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
-import type { Cart, TabKey } from "./types";
+import type { Cart, ScheduledDate, TabKey } from "./types";
 
 /**
  * Root component and router. There's no URL-based routing — navigation is
@@ -21,6 +21,8 @@ function App() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
+  const [invoiceContactId, setInvoiceContactId] = useState<string>("");
+  const [invoiceScheduledDate, setInvoiceScheduledDate] = useState<ScheduledDate>(null);
 
   if (selectedInvoiceId) {
     return (
@@ -52,7 +54,16 @@ function App() {
   return (
     <div className="app-frame">
       <div className="app-frame__body">
-        {activeTab === "invoices" && <NewInvoicePage cart={cart} onCartChange={setCart} />}
+        {activeTab === "invoices" && (
+          <NewInvoicePage
+            cart={cart}
+            onCartChange={setCart}
+            selectedContactId={invoiceContactId}
+            onSelectedContactIdChange={setInvoiceContactId}
+            scheduledDate={invoiceScheduledDate}
+            onScheduledDateChange={setInvoiceScheduledDate}
+          />
+        )}
         {activeTab === "messages" && <MessagesPage />}
         {activeTab === "drafts" && <DraftsPage onSelectInvoice={setSelectedInvoiceId} />}
         {activeTab === "items" && <ItemsPage />}

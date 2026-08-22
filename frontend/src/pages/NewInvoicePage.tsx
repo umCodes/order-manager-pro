@@ -6,6 +6,7 @@ import InvoiceLineItemsList from "../components/InvoiceLineItemsList";
 import { createInvoice, fetchCustomerDraftToMergeInto, fetchCustomers, fetchItems, fetchZohoUsage } from "../lib/api";
 import type { CatalogItem, Cart, Contact, InvoiceDetailLineItem, InvoiceLineItem, ScheduledDate } from "../types";
 
+
 const EXCLUDE_MARKER = "###";
 
 function cartFromDraftLineItems(lineItems: InvoiceDetailLineItem[]): Cart {
@@ -25,14 +26,23 @@ function cartFromDraftLineItems(lineItems: InvoiceDetailLineItem[]): Cart {
 type Props = {
   cart: Cart;
   onCartChange: (cart: Cart) => void;
+  selectedContactId: string;
+  onSelectedContactIdChange: (contactId: string) => void;
+  scheduledDate: ScheduledDate;
+  onScheduledDateChange: (date: ScheduledDate) => void;
 };
 
 /** Invoice-creation form: pick a customer, an optional scheduled date, and line items. */
-export default function NewInvoicePage({ cart, onCartChange }: Props) {
+export default function NewInvoicePage({
+  cart,
+  onCartChange,
+  selectedContactId,
+  onSelectedContactIdChange: setSelectedContactId,
+  scheduledDate,
+  onScheduledDateChange: setScheduledDate,
+}: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [selectedContactId, setSelectedContactId] = useState<string>("");
-  const [scheduledDate, setScheduledDate] = useState<ScheduledDate>(null);
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);

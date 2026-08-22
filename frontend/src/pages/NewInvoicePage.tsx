@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AddItemModal from "../components/AddItemModal";
 import CustomerCombobox from "../components/CustomerCombobox";
 import SchedulePicker from "../components/SchedulePicker";
@@ -37,6 +37,8 @@ export default function NewInvoicePage({ cart, onCartChange }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [zohoRequestCount, setZohoRequestCount] = useState<number | null>(null);
+  const [isLoadingDraft, setIsLoadingDraft] = useState(false);
+  const draftFetchIdRef = useRef(0);
 
   useEffect(() => {
     fetchCustomers().then(setContacts);
@@ -60,9 +62,17 @@ export default function NewInvoicePage({ cart, onCartChange }: Props) {
 
   function selectContact(contact: Contact) {
     setSelectedContactId(contact.contact_id);
+    const fetchId = ++draftFetchIdRef.current;
+    setIsLoadingDraft(true);
     fetchCustomerDraftToMergeInto(contact.contact_id)
-      .then((draft) => onCartChange(draft ? cartFromDraftLineItems(draft.line_items) : {}))
-      .catch(() => {});
+      .then((draft) => {
+        if (draftFetchIdRef.current !== fetchId) return;
+        onCartChange(draft ? cartFromDraftLineItems(draft.line_items) : {});
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (draftFetchIdRef.current === fetchId) setIsLoadingDraft(false);
+      });
   }
 
   function commitItem(
@@ -137,12 +147,17 @@ export default function NewInvoicePage({ cart, onCartChange }: Props) {
         type="button"
         className="btn btn--dashed btn--full"
         onClick={() => setIsAddItemOpen(true)}
+        disabled={isLoadingDraft}
       >
         + Add Item
       </button>
 
       <div className="items-area">
-        <InvoiceLineItemsList lineItems={lineItems} total={invoiceTotal} onRemove={removeItem} />
+        {isLoadingDraft ? (
+          <div className="items-area__empty">Loading items…</div>
+        ) : (
+          <InvoiceLineItemsList lineItems={lineItems} total={invoiceTotal} onRemove={removeItem} />
+        )}
       </div>
 
       {submitError && <div className="form-error">{submitError}</div>}
@@ -150,7 +165,7 @@ export default function NewInvoicePage({ cart, onCartChange }: Props) {
       <button
         type="button"
         className="btn btn--primary btn--full"
-        disabled={!selectedContactId || lineItems.length === 0 || isSubmitting}
+        disabled={!selectedContactId || lineItems.length === 0 || isSubmitting || isLoadingDraft}
         onClick={submitInvoice}
       >
         {isSubmitting ? "Submitting..." : "Submit Invoice"}

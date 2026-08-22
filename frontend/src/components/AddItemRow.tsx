@@ -63,18 +63,7 @@ export default function AddItemRow({
 
       {isExpanded && (
         <div className="item-row__expanded">
-          <div className="field-row">
-            <label className="field-row__label" htmlFor={`desc-${item.item_id}`}>
-              Description
-            </label>
-            <input
-              id={`desc-${item.item_id}`}
-              type="text"
-              className="input field-row__input field-row__input--description"
-              value={form.description}
-              onChange={(e) => onFormChange({ ...form, description: e.target.value })}
-            />
-          </div>
+
           <div className="field-row">
             <label className="field-row__label" htmlFor={`qty-${item.item_id}`}>
               Qty
@@ -98,6 +87,18 @@ export default function AddItemRow({
               className="input field-row__input field-row__input--rate"
               value={form.rate}
               onChange={(e) => onFormChange({ ...form, rate: e.target.value })}
+            />
+          </div>
+          <div className="field-row">
+            <label className="field-row__label" htmlFor={`desc-${item.item_id}`}>
+              Description
+            </label>
+            <input
+              id={`desc-${item.item_id}`}
+              type="text"
+              className="input field-row__input field-row__input--description"
+              value={form.description}
+              onChange={(e) => onFormChange({ ...form, description: e.target.value })}
             />
           </div>
           <div className="field-row">

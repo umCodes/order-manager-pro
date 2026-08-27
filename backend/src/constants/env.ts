@@ -16,8 +16,9 @@ export const ENV = {
   TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN,
   PORT: process.env.PORT || 3000,
   WA_PREP_NUM: process.env.WA_PREP_NUM,
-
+  WA_TOKEN: process.env.WA_TOKEN,
   REDIS_URL: process.env.REDIS_URL,
+  
 };
 
 // Not part of ENV/validateEnv: NODE_ENV is optional (absence means dev), and

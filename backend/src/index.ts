@@ -8,6 +8,7 @@ import { customersRouter } from "./routes/customers.routes.js";
 import { connectRedis } from './config/redis.js';
 import telegramRouter from "./routes/telegram.routes.js";
 import zohoUsageRouter from "./routes/zoho-usage.routes.js";
+import waWebhookRouter from "./routes/wa-webhook.routes.js";
 import { IS_PRODUCTION, FRONTEND_URL } from "./constants/env.js";
 
 connectRedis().catch((error) => console.error('Failed to connect to Redis', error));
@@ -31,6 +32,8 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use(waWebhookRouter);
 
 const apiRouters = [
     telegramRouter,

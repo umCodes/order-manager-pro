@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { ENV } from '../constants/env.js';
 
 dotenv.config();
 
@@ -10,14 +11,14 @@ export const sendWAMessage = async (clientName: string, invNum: string) =>{
             {
                 method: 'POST',
                 headers:{
-                    'Authorization': 'Bearer EAAigBF5kBuYBO3D7SwRmXwHrxcDx5xblMvw3ATEfsBAKu9nLJE5UZCUJqwmIWAZB7PSDAcuwgjrLySr2sHxZA4VtsddToYJZA0tS3ZBDwR5ASi2n8UtknkalRT6J90UyBdADgIiwaAwCdy8oJ1BQBErsUYGwj4sXr1xsJ4pgL7tCyYClEbSA0Q0ZA2c0STiU3vZC9X3hGDPM0ZACqIrpH6ZAYjRGohKMZD',
+                    'Authorization': 'Bearer ' + ENV.WA_TOKEN,
                     'Content-Type': 'application/json'
 
                 },
                 body: JSON.stringify({
                     "messaging_product": "whatsapp",
                     "recipient_type": "individual",
-                    "to": process.env.WA_PREP_NUM,
+                    "to": ENV.WA_PREP_NUM,
                     "type": "template",
                     "template": {
                       "name": "staff_message",
@@ -50,7 +51,7 @@ export const sendWAMessage = async (clientName: string, invNum: string) =>{
                             "sub_type": "url",
                             "index": "0",
                             "parameters": [
-                                { "type": "text", "text": process.env.TELEGRAM_CHANNEL_LINK } // If the URL contains {{1}}, etc.
+                                { "type": "text", "text": ENV.TELEGRAM_CHANNEL_LINK } // If the URL contains {{1}}, etc.
                             ]
                         },
                       ]

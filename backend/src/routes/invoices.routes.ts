@@ -7,6 +7,7 @@ import {
   getInvoiceById,
   payInvoiceBalance,
   markInvoiceAsSent,
+  splitInvoice,
 } from "../controllers/invoices.controller.js";
 
 const router = Router();
@@ -16,6 +17,7 @@ router.get("/invoices/:id", getInvoiceById);
 router.post("/invoices", createInvoice);
 router.patch("/invoices/:id/date", updateInvoiceDate);
 router.post("/invoices/:id/telegram/resend", resendInvoiceTelegramMessage);
+router.post("/invoices/:id/split", splitInvoice);
 router.post("/invoices/:id/payments", payInvoiceBalance);
 router.post("/invoices/:id/status/sent", markInvoiceAsSent);
 

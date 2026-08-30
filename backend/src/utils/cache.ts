@@ -9,3 +9,5 @@ export function setTTLCache(key: string, value: any, expires_in: number){
 }
 
 export const getCache = (key: string) => cache.get(key)
+
+export const deleteCache = (key: string) => cache.delete(key)

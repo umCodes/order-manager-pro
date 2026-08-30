@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 
+const COOLDOWN_MS = 1500;
 const CONFIRM_WINDOW_MS = 2000;
 
+type Stage = "idle" | "cooldown" | "armed";
+
 /**
- * "Arm, then confirm" click pattern: the first call to `trigger` arms the
- * action and auto-disarms after a short window; a second call within that
- * window runs `onConfirm`. Used for destructive/money actions (recording a
- * payment) where a single misclick shouldn't be enough to submit.
+ * "Arm, wait, then confirm" click pattern: the first call to `trigger`
+ * starts a cooldown during which clicks are ignored (a deliberate pause to
+ * reconsider), then opens a short confirm window; a call to `trigger` during
+ * that window runs `onConfirm`. Missing the confirm window resets back to
+ * idle. Used for destructive/money actions (recording a payment) where a
+ * single misclick, or two rapid clicks, shouldn't be enough to submit.
  */
 export function useConfirmArmedAction(onConfirm: () => void) {
-  const [isArmed, setIsArmed] = useState(false);
+  const [stage, setStage] = useState<Stage>("idle");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -24,18 +29,22 @@ export function useConfirmArmedAction(onConfirm: () => void) {
 
   function disarm() {
     clearArmTimeout();
-    setIsArmed(false);
+    setStage("idle");
   }
 
   function trigger() {
-    if (!isArmed) {
-      setIsArmed(true);
-      timeoutRef.current = setTimeout(() => setIsArmed(false), CONFIRM_WINDOW_MS);
+    if (stage === "idle") {
+      setStage("cooldown");
+      timeoutRef.current = setTimeout(() => {
+        setStage("armed");
+        timeoutRef.current = setTimeout(() => setStage("idle"), CONFIRM_WINDOW_MS);
+      }, COOLDOWN_MS);
       return;
     }
+    if (stage === "cooldown") return;
     disarm();
     onConfirm();
   }
 
-  return { isArmed, trigger, disarm };
+  return { isCoolingDown: stage === "cooldown", isArmed: stage === "armed", trigger, disarm };
 }

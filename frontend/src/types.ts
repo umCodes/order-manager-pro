@@ -6,6 +6,13 @@ export type ContactPerson = {
   mobile: string;
 };
 
+export type ContactCustomField = {
+  customfield_id?: string;
+  field_id?: string;
+  label?: string;
+  value: string;
+};
+
 export type Contact = {
   contact_id: string;
   contact_name: string;
@@ -15,6 +22,8 @@ export type Contact = {
   phone: string;
   mobile: string;
   status: string;
+  customer_sub_type?: string;
+  custom_fields?: ContactCustomField[];
 };
 
 export type ScheduledDate = string | null;
@@ -32,6 +41,8 @@ export type CartLine = {
   rate: number;
   quantity: number;
   excludeFromTelegram: boolean;
+  /** invoice_id of the draft this line was loaded from, if any. Unset for manually-added lines. */
+  fromDraftId?: string;
 };
 
 export type Cart = Record<string, CartLine>;
@@ -43,6 +54,9 @@ export type InvoiceLineItem = CartLine & {
 };
 
 export type TabKey = "invoices" | "messages" | "drafts" | "items" | "customers";
+
+/** "new" always creates a fresh invoice; "update" edits a specific existing draft, chosen by invoice number. */
+export type InvoiceMode = "new" | "update";
 
 export type DraftInvoice = {
   invoice_id: string;

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { fetchCustomerById, fetchCustomerDraftInvoices, recordCustomerPayment } from "../lib/api";
 import { currency } from "../lib/currency";
 import ClickableCard from "../components/ClickableCard";
 import PaymentModal from "../components/PaymentModal";
+import AddCustomerModal from "../components/AddCustomerModal";
 import type { Contact, DraftInvoice } from "../types";
 
 type Props = {
@@ -28,6 +29,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,10 +54,10 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     };
   }, [customerId]);
 
-  function handleSubmitPayment(amount: number) {
+  function handleSubmitPayment(amount: number, _discount?: number, _createNewDraft?: boolean, notify?: boolean) {
     if (!customer) return;
     setIsRecordingPayment(true);
-    recordCustomerPayment(customer.contact_id, amount)
+    recordCustomerPayment(customer.contact_id, amount, notify)
       .then(() => {
         setIsPaymentModalOpen(false);
         return fetchCustomerById(customerId).then(setCustomer);
@@ -72,6 +74,19 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         <button type="button" className="icon-btn" onClick={onBack} aria-label="Back">
           <ArrowLeft size={18} />
         </button>
+        {customer && (
+          <div className="page-header__actions">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setIsEditCustomerOpen(true)}
+              aria-label="Edit customer"
+              title="Edit customer"
+            >
+              <Pencil size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <div className="form-error">{error}</div>}
@@ -148,6 +163,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
           onSubmit={handleSubmitPayment}
         />
       )}
+
+      <AddCustomerModal
+        open={isEditCustomerOpen}
+        customer={customer}
+        onClose={() => setIsEditCustomerOpen(false)}
+        onSaved={setCustomer}
+      />
     </div>
   );
 }

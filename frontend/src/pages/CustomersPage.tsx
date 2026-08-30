@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { fetchCustomers } from "../lib/api";
+import { Search, UserPlus } from "lucide-react";
+import { fetchCustomers, getRawContactPreferredLanguage } from "../lib/api";
 import { currency } from "../lib/currency";
 import { useSortState } from "../hooks/useSortState";
 import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
+import AddCustomerModal from "../components/AddCustomerModal";
 import type { Contact } from "../types";
 
 type StatusFilter = "all" | "outstanding" | "settled";
@@ -40,6 +41,7 @@ export default function CustomersPage({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("balance", "desc");
 
   const loadCustomers = useCallback((options?: { force?: boolean }) => {
@@ -81,7 +83,18 @@ export default function CustomersPage({
     <div>
       <div className="page-header">
         <h1 className="page-title">Customers</h1>
-        <RefreshButton onRefresh={() => loadCustomers({ force: true })} />
+        <div className="page-header__actions">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setIsAddCustomerOpen(true)}
+            aria-label="Add customer"
+            title="Add customer"
+          >
+            <UserPlus size={16} />
+          </button>
+          <RefreshButton onRefresh={() => loadCustomers({ force: true })} />
+        </div>
       </div>
       <p className="page-subtitle">Outstanding balances from Zoho</p>
 
@@ -137,8 +150,12 @@ export default function CustomersPage({
           <div className="items-area__empty">No customers found</div>
         ) : (
           filteredCustomers.map((c) => {
-            const contactNumber = c.phone || c.mobile;
+            const contactNumber = c.phone || c.mobile || c.contact_persons?.[0]?.phone || c.contact_persons?.[0]?.mobile;
             const isInactive = c.status !== "active";
+            const hasNoPhone = !contactNumber;
+            // Only flag a missing language if the list response actually carries
+            // custom_fields at all — otherwise every customer would falsely show as missing.
+            const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
             return (
               <ClickableCard
                 key={c.contact_id}
@@ -149,6 +166,16 @@ export default function CustomersPage({
                   <span className="draft-card__invoice-number">
                     {c.contact_name || c.company_name}
                     {isInactive && <span className="badge customer-card__inactive-badge">inactive</span>}
+                    {hasNoPhone && (
+                      <span className="badge badge--warning customer-card__inactive-badge" title="No phone number on file">
+                        no phone
+                      </span>
+                    )}
+                    {hasNoPreferredLanguage && (
+                      <span className="badge badge--warning customer-card__inactive-badge" title="No preferred language set">
+                        no language
+                      </span>
+                    )}
                   </span>
                   <span className="draft-card__status">
                     {c.outstanding_receivable_amount > 0 ? "outstanding" : "settled"}
@@ -170,6 +197,12 @@ export default function CustomersPage({
           })
         )}
       </div>
+
+      <AddCustomerModal
+        open={isAddCustomerOpen}
+        onClose={() => setIsAddCustomerOpen(false)}
+        onSaved={() => loadCustomers({ force: true })}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { quantityCalc } from "../../utils/calcs.js"
-import { ZohoApi } from "./client.js"
+import { ZohoApi, ZohoApiRaw } from "./client.js"
 
 export async function ZohoGetDrafts(headers: string){
 
@@ -22,19 +22,6 @@ export async function ZohoGetInvoices(headers: string, params?: Record<string, s
     }
 }
 
-/** The draft a new invoice for this customer would be merged into, if any (most recently created). */
-export async function ZohoGetDraftToMergeInto(headers: string, customerId: string) {
-    try {
-        const drafts = await ZohoGetInvoices(headers, { status: "draft", customer_id: customerId })
-        const sorted = [...drafts].sort(
-            (a: any, b: any) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime()
-        )
-        return sorted[0] ?? null
-    } catch (error) {
-        throw error;
-    }
-}
-
 export async function ZohoGetInvoiceById(headers: string, id: string){
 
     try {
@@ -45,10 +32,21 @@ export async function ZohoGetInvoiceById(headers: string, id: string){
         throw error;
     }
 }
+export async function ZohoGetInvoicePdf(headers: string, id: string){
+
+    try {
+        return await ZohoApiRaw(`invoices/${id}?accept=pdf`, headers)
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function ZohoCreateInvoice(headers: string, invoice_details: any){
 
     try {
         const response = await ZohoApi("invoices", headers, "POST", invoice_details)
+        if (!response.invoice)throw new Error(response.message)
         return response.invoice;
     } catch (error) {
         console.error(error);
@@ -78,11 +76,69 @@ export async function ZohoMarkInvoiceAsSent(headers: string, id: string){
     }
 }
 
+/**
+ * Trims a draft invoice down to only `selectedLineItemIds`. If `createNewDraft`
+ * is true, the deselected items are moved into a brand-new draft invoice for
+ * the same customer first; otherwise they're simply dropped. Returns the
+ * trimmed original invoice and the new draft, if one was created. No-op
+ * (besides re-fetching) if every line item is selected.
+ */
+export async function splitInvoiceToSelectedItems(
+    headers: string,
+    invoiceId: string,
+    selectedLineItemIds: string[],
+    createNewDraft: boolean,
+) {
+    try {
+        const invoice = await ZohoGetInvoiceById(headers, invoiceId)
+        const selectedSet = new Set(selectedLineItemIds)
+        const selectedItems = invoice.line_items.filter((item: any) => selectedSet.has(String(item.line_item_id)))
+        const remainingItems = invoice.line_items.filter((item: any) => !selectedSet.has(String(item.line_item_id)))
+
+        if (selectedItems.length === 0 || remainingItems.length === 0) {
+            return { invoice, newDraft: null }
+        }
+
+        const toLineItemPayload = (item: any) => ({
+            item_id: item.item_id,
+            description: item.description,
+            quantity: item.quantity,
+            rate: item.rate,
+            unit: item.unit,
+        })
+
+        let newDraft = null
+        if (createNewDraft) {
+            newDraft = await ZohoCreateInvoice(headers, {
+                customer_id: invoice.customer_id,
+                date: invoice.date,
+                line_items: remainingItems.map(toLineItemPayload),
+            })
+        }
+
+        const trimmedInvoice = await ZohoUpdateInvoice(headers, invoiceId, {
+            line_items: selectedItems.map(toLineItemPayload),
+        })
+
+        return { invoice: trimmedInvoice, newDraft }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 type PaymentMode = "check" | "cash" | "creditcard" | "banktransfer" | "bankremittance" | "autotransaction" | "others"
 
-export async function recordInvoicePayment(headers: string, invoiceId: string, amount: number, paymentMode: PaymentMode = "cash"){
+export async function recordInvoicePayment(headers: string, invoiceId: string, amount: number, paymentMode: PaymentMode = "cash", discount?: number){
 
     try {
+        if (discount) {
+            await ZohoUpdateInvoice(headers, invoiceId, {
+                discount,
+                discount_type: "entity_level",
+            })
+        }
+
         const invoice = await ZohoGetInvoiceById(headers, invoiceId)
         const response = await ZohoApi("customerpayments", headers, "POST", {
             customer_id: invoice.customer_id,

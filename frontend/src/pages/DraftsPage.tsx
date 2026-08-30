@@ -10,7 +10,7 @@ import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
-import type { DraftInvoice, InvoiceDetail } from "../types";
+import type { DraftInvoice } from "../types";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
 
@@ -28,7 +28,6 @@ export default function DraftsPage({
   onSelectInvoice: (invoiceId: string) => void;
 }) {
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
-  const [detailsById, setDetailsById] = useState<Map<string, InvoiceDetail>>(new Map());
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("scheduled");
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
@@ -37,39 +36,12 @@ export default function DraftsPage({
 
   function refreshDrafts() {
     for (const draft of drafts) invalidateCache(invoiceCacheKey(draft.invoice_id));
-    setDetailsById(new Map());
     return loadDrafts({ force: true });
   }
 
   useEffect(() => {
     loadDrafts();
   }, [loadDrafts]);
-
-  // Prefetch each draft's line items in the background as soon as the list
-  // loads (rather than on click) so the Copy button can write to the
-  // clipboard synchronously — mobile browsers (notably iOS Safari) revoke
-  // clipboard-write permission for a tap once an async gap, like a network
-  // fetch, comes between the tap and the write.
-  useEffect(() => {
-    const missing = drafts.filter((draft) => !detailsById.has(draft.invoice_id));
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(missing.map((draft) => fetchInvoiceByIdCached(draft.invoice_id)))
-      .then((details) => {
-        if (cancelled) return;
-        setDetailsById((prev) => {
-          const next = new Map(prev);
-          for (const detail of details) next.set(detail.invoice_id, detail);
-          return next;
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drafts]);
 
   function handleResent(invoiceId: string, date: string) {
     setDrafts((prev) =>
@@ -95,19 +67,18 @@ export default function DraftsPage({
     return list;
   }, [drafts, sortKey, sortDirection]);
 
-  const copyText = useMemo(() => {
-    const details = sortedDrafts
-      .map((draft) => detailsById.get(draft.invoice_id))
-      .filter((detail): detail is InvoiceDetail => detail !== undefined);
-    return formatInvoicesForCopy(details);
-  }, [sortedDrafts, detailsById]);
+  function copyText() {
+    return Promise.all(sortedDrafts.map((draft) => fetchInvoiceByIdCached(draft.invoice_id))).then(
+      formatInvoicesForCopy,
+    );
+  }
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Draft Invoices</h1>
         <div className="page-header__actions">
-          <CopyButton getText={() => copyText} />
+          <CopyButton getText={copyText} />
           <RefreshButton onRefresh={refreshDrafts} />
         </div>
       </div>

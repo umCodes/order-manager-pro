@@ -6,10 +6,12 @@ type Props = {
   lineItems: InvoiceLineItem[];
   total: number;
   onRemove: (itemId: string) => void;
+  /** Called when the name/meta column of a line item is clicked, to open it in the items modal. */
+  onSelect: (itemId: string) => void;
 };
 
 /** Editable list of line items on a new (unsubmitted) invoice, with a running total. */
-export default function InvoiceLineItemsList({ lineItems, total, onRemove }: Props) {
+export default function InvoiceLineItemsList({ lineItems, total, onRemove, onSelect }: Props) {
   if (lineItems.length === 0) {
     return <div className="items-area__empty">No items added yet</div>;
   }
@@ -18,10 +20,15 @@ export default function InvoiceLineItemsList({ lineItems, total, onRemove }: Pro
     <div className="line-items">
       <div className="line-items__header">Line items</div>
       {lineItems.map((li) => (
-        <div key={li.item_id} className="line-item">
-          <div>
+        <div
+          key={li.item_id}
+          className={`line-item${li.fromDraftId ? " line-item--from-draft" : ""}`}
+          title={li.fromDraftId ? "Carried over from this customer's existing draft" : undefined}
+        >
+          <button type="button" className="line-item__main" onClick={() => onSelect(li.item_id)}>
             <div className="line-item__name">
-              {li.name}
+              <span className="line-item__name-text">{li.name}</span>
+              {li.fromDraftId && <span className="badge badge--draft-origin">Existing</span>}
               {li.excludeFromTelegram && (
                 <span
                   className="item-row__mute-icon"
@@ -35,7 +42,7 @@ export default function InvoiceLineItemsList({ lineItems, total, onRemove }: Pro
             <div className="line-item__meta">
               {li.quantity} × {currency(li.rate)}
             </div>
-          </div>
+          </button>
           <div className="line-item__right">
             <span className="line-item__total">{currency(li.rate * li.quantity)}</span>
             <button

@@ -1,15 +1,15 @@
 import type { Request, Response } from "express";
-import { ZohoCreateInvoice, ZohoGetDrafts, ZohoGetDraftToMergeInto, ZohoGetInvoiceById, ZohoUpdateInvoice, ZohoMarkInvoiceAsSent, recordInvoicePayment } from "../services/zoho/invoices.js";
+import { ZohoCreateInvoice, ZohoGetDrafts, ZohoGetInvoiceById, ZohoUpdateInvoice, ZohoMarkInvoiceAsSent, recordInvoicePayment, splitInvoiceToSelectedItems } from "../services/zoho/invoices.js";
 import { sendInvoiceTelegramMessage, updateInvoiceDateTelegramMessage, replyWithAddedInvoiceItemsTelegramMessage } from "../services/telegram/invoices.js";
+import { notifyPaymentRecorded, notifyInvoiceSent } from "../services/whatsapp/invoices.js";
 import { redisClient } from "../config/redis.js";
 
 export async function createInvoice(req: Request, res: Response) {
 
   const access_token = req.headers["Authorization"]
 
-  const { contact_id, line_items, date } = req.body ?? {};
+  const { contact_id, line_items, date, invoice_id } = req.body ?? {};
 
-  console.log(line_items)
   if (!contact_id || !Array.isArray(line_items) || line_items.length === 0) {
     return res.status(400).json({
       error: "contact_id and line_items (non-empty array) are required",
@@ -28,15 +28,13 @@ export async function createInvoice(req: Request, res: Response) {
   try {
     if (!access_token || access_token instanceof Array) throw "A problem occured getting items"
 
-    const draftToMergeInto = await ZohoGetDraftToMergeInto(access_token, String(contact_id));
-
-    if (draftToMergeInto) {
-      await ZohoUpdateInvoice(access_token, String(draftToMergeInto.invoice_id), {
+    if (invoice_id) {
+      await ZohoUpdateInvoice(access_token, String(invoice_id), {
         ...(date ? { date } : {}),
         line_items: zohoLineItems,
       });
 
-      const invoice = await ZohoGetInvoiceById(access_token, String(draftToMergeInto.invoice_id));
+      const invoice = await ZohoGetInvoiceById(access_token, String(invoice_id));
 
       const allTelegramLineItems = invoice.line_items.filter(
         (item: any) => !String(item?.description ?? "").includes("###")
@@ -44,13 +42,10 @@ export async function createInvoice(req: Request, res: Response) {
 
       const existingMessageId = await redisClient.get(String(invoice.invoice_id));
 
-      console.log("allTelegramLineItems: ", allTelegramLineItems)
       const telegramMessage = existingMessageId
         ? await replyWithAddedInvoiceItemsTelegramMessage(invoice, allTelegramLineItems, Number(existingMessageId))
         : await sendInvoiceTelegramMessage(invoice, allTelegramLineItems);
 
-      console.log("Telegram Message")
-      console.log("MessageId: ", existingMessageId)
       await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
 
       res.status(200).json({ invoice, merged: true });
@@ -62,7 +57,7 @@ export async function createInvoice(req: Request, res: Response) {
       ...(date ? { date } : {}),
       line_items: zohoLineItems,
     });
-
+    
     if (!date) invoice.date = undefined
 
     const telegramMessage = await sendInvoiceTelegramMessage(invoice, telegramLineItems);
@@ -187,15 +182,70 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured recording payment");
     if (!id) throw new Error("id not provided");
 
-    const { amount, payment_mode } = req.body ?? {};
+    const { amount, payment_mode, discount, notify } = req.body ?? {};
     if (!amount) throw new Error("Amount not provided");
 
-    const payment = await recordInvoicePayment(access_token, id, amount, payment_mode);
-    res.status(201).json({ payment });
+    const invoiceBeforePayment = await ZohoGetInvoiceById(access_token, id);
+    const wasDraft = invoiceBeforePayment.status === "draft";
+
+    const payment = await recordInvoicePayment(access_token, id, amount, payment_mode, discount);
+
+    let notified = { balance: false, payment: false };
+    if (notify) {
+      const invoiceAfterPayment = await ZohoGetInvoiceById(access_token, id);
+      if (wasDraft) {
+        notified.balance = await notifyInvoiceSent(access_token, invoiceAfterPayment);
+      }
+      notified.payment = await notifyPaymentRecorded(
+        access_token,
+        invoiceAfterPayment,
+        amount,
+        payment.date ?? new Date().toISOString().slice(0, 10),
+      );
+    }
+
+    res.status(201).json({ payment, notified });
   } catch (error) {
     console.error(error);
     res.status(400).json({
       error: error instanceof Error ? error.message : "Failed to record payment",
+    });
+  }
+}
+
+export async function splitInvoice(req: Request, res: Response) {
+  const access_token = req.headers["Authorization"];
+  const id = req.params.id as string;
+
+  try {
+    if (!access_token || access_token instanceof Array) throw new Error("A problem occured splitting the invoice");
+    if (!id) throw new Error("id not provided");
+
+    const { selected_line_item_ids, create_new_draft } = req.body ?? {};
+    if (!Array.isArray(selected_line_item_ids) || selected_line_item_ids.length === 0) {
+      throw new Error("selected_line_item_ids (non-empty array) is required");
+    }
+
+    const { invoice, newDraft } = await splitInvoiceToSelectedItems(
+      access_token,
+      id,
+      selected_line_item_ids.map(String),
+      !!create_new_draft,
+    );
+
+    if (newDraft) {
+      const newDraftTelegramLineItems = newDraft.line_items.filter(
+        (item: any) => !String(item?.description ?? "").includes("###")
+      );
+      const telegramMessage = await sendInvoiceTelegramMessage(newDraft, newDraftTelegramLineItems);
+      await redisClient.set(String(newDraft.invoice_id), String(telegramMessage.message_id));
+    }
+
+    res.status(200).json({ invoice, newDraft });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Failed to split invoice",
     });
   }
 }
@@ -208,8 +258,14 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured marking the invoice as sent");
     if (!id) throw new Error("id not provided");
 
-    const invoice = await ZohoMarkInvoiceAsSent(access_token, id);
-    res.status(200).json({ invoice });
+    const { notify } = req.body ?? {};
+
+    await ZohoMarkInvoiceAsSent(access_token, id);
+    const invoice = await ZohoGetInvoiceById(access_token, id);
+
+    const notified = notify ? await notifyInvoiceSent(access_token, invoice) : false;
+
+    res.status(200).json({ invoice, notified });
   } catch (error) {
     console.error(error);
     res.status(400).json({

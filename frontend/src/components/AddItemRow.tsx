@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { ChevronDown, MessageSquareOff } from "lucide-react";
 import { currency } from "../lib/currency";
 import type { CatalogItem, CartLine } from "../types";
@@ -21,7 +22,7 @@ type Props = {
 };
 
 /** One catalog item in the add-item sheet: a header row that expands into a qty/rate/description editor. */
-export default function AddItemRow({
+const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
   item,
   inCart,
   isExpanded,
@@ -30,11 +31,11 @@ export default function AddItemRow({
   onFormChange,
   onCommit,
   onRemove,
-}: Props) {
+}, ref) {
   const formTotal = (Number(form.rate) || 0) * (Number(form.quantity) || 0);
 
   return (
-    <div className="item-row">
+    <div className="item-row" ref={ref}>
       <button type="button" className="item-row__header" onClick={onToggleExpand}>
         <div className="item-row__main">
           <div className="item-row__name">
@@ -132,4 +133,6 @@ export default function AddItemRow({
       )}
     </div>
   );
-}
+});
+
+export default AddItemRow;

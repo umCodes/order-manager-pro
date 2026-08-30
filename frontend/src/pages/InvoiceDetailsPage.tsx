@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
-import { fetchInvoiceById, markInvoiceAsSent, recordInvoicePayment, updateInvoiceDate } from "../lib/api";
+import {
+  fetchInvoiceById,
+  markInvoiceAsSent,
+  recordInvoicePayment,
+  splitInvoiceToSelectedItems,
+  updateInvoiceDate,
+} from "../lib/api";
 import { currency } from "../lib/currency";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
 import ResendButton from "../components/ResendButton";
 import PaymentModal from "../components/PaymentModal";
 import DayPickerModal from "../components/DayPickerModal";
+import SplitConfirmModal from "../components/SplitConfirmModal";
 import CopyButton from "../components/CopyButton";
 import type { InvoiceDetail } from "../types";
 
@@ -33,6 +40,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isMarkingSent, setIsMarkingSent] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isSplitConfirmOpen, setIsSplitConfirmOpen] = useState(false);
+  const [isNotifyOnSentOpen, setIsNotifyOnSentOpen] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isUpdatingDate, setIsUpdatingDate] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
@@ -63,10 +72,37 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     });
   }
 
-  function handleSubmitPayment(amount: number) {
+  // A selection only matters if it's a draft (splitting a sent invoice's
+  // line items isn't supported) and it's a strict subset of the items —
+  // none selected or all selected both mean "act on the whole invoice".
+  const isPartialSelection =
+    !!invoice &&
+    invoice.status === "draft" &&
+    selectedItemIds.size > 0 &&
+    selectedItemIds.size < invoice.line_items.length;
+
+  const selectedItemsTotal = invoice
+    ? invoice.line_items
+        .filter((item) => selectedItemIds.has(item.line_item_id))
+        .reduce((sum, item) => sum + item.item_total, 0)
+    : 0;
+
+  /** Trims this invoice down to the selected items, optionally splitting the rest into a new draft first. */
+  function splitToSelection(createNewDraft: boolean): Promise<void> {
+    if (!invoice) return Promise.resolve();
+    return splitInvoiceToSelectedItems(invoice.invoice_id, Array.from(selectedItemIds), createNewDraft).then(
+      (splitInvoice) => {
+        setInvoice(splitInvoice);
+        setSelectedItemIds(new Set());
+      },
+    );
+  }
+
+  function handleSubmitPayment(amount: number, discount?: number, createNewDraft?: boolean, notify?: boolean) {
     if (!invoice) return;
     setIsRecordingPayment(true);
-    recordInvoicePayment(invoice.invoice_id, amount)
+    (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve())
+      .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify))
       .then(() => {
         setIsPaymentModalOpen(false);
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -75,14 +111,43 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       .finally(() => setIsRecordingPayment(false));
   }
 
-  function handleMarkAsSent() {
+  function handleMarkAsSentClick() {
+    if (!invoice) return;
+    if (isPartialSelection) {
+      setActionError(null);
+      setIsSplitConfirmOpen(true);
+      return;
+    }
+    setActionError(null);
+    setIsNotifyOnSentOpen(true);
+  }
+
+  function runMarkAsSent(notify: boolean) {
     if (!invoice) return;
     setIsMarkingSent(true);
     setActionError(null);
-    markInvoiceAsSent(invoice.invoice_id)
-      .then(() => fetchInvoiceById(invoiceId).then(setInvoice))
+    markInvoiceAsSent(invoice.invoice_id, notify)
+      .then(() => {
+        setIsNotifyOnSentOpen(false);
+        return fetchInvoiceById(invoiceId).then(setInvoice);
+      })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Failed to mark invoice as sent"))
       .finally(() => setIsMarkingSent(false));
+  }
+
+  function handleSplitConfirm(createNewDraft: boolean) {
+    setIsMarkingSent(true);
+    setActionError(null);
+    splitToSelection(createNewDraft)
+      .then(() => {
+        setIsSplitConfirmOpen(false);
+        setIsMarkingSent(false);
+        setIsNotifyOnSentOpen(true);
+      })
+      .catch((e) => {
+        setActionError(e instanceof Error ? e.message : "Failed to split invoice");
+        setIsMarkingSent(false);
+      });
   }
 
   function handleSelectDate(date: string) {
@@ -201,6 +266,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             </div>
           </div>
 
+          {isPartialSelection && (
+            <div className="day-warning">
+              {selectedItemIds.size} of {invoice.line_items.length} items selected — this action will apply to only
+              those items.
+            </div>
+          )}
+
           {actionError && <div className="form-error">{actionError}</div>}
 
           <div className="invoice-details__actions">
@@ -218,7 +290,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             <button
               type="button"
               className="btn btn--secondary"
-              onClick={handleMarkAsSent}
+              onClick={handleMarkAsSentClick}
               disabled={invoice.status !== "draft"}
             >
               {isMarkingSent ? "Marking..." : "Mark as Sent"}
@@ -230,12 +302,57 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       {isPaymentModalOpen && invoice && (
         <PaymentModal
           title={invoice.invoice_number}
-          outstandingBalance={invoice.balance}
+          outstandingBalance={isPartialSelection ? selectedItemsTotal : invoice.balance}
           isSaving={isRecordingPayment}
           submitError={paymentError}
+          allowDiscount
+          itemsToSplitCount={isPartialSelection ? invoice.line_items.length - selectedItemIds.size : undefined}
           onCancel={() => setIsPaymentModalOpen(false)}
           onSubmit={handleSubmitPayment}
         />
+      )}
+
+      {isSplitConfirmOpen && invoice && (
+        <SplitConfirmModal
+          selectedCount={selectedItemIds.size}
+          totalCount={invoice.line_items.length}
+          isSaving={isMarkingSent}
+          error={actionError}
+          onSplitAndContinue={() => handleSplitConfirm(true)}
+          onDropAndContinue={() => handleSplitConfirm(false)}
+          onCancel={() => setIsSplitConfirmOpen(false)}
+        />
+      )}
+
+      {isNotifyOnSentOpen && invoice && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={() => setIsNotifyOnSentOpen(false)} />
+          <div className="modal">
+            <div className="modal__title">Notify Customer?</div>
+            <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
+              Send a WhatsApp notification that this invoice was sent?
+            </div>
+            {actionError && <div className="form-error">{actionError}</div>}
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                disabled={isMarkingSent}
+                onClick={() => runMarkAsSent(false)}
+              >
+                {isMarkingSent ? "Saving..." : "No, don't notify"}
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={isMarkingSent}
+                onClick={() => runMarkAsSent(true)}
+              >
+                {isMarkingSent ? "Saving..." : "Yes, notify"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {isDateModalOpen && invoice && (

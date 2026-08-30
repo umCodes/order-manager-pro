@@ -8,7 +8,7 @@ import InvoiceDetailsPage from "./pages/InvoiceDetailsPage";
 import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
-import type { Cart, ScheduledDate, TabKey } from "./types";
+import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
 
 /**
  * Root component and router. There's no URL-based routing — navigation is
@@ -23,6 +23,8 @@ function App() {
   const [cart, setCart] = useState<Cart>({});
   const [invoiceContactId, setInvoiceContactId] = useState<string>("");
   const [invoiceScheduledDate, setInvoiceScheduledDate] = useState<ScheduledDate>(null);
+  const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
+  const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
 
   if (selectedInvoiceId) {
     return (
@@ -62,6 +64,10 @@ function App() {
             onSelectedContactIdChange={setInvoiceContactId}
             scheduledDate={invoiceScheduledDate}
             onScheduledDateChange={setInvoiceScheduledDate}
+            mode={invoiceMode}
+            onModeChange={setInvoiceMode}
+            draftId={invoiceDraftId}
+            onDraftIdChange={setInvoiceDraftId}
           />
         )}
         {activeTab === "messages" && <MessagesPage />}

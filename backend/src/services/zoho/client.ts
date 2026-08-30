@@ -38,3 +38,22 @@ export async function ZohoApi(endPoint: string, headers: string, method: Methods
         throw error
     }
 }
+
+/** For endpoints returning a binary body (e.g. `?accept=pdf`) instead of JSON. */
+export async function ZohoApiRaw(endPoint: string, headers: string) {
+    try {
+        const response = await fetch(`https://www.zohoapis.com/invoice/v3/${endPoint}`, {
+            method: "GET",
+            headers: {
+                "Authorization": headers,
+                "X-com-zoho-invoice-organizationid": String(ENV.ORGANIZATION_ID),
+            },
+        })
+        if (!response.ok) throw await response.json()
+        const buffer = Buffer.from(await response.arrayBuffer())
+        await incrementZohoRequestCount()
+        return buffer
+    } catch (error) {
+        throw error
+    }
+}

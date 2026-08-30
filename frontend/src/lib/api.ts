@@ -31,8 +31,8 @@ async function fetchItemsUncached(): Promise<CatalogItem[]> {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to fetch items (${response.status})`);
   }
-
   const data = await response.json();
+
   return data.items;
 }
 
@@ -58,16 +58,69 @@ export function fetchCustomers(options?: { force?: boolean }): Promise<Contact[]
   return cachedFetch("customers", fetchCustomersUncached);
 }
 
-export async function fetchCustomerDraftToMergeInto(customerId: string): Promise<InvoiceDetail | null> {
-  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/invoices/draft-to-merge-into`);
+export type CustomerType = "business" | "individual";
+export type PreferredLanguage = "am" | "ar" | "en";
+
+export type CreateCustomerPayload = {
+  contact_name: string;
+  company_name: string;
+  customer_sub_type: CustomerType;
+  preferred_language: PreferredLanguage;
+  /** Zoho stores phone on the contact person, not the contact itself. */
+  contact_persons: { first_name: string; phone: string }[];
+};
+
+export async function createCustomer(payload: CreateCustomerPayload): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to fetch customer's draft invoice (${response.status})`);
+    throw new Error(body.error ?? `Failed to create customer (${response.status})`);
   }
 
   const data = await response.json();
-  return data.draft;
+  return data.customer;
+}
+
+export async function updateCustomer(customerId: string, payload: CreateCustomerPayload): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to update customer (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.customer;
+}
+
+/** customfield_id for the "preferred_language" custom field on contacts, in this Zoho org. */
+export const PREFERRED_LANGUAGE_CUSTOMFIELD_ID = "4645478000004349196";
+
+/** Reads a contact's raw preferred_language custom field, or undefined if unset/invalid — no fallback. */
+export function getRawContactPreferredLanguage(contact: Contact): PreferredLanguage | undefined {
+  const field = contact.custom_fields?.find(
+    (cf) => (cf.customfield_id ?? cf.field_id) === PREFERRED_LANGUAGE_CUSTOMFIELD_ID,
+  );
+  const value = field?.value;
+  return value === "am" || value === "ar" || value === "en" ? value : undefined;
+}
+
+/** Reads a contact's preferred_language custom field, falling back to Amharic if unset/invalid. */
+export function getContactPreferredLanguage(contact: Contact): PreferredLanguage {
+  return getRawContactPreferredLanguage(contact) ?? "am";
 }
 
 export async function fetchCustomerById(customerId: string): Promise<Contact> {
@@ -94,13 +147,13 @@ export async function fetchCustomerDraftInvoices(customerId: string): Promise<Dr
   return data.drafts;
 }
 
-export async function recordCustomerPayment(customerId: string, amount: number) {
+export async function recordCustomerPayment(customerId: string, amount: number, notify?: boolean) {
   const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, notify: !!notify }),
   });
 
   if (!response.ok) {
@@ -220,13 +273,35 @@ export function fetchInvoiceByIdCached(invoiceId: string): Promise<InvoiceDetail
   return cachedFetch(invoiceCacheKey(invoiceId), () => fetchInvoiceById(invoiceId));
 }
 
-export async function recordInvoicePayment(invoiceId: string, amount: number) {
+export async function splitInvoiceToSelectedItems(
+  invoiceId: string,
+  selectedLineItemIds: string[],
+  createNewDraft: boolean,
+): Promise<InvoiceDetail> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/split`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ selected_line_item_ids: selectedLineItemIds, create_new_draft: createNewDraft }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to split invoice (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.invoice;
+}
+
+export async function recordInvoicePayment(invoiceId: string, amount: number, discount?: number, notify?: boolean) {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, ...(discount ? { discount } : {}), notify: !!notify }),
   });
 
   if (!response.ok) {
@@ -237,9 +312,13 @@ export async function recordInvoicePayment(invoiceId: string, amount: number) {
   return response.json();
 }
 
-export async function markInvoiceAsSent(invoiceId: string) {
+export async function markInvoiceAsSent(invoiceId: string, notify?: boolean) {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ notify: !!notify }),
   });
 
   if (!response.ok) {

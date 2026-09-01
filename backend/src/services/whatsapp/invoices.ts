@@ -1,27 +1,49 @@
-import { ZohoGetCustomerById, getContactPreferredLanguage } from "../zoho/customers.js"
-import { ZohoGetInvoicePdf } from "../zoho/invoices.js"
+import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhone, getContactPhoneById } from "../zoho/customers.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
-import type { ZohoInvoice } from "../../utils/types.js"
+import { createInvoicePdfBufferForLanguage } from "../../utils/pdf.js"
+import type { ZohoInvoice, LineItem } from "../../utils/types.js"
 
-/** Zoho stores phone on the contact person, not the contact itself. */
-function getContactPhone(contact: any): string | undefined {
-    return contact?.contact_persons?.[0]?.phone || contact?.contact_persons?.[0]?.mobile || contact?.mobile || contact?.phone
+const EXCLUDE_MARKER = "###"
+
+function toInvoicePdfData(invoice: ZohoInvoice) {
+    return {
+        invoiceNumber: invoice.invoice_number,
+        customerName: invoice.customer_name,
+        date: invoice.date,
+        lineItems: invoice.line_items
+            .filter((item: LineItem) => !item.description.includes(EXCLUDE_MARKER))
+            .map((item: LineItem) => ({
+                description: item.description,
+                itemName: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                rate: item.rate,
+            })),
+        totalPrice: invoice.total,
+        paidAmount: invoice.total - invoice.balance,
+        discountAmount: invoice.sub_total + invoice.tax_total + invoice.shipping_charge + invoice.adjustment - invoice.total,
+    }
 }
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the
  * payment notification. Failures are logged, never thrown — a WhatsApp
  * failure must not roll back or fail the payment that already succeeded.
+ * `contactPersonId`, when given, sends to a specific contact chosen by the
+ * caller (e.g. picked in the UI when the customer has more than one
+ * contact) instead of the customer's default-resolved phone — resolved
+ * against this customer's own contact list, never a raw phone from the caller.
  */
 export async function notifyPaymentRecorded(
     accessToken: string,
     invoice: ZohoInvoice,
     paymentAmount: number,
     paymentDate: string,
+    contactPersonId?: string,
 ) {
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
-        const phone = getContactPhone(contact)
+        const phone = contactPersonId ? getContactPhoneById(contact, contactPersonId) : getContactPhone(contact)
         if (!phone) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         await sendPaymentNotification(
@@ -44,22 +66,23 @@ export async function notifyPaymentRecorded(
  * is read *after* this invoice's own balance is already reflected in it (i.e.
  * after marking sent / recording payment), so "balance before" is derived by
  * subtracting this invoice's current balance back out. Failures are logged,
- * never thrown.
+ * never thrown. `contactPersonId` behaves as in notifyPaymentRecorded above.
  */
-export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice) {
+export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice, contactPersonId?: string) {
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
-        const phone = getContactPhone(contact)
+        const phone = contactPersonId ? getContactPhoneById(contact, contactPersonId) : getContactPhone(contact)
         if (!phone) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
-        const pdf = await ZohoGetInvoicePdf(accessToken, String(invoice.invoice_id))
+        const preferredLanguage = getContactPreferredLanguage(contact)
+        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage)
         const paidAmountFromInvoice = invoice.total - invoice.balance
         const balanceAfter = contact.outstanding_receivable_amount
         const balanceBefore = balanceAfter - invoice.balance
 
         await sendBalanceNotification(
             phone,
-            getContactPreferredLanguage(contact),
+            preferredLanguage,
             pdf,
             `${invoice.invoice_number}.pdf`,
             invoice.invoice_number,

@@ -1,7 +1,7 @@
 import { ENV } from "../../constants/env.js"
 import { redisClient } from "../../config/redis.js"
 
-export type Methods = "GET" | "POST" | "PUT"
+export type Methods = "GET" | "POST" | "PUT" | "DELETE"
 
 const ZOHO_REQUEST_COUNT_TTL_SECONDS = 60 * 60 * 48
 

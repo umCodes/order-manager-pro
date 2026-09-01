@@ -2,6 +2,11 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { currency } from "../lib/currency";
 import { useConfirmArmedAction } from "../hooks/useConfirmArmedAction";
+import { getContactList, getPrimaryContact } from "../lib/contacts";
+import NotifyContactModal from "./NotifyContactModal";
+import type { Contact } from "../types";
+
+type NotifyStep = "amount" | "confirmNotify" | "pickContact";
 
 type Props = {
   /** Heading/subject shown above the balance, e.g. customer or invoice name. */
@@ -18,8 +23,21 @@ type Props = {
    * the split checkbox entirely (no selection, or the whole invoice).
    */
   itemsToSplitCount?: number;
+  /**
+   * The customer being notified. When they have more than one contact, a
+   * picker step follows the "notify?" confirmation so the user chooses
+   * which one receives the message; with a single contact that step is
+   * skipped and it's used automatically.
+   */
+  customer: Contact;
   onCancel: () => void;
-  onSubmit: (amount: number, discount?: number, createNewDraft?: boolean, notify?: boolean) => void;
+  onSubmit: (
+    amount: number,
+    discount?: number,
+    createNewDraft?: boolean,
+    notify?: boolean,
+    notifyContactId?: string,
+  ) => void;
 };
 
 /**
@@ -31,7 +49,8 @@ type Props = {
  * the payment is applied. When itemsToSplitCount is set, a checkbox lets the
  * user opt into splitting the unselected items into a new draft first. Once
  * the amount step is confirmed, a second step asks whether to notify the
- * customer on WhatsApp before the payment is actually submitted.
+ * customer on WhatsApp; if they have multiple contacts, a third step lets
+ * the user pick which one before the payment is actually submitted.
  */
 export default function PaymentModal({
   title,
@@ -40,6 +59,7 @@ export default function PaymentModal({
   submitError,
   allowDiscount,
   itemsToSplitCount,
+  customer,
   onCancel,
   onSubmit,
 }: Props) {
@@ -48,11 +68,16 @@ export default function PaymentModal({
   const [discount, setDiscount] = useState("");
   const [createNewDraft, setCreateNewDraft] = useState(true);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [isConfirmingNotify, setIsConfirmingNotify] = useState(false);
+  const [step, setStep] = useState<NotifyStep>("amount");
 
   const { isArmed, isCoolingDown, trigger, disarm } = useConfirmArmedAction(() => {
-    setIsConfirmingNotify(true);
+    setStep("confirmNotify");
   });
+
+  const parsedDiscountValue = Number(discount) || 0;
+  const maxPayable = Math.max(outstandingBalance - parsedDiscountValue, 0);
+  const parsedAmountValue = Number(amount);
+  const isAmountOverMax = !!amount && !Number.isNaN(parsedAmountValue) && parsedAmountValue > maxPayable;
 
   function handleConfirmClick() {
     if (isSaving) return;
@@ -65,16 +90,47 @@ export default function PaymentModal({
       setValidationError("Enter a valid discount");
       return;
     }
+    if (parsed > maxPayable) {
+      setValidationError(`Amount cannot exceed ${currency(maxPayable)}`);
+      return;
+    }
     setValidationError(null);
     trigger();
   }
 
-  function submitPayment(notify: boolean) {
+  function submitPayment(notify: boolean, notifyContactId?: string) {
     const parsedDiscount = Number(discount);
-    onSubmit(Number(amount), parsedDiscount > 0 ? parsedDiscount : undefined, !!itemsToSplitCount && createNewDraft, notify);
+    onSubmit(
+      Number(amount),
+      parsedDiscount > 0 ? parsedDiscount : undefined,
+      !!itemsToSplitCount && createNewDraft,
+      notify,
+      notifyContactId,
+    );
   }
 
-  if (isConfirmingNotify) {
+  function handleYesNotify() {
+    const contacts = getContactList(customer);
+    if (contacts.length > 1) {
+      setStep("pickContact");
+      return;
+    }
+    submitPayment(true, getPrimaryContact(customer)?.contact_person_id);
+  }
+
+  if (step === "pickContact") {
+    return (
+      <NotifyContactModal
+        customer={customer}
+        isSaving={isSaving}
+        error={submitError}
+        onCancel={onCancel}
+        onConfirm={(contactPersonId) => submitPayment(true, contactPersonId)}
+      />
+    );
+  }
+
+  if (step === "confirmNotify") {
     return (
       <div className="modal-overlay">
         <div className="modal-overlay__backdrop" onClick={onCancel} />
@@ -97,7 +153,7 @@ export default function PaymentModal({
               type="button"
               className="btn btn--primary"
               disabled={isSaving}
-              onClick={() => submitPayment(true)}
+              onClick={handleYesNotify}
             >
               {isSaving ? "Saving..." : "Yes, notify"}
             </button>
@@ -125,6 +181,7 @@ export default function PaymentModal({
             type="number"
             step="0.01"
             className="input"
+            style={isAmountOverMax ? { borderColor: "var(--color-danger, #d92d20)", color: "var(--color-danger, #d92d20)" } : undefined}
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
@@ -175,8 +232,10 @@ export default function PaymentModal({
             </span>
           </label>
         )}
-        {(validationError || submitError) && (
-          <div className="form-error">{validationError || submitError}</div>
+        {(isAmountOverMax ? `Amount cannot exceed ${currency(maxPayable)}` : validationError || submitError) && (
+          <div className="form-error">
+            {isAmountOverMax ? `Amount cannot exceed ${currency(maxPayable)}` : validationError || submitError}
+          </div>
         )}
         <div className="invoice-details__actions" style={{ marginTop: 14 }}>
           <button type="button" className="btn btn--secondary" onClick={onCancel}>
@@ -185,7 +244,7 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn ${isArmed ? "btn--primary" : "btn--secondary"}`}
-            disabled={isSaving || isCoolingDown}
+            disabled={isSaving || isCoolingDown || isAmountOverMax}
             onClick={handleConfirmClick}
           >
             {isSaving

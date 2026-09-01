@@ -74,7 +74,6 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
     !isEditing ||
     contactName.trim() !== (customer.contact_name ?? "") ||
     companyName.trim() !== (customer.company_name ?? "") ||
-    phone.trim() !== (customer.contact_persons?.[0]?.phone || customer.phone || customer.mobile || "") ||
     customerType !== (isCustomerType(customer.customer_sub_type) ? customer.customer_sub_type : "business") ||
     // preferredLanguage starts equal to getContactPreferredLanguage(customer) (which
     // falls back to "am" when unset) — comparing against that same fallback-applied
@@ -92,7 +91,7 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
       setError("Company name is required");
       return;
     }
-    if (!phone.trim()) {
+    if (!isEditing && !phone.trim()) {
       setError("Phone is required");
       return;
     }
@@ -141,6 +140,7 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
             id="customer-contact-name"
             type="text"
             className="input"
+            placeholder="Name of the person who uses the phone number below"
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
           />
@@ -159,18 +159,21 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
           />
         </div>
 
-        <div className="field">
-          <label className="field-label" htmlFor="customer-phone">
-            Phone
-          </label>
-          <input
-            id="customer-phone"
-            type="tel"
-            className="input"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-        </div>
+        {!isEditing && (
+          <div className="field">
+            <label className="field-label" htmlFor="customer-phone">
+              Phone
+            </label>
+            <input
+              id="customer-phone"
+              type="tel"
+              className="input"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <span className="field-hint">This becomes the customer's primary contact.</span>
+          </div>
+        )}
 
         <div className="field">
           <label className="field-label">Customer type</label>

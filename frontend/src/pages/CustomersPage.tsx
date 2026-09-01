@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
 import { fetchCustomers, getRawContactPreferredLanguage } from "../lib/api";
+import { getPrimaryContactPhone } from "../lib/contacts";
 import { currency } from "../lib/currency";
 import { useSortState } from "../hooks/useSortState";
 import ClickableCard from "../components/ClickableCard";
@@ -150,7 +151,7 @@ export default function CustomersPage({
           <div className="items-area__empty">No customers found</div>
         ) : (
           filteredCustomers.map((c) => {
-            const contactNumber = c.phone || c.mobile || c.contact_persons?.[0]?.phone || c.contact_persons?.[0]?.mobile;
+            const contactNumber = getPrimaryContactPhone(c);
             const isInactive = c.status !== "active";
             const hasNoPhone = !contactNumber;
             // Only flag a missing language if the list response actually carries

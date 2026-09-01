@@ -140,6 +140,10 @@ export async function recordInvoicePayment(headers: string, invoiceId: string, a
         }
 
         const invoice = await ZohoGetInvoiceById(headers, invoiceId)
+        if (amount > invoice.balance) {
+            throw new Error("Payment amount exceeds the invoice's outstanding balance");
+        }
+
         const response = await ZohoApi("customerpayments", headers, "POST", {
             customer_id: invoice.customer_id,
             payment_mode: paymentMode,

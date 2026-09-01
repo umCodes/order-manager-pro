@@ -1,9 +1,11 @@
 export type ContactPerson = {
+  contact_person_id: string;
   first_name: string;
   last_name: string;
   email: string;
   phone: string;
   mobile: string;
+  is_primary_contact: boolean;
 };
 
 export type ContactCustomField = {
@@ -98,6 +100,7 @@ export type DraftLineItemSummary = {
 export type InvoiceDetail = {
   invoice_id: string;
   invoice_number: string;
+  customer_id: string;
   customer_name: string;
   status: string;
   date: string;

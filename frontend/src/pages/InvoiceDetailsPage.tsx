@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
 import {
   fetchInvoiceById,
+  fetchCustomerById,
   markInvoiceAsSent,
   recordInvoicePayment,
   splitInvoiceToSelectedItems,
@@ -10,17 +11,21 @@ import {
 import { currency } from "../lib/currency";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
+import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
 import PaymentModal from "../components/PaymentModal";
 import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
 import CopyButton from "../components/CopyButton";
-import type { InvoiceDetail } from "../types";
+import NotifyContactModal from "../components/NotifyContactModal";
+import type { Contact, InvoiceDetail } from "../types";
 
 type Props = {
   invoiceId: string;
   onBack: () => void;
 };
+
+type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
 
 /**
  * Invoice profile: line items, totals, and actions (pay, mark sent, resend, reschedule).
@@ -33,6 +38,8 @@ export default function InvoiceDetailsPage({ invoiceId, onBack }: Props) {
 
 function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
+  const [customer, setCustomer] = useState<Contact | null>(null);
+  const [customerError, setCustomerError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -41,11 +48,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [isMarkingSent, setIsMarkingSent] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSplitConfirmOpen, setIsSplitConfirmOpen] = useState(false);
-  const [isNotifyOnSentOpen, setIsNotifyOnSentOpen] = useState(false);
+  const [markSentNotifyStep, setMarkSentNotifyStep] = useState<MarkSentNotifyStep>("closed");
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isUpdatingDate, setIsUpdatingDate] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   const [scheduleOptions] = useState(() => buildScheduleOptions());
+
+  const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +62,24 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     fetchInvoiceById(invoiceId)
       .then((inv) => {
         if (!cancelled) setInvoice(inv);
+        if (!cancelled) {
+          if (!inv.customer_id) {
+            setCustomer(null);
+            setCustomerError("This invoice has no linked customer, so it can't be paid from here.");
+            return;
+          }
+          setCustomerError(null);
+          fetchCustomerById(inv.customer_id)
+            .then((c) => {
+              if (!cancelled) setCustomer(c);
+            })
+            .catch((e) => {
+              if (!cancelled) {
+                setCustomer(null);
+                setCustomerError(e instanceof Error ? e.message : "Failed to load customer contact info");
+              }
+            });
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load invoice");
@@ -61,7 +88,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [invoiceId]);
+  }, [invoiceId, customerRetryToken]);
 
   function toggleItemSelected(lineItemId: string) {
     setSelectedItemIds((prev) => {
@@ -98,11 +125,17 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     );
   }
 
-  function handleSubmitPayment(amount: number, discount?: number, createNewDraft?: boolean, notify?: boolean) {
+  function handleSubmitPayment(
+    amount: number,
+    discount?: number,
+    createNewDraft?: boolean,
+    notify?: boolean,
+    notifyContactId?: string,
+  ) {
     if (!invoice) return;
     setIsRecordingPayment(true);
     (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve())
-      .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify))
+      .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactId))
       .then(() => {
         setIsPaymentModalOpen(false);
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -119,20 +152,33 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       return;
     }
     setActionError(null);
-    setIsNotifyOnSentOpen(true);
+    setMarkSentNotifyStep("confirmNotify");
   }
 
-  function runMarkAsSent(notify: boolean) {
+  function runMarkAsSent(notify: boolean, notifyContactId?: string) {
     if (!invoice) return;
     setIsMarkingSent(true);
     setActionError(null);
-    markInvoiceAsSent(invoice.invoice_id, notify)
+    markInvoiceAsSent(invoice.invoice_id, notify, notifyContactId)
       .then(() => {
-        setIsNotifyOnSentOpen(false);
+        setMarkSentNotifyStep("closed");
         return fetchInvoiceById(invoiceId).then(setInvoice);
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Failed to mark invoice as sent"))
       .finally(() => setIsMarkingSent(false));
+  }
+
+  function handleYesNotifyOnSent() {
+    if (!customer) {
+      runMarkAsSent(true);
+      return;
+    }
+    const contacts = getContactList(customer);
+    if (contacts.length > 1) {
+      setMarkSentNotifyStep("pickContact");
+      return;
+    }
+    runMarkAsSent(true, getPrimaryContact(customer)?.contact_person_id);
   }
 
   function handleSplitConfirm(createNewDraft: boolean) {
@@ -142,7 +188,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       .then(() => {
         setIsSplitConfirmOpen(false);
         setIsMarkingSent(false);
-        setIsNotifyOnSentOpen(true);
+        setMarkSentNotifyStep("confirmNotify");
       })
       .catch((e) => {
         setActionError(e instanceof Error ? e.message : "Failed to split invoice");
@@ -275,6 +321,20 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
 
           {actionError && <div className="form-error">{actionError}</div>}
 
+          {customerError && invoice.balance > 0 && (
+            <div className="form-error">
+              {customerError}
+              {invoice.customer_id && (
+                <>
+                  {" — "}
+                  <button type="button" className="link-btn" onClick={() => setCustomerRetryToken((n) => n + 1)}>
+                    Retry
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="invoice-details__actions">
             <button
               type="button"
@@ -283,7 +343,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 setPaymentError(null);
                 setIsPaymentModalOpen(true);
               }}
-              disabled={invoice.balance <= 0}
+              disabled={invoice.balance <= 0 || !customer}
             >
               Record Payment
             </button>
@@ -299,7 +359,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
         </>
       )}
 
-      {isPaymentModalOpen && invoice && (
+      {isPaymentModalOpen && invoice && customer && (
         <PaymentModal
           title={invoice.invoice_number}
           outstandingBalance={isPartialSelection ? selectedItemsTotal : invoice.balance}
@@ -307,6 +367,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           submitError={paymentError}
           allowDiscount
           itemsToSplitCount={isPartialSelection ? invoice.line_items.length - selectedItemIds.size : undefined}
+          customer={customer}
           onCancel={() => setIsPaymentModalOpen(false)}
           onSubmit={handleSubmitPayment}
         />
@@ -324,9 +385,9 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
         />
       )}
 
-      {isNotifyOnSentOpen && invoice && (
+      {markSentNotifyStep === "confirmNotify" && invoice && (
         <div className="modal-overlay">
-          <div className="modal-overlay__backdrop" onClick={() => setIsNotifyOnSentOpen(false)} />
+          <div className="modal-overlay__backdrop" onClick={() => setMarkSentNotifyStep("closed")} />
           <div className="modal">
             <div className="modal__title">Notify Customer?</div>
             <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
@@ -346,13 +407,23 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 type="button"
                 className="btn btn--primary"
                 disabled={isMarkingSent}
-                onClick={() => runMarkAsSent(true)}
+                onClick={handleYesNotifyOnSent}
               >
                 {isMarkingSent ? "Saving..." : "Yes, notify"}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {markSentNotifyStep === "pickContact" && customer && (
+        <NotifyContactModal
+          customer={customer}
+          isSaving={isMarkingSent}
+          error={actionError}
+          onCancel={() => setMarkSentNotifyStep("closed")}
+          onConfirm={(contactPersonId) => runMarkAsSent(true, contactPersonId)}
+        />
       )}
 
       {isDateModalOpen && invoice && (

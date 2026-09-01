@@ -147,13 +147,22 @@ export async function fetchCustomerDraftInvoices(customerId: string): Promise<Dr
   return data.drafts;
 }
 
-export async function recordCustomerPayment(customerId: string, amount: number, notify?: boolean) {
+export async function recordCustomerPayment(
+  customerId: string,
+  amount: number,
+  notify?: boolean,
+  notifyContactId?: string,
+) {
   const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ amount, notify: !!notify }),
+    body: JSON.stringify({
+      amount,
+      notify: !!notify,
+      ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -162,6 +171,80 @@ export async function recordCustomerPayment(customerId: string, amount: number, 
   }
 
   return response.json();
+}
+
+export type AddContactPayload = {
+  first_name: string;
+  phone: string;
+  is_primary_contact?: boolean;
+};
+
+export async function addCustomerContact(customerId: string, payload: AddContactPayload): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/contacts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to add contact (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.customer;
+}
+
+export async function updateCustomerContact(
+  customerId: string,
+  contactPersonId: string,
+  payload: { first_name: string; phone: string },
+): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/contacts/${contactPersonId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to update contact (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.customer;
+}
+
+export async function deleteCustomerContact(customerId: string, contactPersonId: string): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/contacts/${contactPersonId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to delete contact (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.customer;
+}
+
+export async function markCustomerContactPrimary(customerId: string, contactPersonId: string): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/contacts/${contactPersonId}/primary`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to set primary contact (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.customer;
 }
 
 export type InvoiceLineItemPayload = {
@@ -295,13 +378,24 @@ export async function splitInvoiceToSelectedItems(
   return data.invoice;
 }
 
-export async function recordInvoicePayment(invoiceId: string, amount: number, discount?: number, notify?: boolean) {
+export async function recordInvoicePayment(
+  invoiceId: string,
+  amount: number,
+  discount?: number,
+  notify?: boolean,
+  notifyContactId?: string,
+) {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ amount, ...(discount ? { discount } : {}), notify: !!notify }),
+    body: JSON.stringify({
+      amount,
+      ...(discount ? { discount } : {}),
+      notify: !!notify,
+      ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -312,13 +406,13 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, di
   return response.json();
 }
 
-export async function markInvoiceAsSent(invoiceId: string, notify?: boolean) {
+export async function markInvoiceAsSent(invoiceId: string, notify?: boolean, notifyContactId?: string) {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ notify: !!notify }),
+    body: JSON.stringify({ notify: !!notify, ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}) }),
   });
 
   if (!response.ok) {

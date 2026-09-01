@@ -182,7 +182,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured recording payment");
     if (!id) throw new Error("id not provided");
 
-    const { amount, payment_mode, discount, notify } = req.body ?? {};
+    const { amount, payment_mode, discount, notify, notify_contact_id } = req.body ?? {};
     if (!amount) throw new Error("Amount not provided");
 
     const invoiceBeforePayment = await ZohoGetInvoiceById(access_token, id);
@@ -194,14 +194,17 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     if (notify) {
       const invoiceAfterPayment = await ZohoGetInvoiceById(access_token, id);
       if (wasDraft) {
-        notified.balance = await notifyInvoiceSent(access_token, invoiceAfterPayment);
+        notified.balance = await notifyInvoiceSent(access_token, invoiceAfterPayment, notify_contact_id);
       }
-      notified.payment = await notifyPaymentRecorded(
-        access_token,
-        invoiceAfterPayment,
-        amount,
-        payment.date ?? new Date().toISOString().slice(0, 10),
-      );
+      else {
+        notified.payment = await notifyPaymentRecorded(
+          access_token,
+          invoiceAfterPayment,
+          amount,
+          payment.date ?? new Date().toISOString().slice(0, 10),
+          notify_contact_id,
+        );
+      }
     }
 
     res.status(201).json({ payment, notified });
@@ -258,12 +261,12 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured marking the invoice as sent");
     if (!id) throw new Error("id not provided");
 
-    const { notify } = req.body ?? {};
+    const { notify, notify_contact_id } = req.body ?? {};
 
     await ZohoMarkInvoiceAsSent(access_token, id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
-    const notified = notify ? await notifyInvoiceSent(access_token, invoice) : false;
+    const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_id) : false;
 
     res.status(200).json({ invoice, notified });
   } catch (error) {

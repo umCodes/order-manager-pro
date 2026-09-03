@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, Check, Pencil } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -7,6 +7,7 @@ import {
   recordInvoicePayment,
   splitInvoiceToSelectedItems,
   updateInvoiceDate,
+  updateInvoiceLineItems,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { buildScheduleOptions } from "../lib/scheduledDate";
@@ -18,7 +19,9 @@ import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
 import CopyButton from "../components/CopyButton";
 import NotifyContactModal from "../components/NotifyContactModal";
-import type { Contact, InvoiceDetail } from "../types";
+import EditLineItemModal from "../components/EditLineItemModal";
+import ConfirmModal from "../components/ConfirmModal";
+import type { Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -53,6 +56,11 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [isUpdatingDate, setIsUpdatingDate] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   const [scheduleOptions] = useState(() => buildScheduleOptions());
+  const [editedLineItems, setEditedLineItems] = useState<InvoiceDetailLineItem[] | null>(null);
+  const [editingItem, setEditingItem] = useState<InvoiceDetailLineItem | null>(null);
+  const [isSavingLineItems, setIsSavingLineItems] = useState(false);
+  const [lineItemsSaveError, setLineItemsSaveError] = useState<string | null>(null);
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
@@ -99,6 +107,66 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     });
   }
 
+  // Unsaved line-item edits live only in local state until explicitly saved
+  // (header checkmark) or auto-saved (mark as sent / record payment / back
+  // guard). null means "no unsaved edits — use invoice.line_items as-is".
+  const displayLineItems = editedLineItems ?? invoice?.line_items ?? [];
+  const isLineItemsDirty = editedLineItems !== null;
+
+  // Taxes/discounts aren't tracked client-side, so the edit's effect on
+  // subtotal is assumed to flow straight through to total/balance — exact
+  // when there's no tax/discount on the invoice.
+  const editedSubtotal = editedLineItems
+    ? editedLineItems.reduce((sum, item) => sum + item.item_total, 0)
+    : invoice?.sub_total ?? 0;
+  const subtotalDelta = editedSubtotal - (invoice?.sub_total ?? 0);
+  const displayTotal = (invoice?.total ?? 0) + subtotalDelta;
+  const displayBalance = (invoice?.balance ?? 0) + subtotalDelta;
+
+  function handleEditItemConfirm(quantity: number, rate: number) {
+    if (!editingItem || !invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    const next = base.map((li) =>
+      li.line_item_id === editingItem.line_item_id ? { ...li, quantity, rate, item_total: quantity * rate } : li,
+    );
+    setEditedLineItems(next);
+    setEditingItem(null);
+  }
+
+  /** Persists unsaved line-item edits, if any. No-op (resolved promise) when clean. */
+  function saveLineItemsIfDirty(): Promise<void> {
+    if (!invoice || !editedLineItems) return Promise.resolve();
+    setLineItemsSaveError(null);
+    return updateInvoiceLineItems(
+      invoice.invoice_id,
+      editedLineItems.map((li) => ({
+        item_id: li.item_id,
+        description: li.description,
+        quantity: li.quantity,
+        rate: li.rate,
+        unit: li.unit,
+      })),
+    ).then((updatedInvoice) => {
+      setInvoice(updatedInvoice);
+      setEditedLineItems(null);
+    });
+  }
+
+  function handleSaveLineItemsClick() {
+    setIsSavingLineItems(true);
+    saveLineItemsIfDirty()
+      .catch((e) => setLineItemsSaveError(e instanceof Error ? e.message : "Failed to save line item changes"))
+      .finally(() => setIsSavingLineItems(false));
+  }
+
+  function handleBackClick() {
+    if (isLineItemsDirty) {
+      setIsLeaveConfirmOpen(true);
+      return;
+    }
+    onBack();
+  }
+
   // A selection only matters if it's a draft (splitting a sent invoice's
   // line items isn't supported) and it's a strict subset of the items —
   // none selected or all selected both mean "act on the whole invoice".
@@ -108,11 +176,9 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     selectedItemIds.size > 0 &&
     selectedItemIds.size < invoice.line_items.length;
 
-  const selectedItemsTotal = invoice
-    ? invoice.line_items
-        .filter((item) => selectedItemIds.has(item.line_item_id))
-        .reduce((sum, item) => sum + item.item_total, 0)
-    : 0;
+  const selectedItemsTotal = displayLineItems
+    .filter((item) => selectedItemIds.has(item.line_item_id))
+    .reduce((sum, item) => sum + item.item_total, 0);
 
   /** Trims this invoice down to the selected items, optionally splitting the rest into a new draft first. */
   function splitToSelection(createNewDraft: boolean): Promise<void> {
@@ -121,6 +187,9 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       (splitInvoice) => {
         setInvoice(splitInvoice);
         setSelectedItemIds(new Set());
+        // A split changes line_items server-side, so any local edits keyed
+        // by line_item_id may reference items no longer present — discard.
+        setEditedLineItems(null);
       },
     );
   }
@@ -134,7 +203,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   ) {
     if (!invoice) return;
     setIsRecordingPayment(true);
-    (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve())
+    saveLineItemsIfDirty()
+      .then(() => (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve()))
       .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactId))
       .then(() => {
         setIsPaymentModalOpen(false);
@@ -159,7 +229,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     if (!invoice) return;
     setIsMarkingSent(true);
     setActionError(null);
-    markInvoiceAsSent(invoice.invoice_id, notify, notifyContactId)
+    saveLineItemsIfDirty()
+      .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactId))
       .then(() => {
         setMarkSentNotifyStep("closed");
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -216,12 +287,24 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   return (
     <div className="invoice-details">
       <div className="invoice-details__header">
-        <button type="button" className="icon-btn" onClick={onBack} aria-label="Back">
+        <button type="button" className="icon-btn" onClick={handleBackClick} aria-label="Back">
           <ArrowLeft size={18} />
         </button>
         {invoice && (
           <div className="page-header__actions">
-            <CopyButton getText={() => formatInvoiceForCopy(invoice.invoice_number, invoice.line_items)} />
+            <CopyButton getText={() => formatInvoiceForCopy(invoice.invoice_number, displayLineItems)} />
+            {isLineItemsDirty && (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Save line item changes"
+                title="Save line item changes"
+                onClick={handleSaveLineItemsClick}
+                disabled={isSavingLineItems}
+              >
+                <Check size={14} />
+              </button>
+            )}
             <ResendButton
               invoiceId={invoice.invoice_id}
               currentDate={invoice.date}
@@ -260,38 +343,56 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             <span className="draft-card__status">{invoice.status}</span>
           </div>
 
+          {lineItemsSaveError && <div className="form-error">{lineItemsSaveError}</div>}
+
           <div className="line-items">
             <div className="line-items__header">Items</div>
-            {invoice.line_items.map((item) => {
+            {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
               return (
                 <div
                   key={item.line_item_id}
                   className={`invoice-item-row${isSelected ? " invoice-item-row--selected" : ""}`}
-                  role="checkbox"
-                  aria-checked={isSelected}
-                  tabIndex={0}
-                  onClick={() => toggleItemSelected(item.line_item_id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      toggleItemSelected(item.line_item_id);
-                    }
-                  }}
                 >
-                  <span className={`checkbox${isSelected ? " checkbox--checked" : ""}`} aria-hidden="true">
-                    {isSelected && <Check size={12} strokeWidth={3} />}
-                  </span>
-                  <div className="invoice-item-row__main">
-                    <div className="line-item__name">{item.name}</div>
-                    {item.description && (
-                      <div className="line-item__meta">{item.description}</div>
-                    )}
-                    <div className="line-item__meta">
-                      {item.quantity} {item.unit} × {currency(item.rate)}
+                  <div
+                    className="invoice-item-row__main"
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    tabIndex={0}
+                    onClick={() => toggleItemSelected(item.line_item_id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleItemSelected(item.line_item_id);
+                      }
+                    }}
+                    style={{ display: "flex", gap: 10, cursor: "pointer" }}
+                  >
+                    <span className={`checkbox${isSelected ? " checkbox--checked" : ""}`} aria-hidden="true">
+                      {isSelected && <Check size={12} strokeWidth={3} />}
+                    </span>
+                    <div>
+                      <div className="line-item__name">{item.name}</div>
+                      {item.description && (
+                        <div className="line-item__meta">{item.description}</div>
+                      )}
+                      <div className="line-item__meta">
+                        {item.quantity} {item.unit} × {currency(item.rate)}
+                      </div>
                     </div>
                   </div>
-                  <span className="line-item__total">{currency(item.item_total)}</span>
+                  <div className="line-item__right">
+                    <span className="line-item__total">{currency(item.item_total)}</span>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Edit ${item.name}`}
+                      title="Edit item"
+                      onClick={() => setEditingItem(item)}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -300,15 +401,15 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">
               <span>Subtotal</span>
-              <span>{currency(invoice.sub_total)}</span>
+              <span>{currency(editedSubtotal)}</span>
             </div>
             <div className="invoice-details__totals-row">
               <span>Total</span>
-              <span>{currency(invoice.total)}</span>
+              <span>{currency(displayTotal)}</span>
             </div>
             <div className="invoice-details__totals-row invoice-details__totals-row--balance">
               <span>Balance due</span>
-              <span>{currency(invoice.balance)}</span>
+              <span>{currency(displayBalance)}</span>
             </div>
           </div>
 
@@ -343,7 +444,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 setPaymentError(null);
                 setIsPaymentModalOpen(true);
               }}
-              disabled={invoice.balance <= 0 || !customer}
+              disabled={displayBalance <= 0 || !customer}
             >
               Record Payment
             </button>
@@ -362,7 +463,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       {isPaymentModalOpen && invoice && customer && (
         <PaymentModal
           title={invoice.invoice_number}
-          outstandingBalance={isPartialSelection ? selectedItemsTotal : invoice.balance}
+          outstandingBalance={isPartialSelection ? selectedItemsTotal : displayBalance}
           isSaving={isRecordingPayment}
           submitError={paymentError}
           allowDiscount
@@ -370,6 +471,28 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           customer={customer}
           onCancel={() => setIsPaymentModalOpen(false)}
           onSubmit={handleSubmitPayment}
+        />
+      )}
+
+      {editingItem && (
+        <EditLineItemModal
+          item={editingItem}
+          currencySymbol={invoice?.currency_symbol ?? ""}
+          onCancel={() => setEditingItem(null)}
+          onConfirm={handleEditItemConfirm}
+        />
+      )}
+
+      {isLeaveConfirmOpen && (
+        <ConfirmModal
+          title="Unsaved changes"
+          message="You have unsaved changes to this invoice. Leave without saving?"
+          confirmLabel="Leave without saving"
+          onConfirm={() => {
+            setIsLeaveConfirmOpen(false);
+            onBack();
+          }}
+          onCancel={() => setIsLeaveConfirmOpen(false)}
         />
       )}
 

@@ -356,6 +356,36 @@ export function fetchInvoiceByIdCached(invoiceId: string): Promise<InvoiceDetail
   return cachedFetch(invoiceCacheKey(invoiceId), () => fetchInvoiceById(invoiceId));
 }
 
+export type UpdateLineItemPayload = {
+  item_id: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  unit: string;
+};
+
+/** Persists edited line items on an existing invoice. Must always include the full current set of line items. */
+export async function updateInvoiceLineItems(
+  invoiceId: string,
+  lineItems: UpdateLineItemPayload[],
+): Promise<InvoiceDetail> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/line-items`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ line_items: lineItems }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to update invoice line items (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.invoice;
+}
+
 export async function splitInvoiceToSelectedItems(
   invoiceId: string,
   selectedLineItemIds: string[],

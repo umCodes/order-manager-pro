@@ -3,6 +3,7 @@ import { ZohoCreateInvoice, ZohoGetDrafts, ZohoGetInvoiceById, ZohoUpdateInvoice
 import { sendInvoiceTelegramMessage, updateInvoiceDateTelegramMessage, replyWithAddedInvoiceItemsTelegramMessage } from "../services/telegram/invoices.js";
 import { notifyPaymentRecorded, notifyInvoiceSent } from "../services/whatsapp/invoices.js";
 import { redisClient } from "../config/redis.js";
+import { todayInBusinessTimezone } from "../utils/businessDate.js";
 
 export async function createInvoice(req: Request, res: Response) {
 
@@ -113,7 +114,7 @@ export async function updateInvoiceDate(req: Request, res: Response) {
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
 
-    await ZohoUpdateInvoice(access_token, id, { date: date || new Date().toISOString().slice(0, 10) });
+    await ZohoUpdateInvoice(access_token, id, { date: date || todayInBusinessTimezone() });
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     if (!date) invoice.date = undefined
@@ -143,6 +144,45 @@ export async function updateInvoiceDate(req: Request, res: Response) {
   }
 }
 
+/**
+ * Persists edited line items on an existing (typically draft) invoice.
+ * Zoho's PUT invoices/{id} replaces the entire line_items array, so callers
+ * must always send the full current set of line items, not just the edited
+ * ones. Deliberately has no Telegram/Redis side effects, unlike createInvoice's
+ * update path — this is a quiet correction, not a re-send.
+ */
+export async function updateInvoiceLineItems(req: Request, res: Response) {
+  const access_token = req.headers["Authorization"];
+  const id = req.params.id as string;
+
+  try {
+    if (!access_token || access_token instanceof Array) throw new Error("A problem occured updating the invoice");
+    if (!id) throw new Error("id not provided");
+
+    const { line_items } = req.body ?? {};
+    if (!Array.isArray(line_items) || line_items.length === 0) {
+      throw new Error("line_items (non-empty array) is required");
+    }
+
+    const zohoLineItems = line_items.map((item: any) => ({
+      item_id: item.item_id,
+      description: item.description,
+      quantity: item.quantity,
+      rate: item.rate,
+      unit: item.unit,
+    }));
+
+    const invoice = await ZohoUpdateInvoice(access_token, id, { line_items: zohoLineItems });
+
+    res.status(200).json({ invoice });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Failed to update invoice line items",
+    });
+  }
+}
+
 export async function resendInvoiceTelegramMessage(req: Request, res: Response) {
   const access_token = req.headers["Authorization"];
   const id  = req.params.id as string;
@@ -152,7 +192,7 @@ export async function resendInvoiceTelegramMessage(req: Request, res: Response) 
     if (!access_token || access_token instanceof Array) throw new Error("A problem occured resending the invoice");
     if (!id) throw new Error("id not provided");
 
-    await ZohoUpdateInvoice(access_token, id, { date: date || new Date().toISOString().slice(0, 10)});
+    await ZohoUpdateInvoice(access_token, id, { date: date || todayInBusinessTimezone() });
 
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
@@ -201,7 +241,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
           access_token,
           invoiceAfterPayment,
           amount,
-          payment.date ?? new Date().toISOString().slice(0, 10),
+          payment.date ?? todayInBusinessTimezone(),
           notify_contact_id,
         );
       }

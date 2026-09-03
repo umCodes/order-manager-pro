@@ -64,6 +64,10 @@ export default function PaymentModal({
   onSubmit,
 }: Props) {
   const [amount, setAmount] = useState(String(outstandingBalance));
+  // True while `amount` reflects the pre-filled balance (adjusted for
+  // discount), rather than something the user typed themselves — governs
+  // whether changing the discount keeps auto-subtracting from the amount.
+  const [isAmountAutoSet, setIsAmountAutoSet] = useState(true);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [discount, setDiscount] = useState("");
   const [createNewDraft, setCreateNewDraft] = useState(true);
@@ -185,6 +189,7 @@ export default function PaymentModal({
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
+              setIsAmountAutoSet(false);
               disarm();
             }}
           />
@@ -210,7 +215,15 @@ export default function PaymentModal({
                 placeholder="Discount amount (optional)"
                 value={discount}
                 onChange={(e) => {
-                  setDiscount(e.target.value);
+                  const nextDiscount = e.target.value;
+                  // Only auto-subtract while the amount still reflects the
+                  // pre-filled balance — once the user has manually typed a
+                  // different (e.g. partial) amount, leave it alone.
+                  if (isAmountAutoSet) {
+                    const nextDiscountValue = Number(nextDiscount) || 0;
+                    setAmount(String(Math.max(outstandingBalance - nextDiscountValue, 0)));
+                  }
+                  setDiscount(nextDiscount);
                   disarm();
                 }}
               />

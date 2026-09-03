@@ -1,6 +1,7 @@
 import { getAppliedInvoices } from "../../utils/getAppliedInvoices.js";
 import { ZohoApi } from "./client.js"
 import { ZohoGetInvoices } from "./invoices.js";
+import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 
 export async function ZohoGetCustomers(headers: string){
 
@@ -265,9 +266,8 @@ export async function recordCustomerPayment(headers: string, customerId: string,
         const response = await ZohoApi("customerpayments", headers, "POST", {
             customer_id: customerId,
             payment_mode: paymentMode,
-            date: new Date().toISOString().slice(0, 10),
+            date: todayInBusinessTimezone(),
             amount,
-            // date: new Date().toISOString().slice(0, 10),
             invoices: getAppliedInvoices(invoices, amount)
         })
         return response.payment;

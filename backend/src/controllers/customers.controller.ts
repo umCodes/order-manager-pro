@@ -17,6 +17,7 @@ import {
 import type { CreateCustomerPayload, CustomerType, PreferredLanguage, ContactPersonPayload } from '../services/zoho/customers.js';
 import { getContactPreferredLanguage, getContactPhone, getContactPhoneById } from '../services/zoho/customers.js';
 import { sendPaymentNotification } from '../services/whatsapp/notifications.js';
+import { todayInBusinessTimezone } from '../utils/businessDate.js';
 
 const CUSTOMER_TYPES: CustomerType[] = ["business", "individual"];
 const PREFERRED_LANGUAGES: PreferredLanguage[] = ["am", "ar", "en"];
@@ -172,7 +173,7 @@ export async function payCustomerBalance(req: Request, res: Response){
                     phone,
                     getContactPreferredLanguage(contact),
                     String(amount),
-                    payment.date ?? new Date().toISOString().slice(0, 10),
+                    payment.date ?? todayInBusinessTimezone(),
                     String(contact.outstanding_receivable_amount),
                 )
                 notified = true

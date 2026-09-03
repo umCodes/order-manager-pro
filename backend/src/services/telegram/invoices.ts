@@ -1,6 +1,7 @@
 import { quantityCalc } from "../../utils/calcs.js"
 import type { ItemWithQuantity } from "../../utils/types.js"
 import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, TelegramDeleteMessage } from "./messages.js"
+import { describeBusinessDate } from "../../utils/businessDate.js"
 
 const EXCLUDE_MARKER = "###";
 
@@ -11,13 +12,8 @@ function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[], suffix
 
     let dayLine = "";
     if (invoice.date) {
-        const invoiceDate = new Date(invoice.date);
-        const today = new Date();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const isToday = invoiceDate.toDateString() === today.toDateString();
-        const isTomorrow = invoiceDate.toDateString() === tomorrow.toDateString();
-        const weekday = isToday ? "ዛሬ" : isTomorrow ? "ነገ" : AMHARIC_WEEKDAYS[invoiceDate.getDay()];
+        const { isToday, isTomorrow, weekday: weekdayIndex } = describeBusinessDate(invoice.date);
+        const weekday = isToday ? "ዛሬ" : isTomorrow ? "ነገ" : AMHARIC_WEEKDAYS[weekdayIndex];
         const dayIcon = isToday ? "🟢" : isTomorrow ? "🟡" : "🗓️";
         dayLine = `\n\n${dayIcon} ለ${weekday}`;
     }

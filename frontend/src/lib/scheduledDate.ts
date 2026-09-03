@@ -12,8 +12,18 @@ export type ScheduledDayInfo = {
   isPast: boolean;
 };
 
+/** Formats a Date as YYYY-MM-DD using its local calendar date (never UTC — see describeScheduledDay). */
 function toISODate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Parses a YYYY-MM-DD string as a local-time midnight Date, matching toISODate's local formatting. */
+function fromISODate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 /** Builds the next 7 days of pickable schedule options, starting today, labeled Today/Tomorrow/weekday. */
@@ -34,7 +44,7 @@ export function buildScheduleOptions(from: Date = new Date()): ScheduleOption[] 
 
 /** Describes an already-chosen scheduled date for display: label, formatted date, and whether it's overdue. */
 export function describeScheduledDay(dateStr: string, from: Date = new Date()): ScheduledDayInfo {
-  const date = new Date(dateStr);
+  const date = fromISODate(dateStr);
   const tomorrow = new Date(from);
   tomorrow.setDate(from.getDate() + 1);
 

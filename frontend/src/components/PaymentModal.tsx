@@ -70,7 +70,7 @@ export default function PaymentModal({
   const [isAmountAutoSet, setIsAmountAutoSet] = useState(true);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [discount, setDiscount] = useState("");
-  const [createNewDraft, setCreateNewDraft] = useState(true);
+  const [createNewDraft, setCreateNewDraft] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [step, setStep] = useState<NotifyStep>("amount");
 

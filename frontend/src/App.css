@@ -134,6 +134,60 @@
   color: var(--color-gray-500);
 }
 
+.draft-hint {
+  margin: -6px 0 16px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+/* Telegram message log */
+
+.telegram-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.telegram-log__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+}
+
+.telegram-log__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.telegram-log__text {
+  font-size: 14px;
+  color: var(--color-gray-900);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.telegram-log__meta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.telegram-log__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.telegram-log__edit {
+  flex: 1;
+}
+
 /* Customer combobox */
 
 .combobox {
@@ -654,6 +708,9 @@
 }
 
 .invoice-details__customer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 17px;
   font-weight: 600;
   color: var(--color-gray-900);

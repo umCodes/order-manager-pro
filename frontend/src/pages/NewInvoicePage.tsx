@@ -130,14 +130,16 @@ export default function NewInvoicePage({
     setSelectedContactId(contact.contact_id);
     setDraftId(null);
     onCartChange(keepManualLines(cart));
-    if (mode === "update") loadDraftsForCustomer(contact.contact_id);
+    // Fetched regardless of mode: "new" mode uses this only to show a
+    // subtle "this customer has a draft" hint, while "update" mode uses it
+    // to populate the draft picker below.
+    loadDraftsForCustomer(contact.contact_id);
   }
 
   function selectMode(nextMode: InvoiceMode) {
     setMode(nextMode);
     setDraftId(null);
     onCartChange(keepManualLines(cart));
-    if (nextMode === "update" && selectedContactId) loadDraftsForCustomer(selectedContactId);
   }
 
   function selectDraft(nextDraftId: string) {
@@ -251,6 +253,12 @@ export default function NewInvoicePage({
         selectedContactId={selectedContactId}
         onSelect={selectContact}
       />
+
+      {mode === "new" && selectedContactId && !isLoadingDrafts && customerDrafts.length > 0 && (
+        <div className="draft-hint">
+          This customer already has {customerDrafts.length === 1 ? "a draft" : `${customerDrafts.length} drafts`}.
+        </div>
+      )}
 
       {mode === "update" && selectedContactId && (
         <DraftPicker

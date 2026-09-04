@@ -218,6 +218,30 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
   }
 }
 
+/** Reassigns a draft invoice to a different customer, e.g. when it was created against the wrong contact. */
+export async function updateInvoiceCustomer(req: Request, res: Response) {
+  const access_token = req.headers["Authorization"];
+  const id = req.params.id as string;
+
+  try {
+    if (!access_token || access_token instanceof Array) throw new Error("A problem occured updating the invoice customer");
+    if (!id) throw new Error("id not provided");
+
+    const { customer_id } = req.body ?? {};
+    if (!customer_id) throw new Error("customer_id not provided");
+
+    await ZohoUpdateInvoice(access_token, id, { customer_id });
+    const invoice = await ZohoGetInvoiceById(access_token, id);
+
+    res.status(200).json({ invoice });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Failed to update invoice customer",
+    });
+  }
+}
+
 export async function resendInvoiceTelegramMessage(req: Request, res: Response) {
   const access_token = req.headers["Authorization"];
   const id  = req.params.id as string;

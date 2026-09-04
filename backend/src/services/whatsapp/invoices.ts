@@ -1,29 +1,7 @@
 import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhone, getContactPhoneById } from "../zoho/customers.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
-import { createInvoicePdfBufferForLanguage } from "../../utils/pdf.js"
-import type { ZohoInvoice, LineItem } from "../../utils/types.js"
-
-const EXCLUDE_MARKER = "###"
-
-function toInvoicePdfData(invoice: ZohoInvoice) {
-    return {
-        invoiceNumber: invoice.invoice_number,
-        customerName: invoice.customer_name,
-        date: invoice.date,
-        lineItems: invoice.line_items
-            .filter((item: LineItem) => !item.description.includes(EXCLUDE_MARKER))
-            .map((item: LineItem) => ({
-                description: item.description,
-                itemName: item.name,
-                quantity: item.quantity,
-                unit: item.unit,
-                rate: item.rate,
-            })),
-        totalPrice: invoice.total,
-        paidAmount: invoice.total - invoice.balance,
-        discountAmount: invoice.sub_total + invoice.tax_total + invoice.shipping_charge + invoice.adjustment - invoice.total,
-    }
-}
+import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../utils/pdf.js"
+import type { ZohoInvoice } from "../../utils/types.js"
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the

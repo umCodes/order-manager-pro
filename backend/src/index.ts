@@ -55,6 +55,7 @@ async function testDraftInvoicePdf() {
     totalPrice: invoice.total,
     paidAmount: invoice.payment_made,
     discountAmount: invoice.sub_total + invoice.tax_total + invoice.shipping_charge + invoice.adjustment - invoice.total,
+    subTotal: invoice.sub_total,
   });
 
   console.log(`test.pdf created from draft ${invoice.invoice_number}`);

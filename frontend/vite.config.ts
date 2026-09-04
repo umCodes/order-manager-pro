@@ -16,7 +16,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['app-icon.png'],
+      includeAssets: ['app-icon.png', 'app-icon-192.png'],
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'Order Manager',
         short_name: 'OrderManager',
@@ -26,10 +30,22 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
+            src: 'app-icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
             src: 'app-icon.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: 'app-icon.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

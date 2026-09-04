@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Pencil } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Printer } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -8,10 +8,12 @@ import {
   splitInvoiceToSelectedItems,
   updateInvoiceDate,
   updateInvoiceLineItems,
+  invoicePdfUrl,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
+import { printPdfUrl } from "../lib/printPdf";
 import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
 import PaymentModal from "../components/PaymentModal";
@@ -293,6 +295,15 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
         {invoice && (
           <div className="page-header__actions">
             <CopyButton getText={() => formatInvoiceForCopy(invoice.invoice_number, displayLineItems)} />
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => printPdfUrl(invoicePdfUrl(invoice.invoice_id))}
+              aria-label="Print invoice"
+              title="Print invoice"
+            >
+              <Printer size={14} />
+            </button>
             {isLineItemsDirty && (
               <button
                 type="button"

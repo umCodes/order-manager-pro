@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import { ZohoCreateInvoice, ZohoGetDrafts, ZohoGetInvoiceById, ZohoUpdateInvoice, ZohoMarkInvoiceAsSent, recordInvoicePayment, splitInvoiceToSelectedItems } from "../services/zoho/invoices.js";
 import { sendInvoiceTelegramMessage, updateInvoiceDateTelegramMessage, replyWithAddedInvoiceItemsTelegramMessage } from "../services/telegram/invoices.js";
 import { notifyPaymentRecorded, notifyInvoiceSent } from "../services/whatsapp/invoices.js";
+import { ZohoGetCustomerById, getContactPreferredLanguage } from "../services/zoho/customers.js";
+import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../utils/pdf.js";
 import { redisClient } from "../config/redis.js";
 import { todayInBusinessTimezone } from "../utils/businessDate.js";
 
@@ -101,6 +103,39 @@ export async function getInvoiceById(req: Request, res: Response) {
     console.error(error);
     res.status(500).json({
       error: error instanceof Error ? error.message : "Internal Server Error",
+    });
+  }
+}
+
+/**
+ * Streams the invoice PDF (same classic template used for the WhatsApp
+ * notification) inline, so the frontend can open it in a new tab and the
+ * browser's native print dialog is right there. Falls back to "am" if the
+ * invoice has no linked customer to resolve a preferred language from.
+ */
+export async function getInvoicePdf(req: Request, res: Response) {
+  const access_token = req.headers["Authorization"];
+  const id = req.params.id as string;
+
+  try {
+    if (!access_token || access_token instanceof Array) throw new Error("A problem occured getting the invoice PDF");
+    if (!id) throw new Error("id not provided");
+
+    const invoice = await ZohoGetInvoiceById(access_token, id);
+
+    const preferredLanguage = invoice.customer_id
+      ? getContactPreferredLanguage(await ZohoGetCustomerById(access_token, String(invoice.customer_id)))
+      : "am";
+
+    const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${invoice.invoice_number}.pdf"`);
+    res.status(200).send(pdf);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate invoice PDF",
     });
   }
 }

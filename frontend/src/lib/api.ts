@@ -329,6 +329,11 @@ export async function replyToTelegramMessage(text: string, invoice_id: string) {
   return response.json();
 }
 
+/** URL for the invoice's PDF, meant to be opened directly (new tab) rather than fetched via JS. */
+export function invoicePdfUrl(invoiceId: string): string {
+  return `${API_BASE_URL}/api/invoices/${invoiceId}/pdf`;
+}
+
 export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDetail> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}`);
 

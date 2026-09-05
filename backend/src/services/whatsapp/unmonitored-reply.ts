@@ -1,6 +1,6 @@
 import { ENV } from "../../constants/env.js"
 import { replyToWhatsAppMessage } from "./messages.js"
-import type { PreferredLanguage } from "../zoho/customers.js"
+import type { PreferredLanguage } from "../zoho/customers/index.js"
 
 const UNMONITORED_NUMBER_MESSAGES: Record<PreferredLanguage, (supportNumber: string) => string> = {
     en: (supportNumber) => `This number is not currently monitored for messages. Please contact us at ${supportNumber}.`,

@@ -11,7 +11,7 @@ export async function createInvoice(req: Request, res: Response) {
 
   const access_token = req.headers["Authorization"]
 
-  const { contact_id, line_items, date, invoice_id } = req.body ?? {};
+  const { contact_id, line_items, date, invoice_id, skip_telegram } = req.body ?? {};
 
   if (!contact_id || !Array.isArray(line_items) || line_items.length === 0) {
     return res.status(400).json({
@@ -39,17 +39,19 @@ export async function createInvoice(req: Request, res: Response) {
 
       const invoice = await ZohoGetInvoiceById(access_token, String(invoice_id));
 
-      const allTelegramLineItems = invoice.line_items.filter(
-        (item: any) => !String(item?.description ?? "").includes("###")
-      );
+      if (!skip_telegram) {
+        const allTelegramLineItems = invoice.line_items.filter(
+          (item: any) => !String(item?.description ?? "").includes("###")
+        );
 
-      const existingMessageId = await redisClient.get(String(invoice.invoice_id));
+        const existingMessageId = await redisClient.get(String(invoice.invoice_id));
 
-      const telegramMessage = existingMessageId
-        ? await replyWithAddedInvoiceItemsTelegramMessage(invoice, allTelegramLineItems, Number(existingMessageId))
-        : await sendInvoiceTelegramMessage(invoice, allTelegramLineItems);
+        const telegramMessage = existingMessageId
+          ? await replyWithAddedInvoiceItemsTelegramMessage(invoice, allTelegramLineItems, Number(existingMessageId))
+          : await sendInvoiceTelegramMessage(invoice, allTelegramLineItems);
 
-      await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+        await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+      }
 
       res.status(200).json({ invoice, merged: true });
       return
@@ -60,11 +62,13 @@ export async function createInvoice(req: Request, res: Response) {
       ...(date ? { date } : {}),
       line_items: zohoLineItems,
     });
-    
+
     if (!date) invoice.date = undefined
 
-    const telegramMessage = await sendInvoiceTelegramMessage(invoice, telegramLineItems);
-    await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+    if (!skip_telegram) {
+      const telegramMessage = await sendInvoiceTelegramMessage(invoice, telegramLineItems);
+      await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+    }
 
     res.status(201).json({ invoice, merged: false });
   } catch (error) {
@@ -214,6 +218,30 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
     console.error(error);
     res.status(400).json({
       error: error instanceof Error ? error.message : "Failed to update invoice line items",
+    });
+  }
+}
+
+/** Reassigns a draft invoice to a different customer, e.g. when it was created against the wrong contact. */
+export async function updateInvoiceCustomer(req: Request, res: Response) {
+  const access_token = req.headers["Authorization"];
+  const id = req.params.id as string;
+
+  try {
+    if (!access_token || access_token instanceof Array) throw new Error("A problem occured updating the invoice customer");
+    if (!id) throw new Error("id not provided");
+
+    const { customer_id } = req.body ?? {};
+    if (!customer_id) throw new Error("customer_id not provided");
+
+    await ZohoUpdateInvoice(access_token, id, { customer_id });
+    const invoice = await ZohoGetInvoiceById(access_token, id);
+
+    res.status(200).json({ invoice });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Failed to update invoice customer",
     });
   }
 }

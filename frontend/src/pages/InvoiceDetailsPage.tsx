@@ -8,6 +8,7 @@ import {
   splitInvoiceToSelectedItems,
   updateInvoiceDate,
   updateInvoiceLineItems,
+  updateInvoiceCustomer,
   invoicePdfUrl,
 } from "../lib/api";
 import { currency } from "../lib/currency";
@@ -23,6 +24,7 @@ import CopyButton from "../components/CopyButton";
 import NotifyContactModal from "../components/NotifyContactModal";
 import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
+import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import type { Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
 
 type Props = {
@@ -63,6 +65,9 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [isSavingLineItems, setIsSavingLineItems] = useState(false);
   const [lineItemsSaveError, setLineItemsSaveError] = useState<string | null>(null);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [isChangeCustomerOpen, setIsChangeCustomerOpen] = useState(false);
+  const [isChangingCustomer, setIsChangingCustomer] = useState(false);
+  const [changeCustomerError, setChangeCustomerError] = useState<string | null>(null);
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
@@ -286,6 +291,21 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     fetchInvoiceById(invoiceId).then(setInvoice).catch(() => {});
   }
 
+  function handleChangeCustomer(contact: Contact) {
+    if (!invoice) return;
+    setIsChangingCustomer(true);
+    setChangeCustomerError(null);
+    updateInvoiceCustomer(invoice.invoice_id, contact.contact_id)
+      .then(() => {
+        setIsChangeCustomerOpen(false);
+        // Re-runs the main load effect, which re-fetches both the invoice
+        // (now under its new customer_id) and that customer's contact info.
+        setCustomerRetryToken((n) => n + 1);
+      })
+      .catch((e) => setChangeCustomerError(e instanceof Error ? e.message : "Failed to change customer"))
+      .finally(() => setIsChangingCustomer(false));
+  }
+
   return (
     <div className="invoice-details">
       <div className="invoice-details__header">
@@ -331,7 +351,21 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
 
       {invoice && (
         <>
-          <div className="invoice-details__customer">{invoice.customer_name}</div>
+          <div className="invoice-details__customer">
+            {invoice.customer_name}
+            {invoice.status === "draft" && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setChangeCustomerError(null);
+                  setIsChangeCustomerOpen(true);
+                }}
+              >
+                Change customer
+              </button>
+            )}
+          </div>
 
           <div className="invoice-details__summary">
             <div className="invoice-details__summary-left">
@@ -557,6 +591,16 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           error={actionError}
           onCancel={() => setMarkSentNotifyStep("closed")}
           onConfirm={(contactPersonId) => runMarkAsSent(true, contactPersonId)}
+        />
+      )}
+
+      {isChangeCustomerOpen && invoice && (
+        <ChangeCustomerModal
+          currentCustomerName={invoice.customer_name}
+          isSaving={isChangingCustomer}
+          error={changeCustomerError}
+          onCancel={() => setIsChangeCustomerOpen(false)}
+          onConfirm={handleChangeCustomer}
         />
       )}
 

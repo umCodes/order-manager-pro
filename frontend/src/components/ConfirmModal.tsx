@@ -3,6 +3,10 @@ type Props = {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Error from the last confirm attempt, if any. */
+  error?: string | null;
+  /** Disables both buttons while a confirm is in flight. */
+  isConfirming?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -13,6 +17,8 @@ export default function ConfirmModal({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  error,
+  isConfirming,
   onConfirm,
   onCancel,
 }: Props) {
@@ -24,11 +30,12 @@ export default function ConfirmModal({
         <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
           {message}
         </div>
+        {error && <div className="form-error">{error}</div>}
         <div className="invoice-details__actions" style={{ marginTop: 14 }}>
-          <button type="button" className="btn btn--secondary" onClick={onCancel}>
+          <button type="button" className="btn btn--secondary" disabled={isConfirming} onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button type="button" className="btn btn--primary" onClick={onConfirm}>
+          <button type="button" className="btn btn--primary" disabled={isConfirming} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

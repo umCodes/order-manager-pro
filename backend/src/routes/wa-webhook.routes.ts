@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { handleWaWebhook } from "../controllers/wa-webhook.controller.js";
+import { handleWaWebhookVerification, handleWaWebhookEvent } from "../controllers/wa-webhook.controller.js";
 
 export const waWebhookRouter = Router();
 
-waWebhookRouter.get('/wa-webhook', handleWaWebhook);
+waWebhookRouter.get('/wa-webhook', handleWaWebhookVerification);
+waWebhookRouter.post('/wa-webhook', handleWaWebhookEvent);

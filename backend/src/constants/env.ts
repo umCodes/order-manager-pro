@@ -29,8 +29,16 @@ export const ENV = {
   WA_BALANCE_NOTIFICATION_TEMPLATE_AR: process.env.WA_BALANCE_NOTIFICATION_TEMPLATE_AR,
   WA_BALANCE_NOTIFICATION_TEMPLATE_EN: process.env.WA_BALANCE_NOTIFICATION_TEMPLATE_EN,
 
+  /** Number given to customers (via the auto-reply) as the one to contact instead, since this webhook's number isn't monitored. */
+  WA_SUPPORT_NUMBER: process.env.WA_SUPPORT_NUMBER,
+
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+  /** Mailbox that gets notified of every inbound WhatsApp message. */
+  WA_NOTIFY_EMAIL_TO: process.env.WA_NOTIFY_EMAIL_TO,
+
   REDIS_URL: process.env.REDIS_URL,
-  
+
 };
 
 // Not part of ENV/validateEnv: NODE_ENV is optional (absence means dev), and

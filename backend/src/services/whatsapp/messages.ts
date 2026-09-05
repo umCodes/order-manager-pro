@@ -9,6 +9,7 @@ export type TemplateComponent = {
     parameters: TemplateParameter[]
 }
 
+/** Sends one of the pre-approved WhatsApp templates, filling in its header/body parameters. */
 export async function sendWhatsAppTemplate(
     to: string,
     templateName: string,
@@ -33,6 +34,7 @@ export async function sendWhatsAppTemplate(
     }
 }
 
+/** Sends a plain text message — only valid inside an open 24h customer service window. */
 export async function replyToWhatsAppMessage(to: string, message: string) {
     try {
         return await WhatsAppApi("messages", "POST", {

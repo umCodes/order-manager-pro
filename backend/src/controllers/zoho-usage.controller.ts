@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { redisClient } from '../config/redis.js';
 import { getZohoRequestCountKey } from '../services/zoho/client.js';
 
+/** How many Zoho API calls today has used so far — shown as a badge on the New Invoice page. */
 export async function getZohoRequestCount(req: Request, res: Response) {
   try {
     const key = getZohoRequestCountKey();

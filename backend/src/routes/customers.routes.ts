@@ -10,7 +10,7 @@ import {
     updateCustomerContact,
     deleteCustomerContact,
     markCustomerContactPrimary,
-} from "../controllers/customers.controller.js";
+} from "../controllers/customers/index.js";
 
 export const customersRouter = Router();
 

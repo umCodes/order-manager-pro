@@ -61,16 +61,19 @@ export const UNIT_TRANSLATIONS: Record<UnitCode, UnitTranslation> = {
   days: { en: "days", ar: "يوم", am: "ቀን" },
 };
 
+/** Translates a Zoho unit code to Arabic, leaving anything unrecognised as-is. */
 export function toArabicUnit(unit: string): string {
   const match = UNIT_TRANSLATIONS[unit.toLowerCase() as UnitCode];
   return match?.ar ?? unit;
 }
 
+/** Translates a Zoho unit code to Amharic, leaving anything unrecognised as-is. */
 export function toAmharicUnit(unit: string): string {
   const match = UNIT_TRANSLATIONS[unit.toLowerCase() as UnitCode];
   return match?.am ?? unit;
 }
 
+/** Normalises a Zoho unit code to its English label, leaving anything unrecognised as-is. */
 export function toEnglishUnit(unit: string): string {
   const match = UNIT_TRANSLATIONS[unit.toLowerCase() as UnitCode];
   return match?.en ?? unit;

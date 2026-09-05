@@ -1,7 +1,7 @@
-import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhone, getContactPhoneById } from "../zoho/customers.js"
+import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhone, getContactPhoneById } from "../zoho/customers/index.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
-import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../utils/pdf.js"
-import type { ZohoInvoice } from "../../utils/types.js"
+import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js"
+import type { ZohoInvoice } from "../zoho/types.js"
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the

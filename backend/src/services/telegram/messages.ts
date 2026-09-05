@@ -2,6 +2,7 @@ import { ENV } from "../../constants/env.js"
 import { TelegramApi } from "./client.js"
 import { recordTelegramMessage, updateTelegramMessageLogText, removeTelegramMessageFromLog } from "./log.js"
 
+/** Posts a message to the channel and records it in the 72h log. */
 export async function TelegramSendMessage(text: string, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("sendMessage", "POST", {
@@ -17,6 +18,7 @@ export async function TelegramSendMessage(text: string, chatId: string | number 
     }
 }
 
+/** Posts a message as a reply to an existing one, and records it in the log. */
 export async function TelegramReplyToMessage(text: string, replyToMessageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("sendMessage", "POST", {
@@ -34,6 +36,7 @@ export async function TelegramReplyToMessage(text: string, replyToMessageId: num
     }
 }
 
+/** Rewrites an already-posted message in place, updating its log entry. */
 export async function TelegramEditMessage(text: string, messageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("editMessageText", "POST", {
@@ -50,6 +53,7 @@ export async function TelegramEditMessage(text: string, messageId: number, chatI
     }
 }
 
+/** Deletes a message from the channel and drops it from the log. */
 export async function TelegramDeleteMessage(messageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("deleteMessage", "POST", {

@@ -1,4 +1,4 @@
-import type { LineItem, ZohoInvoice } from "./types.js";
+import type { LineItem, ZohoInvoice } from "../services/zoho/types.js";
 
 export type ItemBreakdownEntry = {
   invoice_id: string | number;
@@ -16,6 +16,11 @@ export type CombinedItem = {
   breakdown: ItemBreakdownEntry[];
 };
 
+/**
+ * Rolls every invoice's line items up into one list per item name
+ * (case-insensitive), summing quantities and keeping a per-invoice
+ * breakdown of where each part of the total came from. Sorted by name.
+ */
 export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
 
     // Flatten all line items from all invoices into a single array,

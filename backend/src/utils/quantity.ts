@@ -1,5 +1,9 @@
-
-export function quantityCalc(quantity: number, unit: string){ //determines item structure for telegram message
+/**
+ * Renders a line item's quantity as an Amharic weight string for the
+ * Telegram message and Amharic invoices: a box is 10kg, and anything under
+ * 1kg is shown in grams instead.
+ */
+export function quantityCalc(quantity: number, unit: string){
     if(unit === 'box'){
         return quantity * 10 + "ኪሎ"
     }else{

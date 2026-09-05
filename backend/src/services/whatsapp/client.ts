@@ -4,6 +4,7 @@ export type Methods = "GET" | "POST"
 
 const WA_BASE_URL = `https://graph.facebook.com/v25.0/${ENV.WA_PHONE_NUMBER_ID}`
 
+/** Calls the WhatsApp Cloud API, throwing the error body as-is on a non-2xx response. */
 export async function WhatsAppApi(endPoint: string, method: Methods = "GET", body?: any) {
     try {
         const response = await fetch(`${WA_BASE_URL}/${endPoint}`, {
@@ -22,6 +23,7 @@ export async function WhatsAppApi(endPoint: string, method: Methods = "GET", bod
     }
 }
 
+/** Uploads a file (e.g. an invoice PDF) and returns its media id, for attaching to a template message. */
 export async function uploadWhatsAppMedia(file: Buffer, filename: string, mimeType: string) {
     try {
         const form = new FormData()

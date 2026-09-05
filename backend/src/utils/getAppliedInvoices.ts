@@ -1,3 +1,9 @@
+/**
+ * Spreads a payment across a customer's open invoices oldest-first, and
+ * returns the per-invoice amounts to send to Zoho. Drafts, paid and void
+ * invoices are skipped, and any amount left over once they're all covered is
+ * simply not applied.
+ */
 export function getAppliedInvoices(invoices: any[], amount: number) {
   const eligible = invoices
     .filter(

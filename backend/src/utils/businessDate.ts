@@ -9,6 +9,7 @@
  */
 const BUSINESS_UTC_OFFSET_HOURS = 3;
 
+/** Today's date as YYYY-MM-DD in the business's calendar (UTC+3), not the server's. */
 export function todayInBusinessTimezone(): string {
   return formatInBusinessTimezone(new Date());
 }

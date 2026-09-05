@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
-import type { ZohoInvoice, LineItem } from '../utils/types.js';
+import type { ZohoInvoice, LineItem } from '../services/zoho/types.js';
 import { ZohoGetItems } from '../services/zoho/items.js';
-import { ZohoGetInvoiceById, ZohoGetDrafts} from '../services/zoho/invoices.js'
+import { ZohoGetInvoiceById, ZohoGetDrafts} from '../services/zoho/invoices/index.js'
 import { getCache, setTTLCache } from '../utils/cache.js';
-import { combineItems } from '../utils/helper.js';
+import { combineItems } from '../utils/combineItems.js';
 
 
+/** Every draft invoice's line items, rolled up per item — the shopping list for the Items tab. */
 export async function getAllLineItems(req: Request, res: Response) {
    // Ensure token is fresh
    const access_token = req.headers["Authorization"]
@@ -29,6 +30,7 @@ export async function getAllLineItems(req: Request, res: Response) {
 
 
 
+/** The Zoho item catalog, cached in memory for 12 hours. */
 export async function getItems(req: Request, res: Response) {
   
   const access_token = req.headers["Authorization"]

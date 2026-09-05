@@ -1,33 +1,13 @@
-import { quantityCalc } from "../../utils/calcs.js"
-import type { ItemWithQuantity } from "../../utils/types.js"
-import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, TelegramDeleteMessage } from "./messages.js"
-import { describeBusinessDate } from "../../utils/businessDate.js"
+import type { ItemWithQuantity } from "../../zoho/types.js"
+import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, TelegramDeleteMessage } from "../messages.js"
+import {
+    DELETED_CONTINUATION_NOTICE_AMHARIC,
+    EDITED_NOTICE_AMHARIC,
+    UPDATED_VERSION_NOTICE_AMHARIC,
+    invoiceMessageText,
+} from "./messageText.js"
 
-const EXCLUDE_MARKER = "###";
-
-const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
-
-function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[], suffixNotice?: string) {
-    const visibleItems = line_items.filter((item) => !item.description.includes(EXCLUDE_MARKER));
-
-    let dayLine = "";
-    if (invoice.date) {
-        const { isToday, isTomorrow, weekday: weekdayIndex } = describeBusinessDate(invoice.date);
-        const weekday = isToday ? "ዛሬ" : isTomorrow ? "ነገ" : AMHARIC_WEEKDAYS[weekdayIndex];
-        const dayIcon = isToday ? "🟢" : isTomorrow ? "🟡" : "🗓️";
-        dayLine = `\n\n${dayIcon} ለ${weekday}`;
-    }
-
-    const itemLines = visibleItems.map((item) => {
-        const quantity = quantityCalc(item.quantity, item.unit);
-        return `${quantity} ${item.description}`
-    }).join('\n');
-
-    const noticeLine = suffixNotice ? `\n\n${suffixNotice}` : "";
-
-    return `${invoice.invoice_number}:\n\n${itemLines}${dayLine}${noticeLine}`;
-}
-
+/** Posts an invoice to the fulfillment channel as a brand-new message. */
 export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[]) {
     try {
         console.log("Sending a fresh telegram message")
@@ -39,10 +19,12 @@ export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemW
     }
 }
 
-
-const UPDATED_VERSION_NOTICE_AMHARIC = "🔄️ የሚፈለገው ይህ ብቻ ነው።";
-const DELETED_CONTINUATION_NOTICE_AMHARIC = "ይህ መልእክት የተሰረዝ መልእክት ቅጥል ነው";
-
+/**
+ * Posts the invoice's new full contents as a reply to its previous message,
+ * then deletes that previous one — so the channel keeps a single current
+ * version in the thread. Falls back to a fresh message if the reply fails;
+ * a failed cleanup delete is logged but not fatal.
+ */
 export async function replyWithAddedInvoiceItemsTelegramMessage(
     invoice: any,
     all_line_items: ItemWithQuantity[],
@@ -71,8 +53,12 @@ export async function replyWithAddedInvoiceItemsTelegramMessage(
     return message;
 }
 
-const EDITED_NOTICE_AMHARIC = "⚠️ ይህ መልእክት ተቀይሯል";
-
+/**
+ * Edits the invoice's existing channel message in place after a date change
+ * and replies with an "edited" notice so the team sees it moved. Returns
+ * `edited: false` when there was no message to edit (or editing failed) and
+ * a fresh one was sent instead — the caller then stores the new message id.
+ */
 export async function updateInvoiceDateTelegramMessage(
     invoice: any,
     line_items: ItemWithQuantity[],
@@ -92,7 +78,7 @@ export async function updateInvoiceDateTelegramMessage(
     } catch (error) {
 
         console.log("Error Message ID")
-        
+
         console.error('Error editing invoice message, resending as a new message:', error);
         return { message: await sendInvoiceTelegramMessage(invoice, line_items), edited: false };
     }

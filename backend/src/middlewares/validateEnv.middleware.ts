@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ENV } from '../constants/env.js';
 
+/** Rejects /api requests with a 500 when any required environment variable is missing. */
 export function validateEnv(req: Request, res: Response, next: NextFunction): void {
     const missingKeys = Object.entries(ENV)
         .filter(([_, value]) => !value)

@@ -48,12 +48,14 @@ export async function listRecentTelegramMessages(): Promise<TelegramMessageLogEn
     return pruned;
 }
 
+/** Records that a logged message was edited, so the tab shows the new text. */
 export async function updateTelegramMessageLogText(messageId: number, text: string) {
     const existing = await readLog();
     const next = existing.map((e) => (e.message_id === messageId ? { ...e, text, edited: true } : e));
     await writeLog(next);
 }
 
+/** Forgets a message that's been deleted from the channel. */
 export async function removeTelegramMessageFromLog(messageId: number) {
     const existing = await readLog();
     const next = existing.filter((e) => e.message_id !== messageId);

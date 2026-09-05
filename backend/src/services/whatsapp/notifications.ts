@@ -1,7 +1,7 @@
 import { ENV } from "../../constants/env.js"
 import { uploadWhatsAppMedia } from "./client.js"
 import { sendWhatsAppTemplate } from "./messages.js"
-import type { PreferredLanguage } from "../zoho/customers.js"
+import type { PreferredLanguage } from "../zoho/customers/index.js"
 
 const PAYMENT_NOTIFICATION_TEMPLATES: Record<PreferredLanguage, string | undefined> = {
     am: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,

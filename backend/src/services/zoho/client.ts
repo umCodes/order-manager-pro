@@ -5,11 +5,13 @@ export type Methods = "GET" | "POST" | "PUT" | "DELETE"
 
 const ZOHO_REQUEST_COUNT_TTL_SECONDS = 60 * 60 * 48
 
+/** Redis key holding the number of Zoho API calls made on a given day. */
 export function getZohoRequestCountKey(date: Date = new Date()) {
     const day = date.toISOString().slice(0, 10)
     return `zoho:requests:${day}`
 }
 
+/** Bumps today's Zoho call counter. Never throws — usage tracking must not break a request. */
 async function incrementZohoRequestCount() {
     try {
         const key = getZohoRequestCountKey()
@@ -20,6 +22,7 @@ async function incrementZohoRequestCount() {
     }
 }
 
+/** Calls the Zoho Invoice API and returns the parsed JSON body, counting the request against today's total. */
 export async function ZohoApi(endPoint: string, headers: string, method: Methods = "GET", body?: any) {
     try {
         const response = await fetch(`https://www.zohoapis.com/invoice/v3/${endPoint}`, {

@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { ENV } from '../constants/env.js';
 
+/** Meta's webhook verification handshake: echoes the challenge back when the verify token matches. */
 export async function handleWaWebhook(req: Request, res: Response){
     const mode = req.query["hub.mode"]
     const token = req.query["hub.verify_token"]

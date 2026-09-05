@@ -82,6 +82,10 @@ export default function NewInvoicePage({
   const [customerDrafts, setCustomerDrafts] = useState<DraftInvoice[]>([]);
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [isLoadingDraftItems, setIsLoadingDraftItems] = useState(false);
+  // Opt-out, not opt-in: sending to Telegram is the default on every
+  // submission, and resets back to checked after each one so skipping it
+  // is always a deliberate choice, never a leftover setting.
+  const [notifyTelegram, setNotifyTelegram] = useState(true);
   const draftsFetchIdRef = useRef(0);
   const draftItemsFetchIdRef = useRef(0);
 
@@ -196,6 +200,7 @@ export default function NewInvoicePage({
         contact_id: selectedContactId,
         ...(scheduledDate ? { date: scheduledDate } : {}),
         ...(mode === "update" && draftId ? { invoice_id: draftId } : {}),
+        ...(notifyTelegram ? {} : { skip_telegram: true }),
         line_items: lineItems.map((li) => ({
           item_id: li.item_id,
           description: li.excludeFromTelegram ? `${li.description} ###` : li.description,
@@ -209,6 +214,7 @@ export default function NewInvoicePage({
       setScheduledDate(null);
       setDraftId(null);
       setCustomerDrafts([]);
+      setNotifyTelegram(true);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to submit invoice");
     } finally {
@@ -293,10 +299,29 @@ export default function NewInvoicePage({
         )}
       </div>
 
+      <label className="field" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={notifyTelegram}
+          onChange={(e) => setNotifyTelegram(e.target.checked)}
+        />
+        <span className="field-label" style={{ margin: 0 }}>
+          Send to Telegram channel
+        </span>
+      </label>
+
       {submitError && <div className="form-error">{submitError}</div>}
 
       <button type="button" className="btn btn--primary btn--full" disabled={!canSubmit} onClick={submitInvoice}>
-        {isSubmitting ? "Submitting..." : mode === "update" ? "Update Draft" : "Submit Invoice"}
+        {isSubmitting
+          ? "Submitting..."
+          : notifyTelegram
+            ? mode === "update"
+              ? "Update Draft"
+              : "Submit Invoice"
+            : mode === "update"
+              ? "Update Draft (no Telegram)"
+              : "Submit Invoice (no Telegram)"}
       </button>
 
       <AddItemModal

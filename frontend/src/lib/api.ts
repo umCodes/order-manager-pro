@@ -258,7 +258,10 @@ export type InvoiceLineItemPayload = {
 export type CreateInvoicePayload = {
   contact_id: string;
   date?: string;
+  invoice_id?: string;
   line_items: InvoiceLineItemPayload[];
+  /** Skips the Telegram notification for this submission — Zoho invoice only. */
+  skip_telegram?: boolean;
 };
 
 export async function createInvoice(payload: CreateInvoicePayload) {

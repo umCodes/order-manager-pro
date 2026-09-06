@@ -1,3 +1,4 @@
+import { todayInBusinessTimezone } from "../../../utils/businessDate.js"
 import { ZohoGetInvoiceById } from "./queries.js"
 import { ZohoCreateInvoice, ZohoUpdateInvoice } from "./mutations.js"
 
@@ -7,6 +8,9 @@ import { ZohoCreateInvoice, ZohoUpdateInvoice } from "./mutations.js"
  * the same customer first; otherwise they're simply dropped. Returns the
  * trimmed original invoice and the new draft, if one was created. No-op
  * (besides re-fetching) if every line item is selected.
+ *
+ * The new draft is dated today (business timezone), not the original
+ * invoice's date — it's a freshly created invoice, not a continuation.
  */
 export async function splitInvoiceToSelectedItems(
     headers: string,
@@ -36,7 +40,7 @@ export async function splitInvoiceToSelectedItems(
         if (createNewDraft) {
             newDraft = await ZohoCreateInvoice(headers, {
                 customer_id: invoice.customer_id,
-                date: invoice.date,
+                date: todayInBusinessTimezone(),
                 line_items: remainingItems.map(toLineItemPayload),
             })
         }

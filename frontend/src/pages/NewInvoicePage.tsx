@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "lucide-react";
 import AddItemModal from "../components/AddItemModal";
 import CustomerCombobox from "../components/CustomerCombobox";
 import DraftPicker from "../components/DraftPicker";
@@ -262,6 +263,7 @@ export default function NewInvoicePage({
 
       {mode === "new" && selectedContactId && !isLoadingDrafts && customerDrafts.length > 0 && (
         <div className="draft-hint">
+          <Info size={14} className="draft-hint__icon" />
           This customer already has {customerDrafts.length === 1 ? "a draft" : `${customerDrafts.length} drafts`}.
         </div>
       )}

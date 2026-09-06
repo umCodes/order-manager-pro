@@ -135,9 +135,19 @@
 }
 
 .draft-hint {
-  margin: -6px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 16px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-blue-50);
   font-size: 12.5px;
-  color: var(--color-gray-500);
+  color: var(--color-blue-600);
+}
+
+.draft-hint__icon {
+  flex-shrink: 0;
 }
 
 /* Telegram message log */

@@ -329,6 +329,63 @@
   padding: 6px 10px;
 }
 
+/* Unsaved item changes: a prominent, actionable bar rather than a passive
+   note pointing at a hard-to-find icon elsewhere in the header. */
+.save-items-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.save-items-bar__message {
+  font-size: 13px;
+  color: var(--color-gray-700);
+}
+
+.btn--save {
+  background: var(--color-green-700);
+  color: var(--color-white);
+  padding: 8px 14px;
+  font-size: 13.5px;
+  flex-shrink: 0;
+}
+
+.notify-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.notify-banner--success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.notify-banner--failed {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.notify-banner__icon {
+  flex-shrink: 0;
+}
+
+.notify-banner .link-btn {
+  margin-left: auto;
+  color: inherit;
+  flex-shrink: 0;
+}
+
 .day-pill-row {
   display: flex;
   flex-wrap: wrap;

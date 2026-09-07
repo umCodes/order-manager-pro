@@ -8,17 +8,11 @@
   position: relative;
 }
 
-.server-wakeup {
-  max-width: var(--app-max-width);
-  min-height: 100vh;
-  margin: 0 auto;
-  background: var(--color-white);
+.server-wakeup-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  padding: 24px;
   text-align: center;
 }
 
@@ -36,7 +30,6 @@
 .server-wakeup__subtitle {
   font-size: 13.5px;
   color: var(--color-gray-500);
-  max-width: 300px;
 }
 
 .app-frame__body {

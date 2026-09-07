@@ -458,6 +458,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             </div>
           </div>
 
+          {isLineItemsDirty && (
+            <div className="day-warning">
+              Save your item changes (the checkmark above) before recording a payment or marking this invoice as
+              sent.
+            </div>
+          )}
+
           {isPartialSelection && (
             <div className="day-warning">
               {selectedItemIds.size} of {invoice.line_items.length} items selected — this action will apply to only
@@ -489,7 +496,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 setPaymentError(null);
                 setIsPaymentModalOpen(true);
               }}
-              disabled={displayBalance <= 0 || !customer}
+              disabled={displayBalance <= 0 || !customer || isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
             >
               Record Payment
             </button>
@@ -497,7 +505,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               type="button"
               className="btn btn--secondary"
               onClick={handleMarkAsSentClick}
-              disabled={invoice.status !== "draft"}
+              disabled={invoice.status !== "draft" || isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
             >
               {isMarkingSent ? "Marking..." : "Mark as Sent"}
             </button>

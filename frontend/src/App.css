@@ -8,6 +8,30 @@
   position: relative;
 }
 
+.server-wakeup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.server-wakeup__spinner {
+  color: var(--color-blue-600);
+  animation: refresh-spin 0.9s linear infinite;
+}
+
+.server-wakeup__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.server-wakeup__subtitle {
+  font-size: 13.5px;
+  color: var(--color-gray-500);
+}
+
 .app-frame__body {
   flex: 1;
   padding: 20px 16px calc(96px + env(safe-area-inset-bottom));

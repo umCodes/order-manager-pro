@@ -24,6 +24,16 @@ function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+/**
+ * Pings the backend's root-level health check — no /api prefix, no auth, no
+ * Zoho/Redis dependency. Used once on app load to detect a sleeping Render
+ * instance waking up, ahead of any real data fetch.
+ */
+export async function fetchServerHealth(): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/health`);
+  if (!response.ok) throw new Error(`Server health check failed (${response.status})`);
+}
+
 async function fetchItemsUncached(): Promise<CatalogItem[]> {
   const response = await apiFetch(`${API_BASE_URL}/api/items`);
 

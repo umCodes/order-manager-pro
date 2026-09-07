@@ -500,13 +500,20 @@ export async function splitInvoiceToSelectedItems(
   return data.invoice;
 }
 
+/**
+ * Whether the payment/balance WhatsApp notification actually went out.
+ * Exactly one of the two is meaningful per call, matching which branch the
+ * backend took (invoice was a draft vs. already sent) — the other stays false.
+ */
+export type PaymentNotifiedResult = { balance: boolean; payment: boolean };
+
 export async function recordInvoicePayment(
   invoiceId: string,
   amount: number,
   discount?: number,
   notify?: boolean,
   notifyContactId?: string,
-) {
+): Promise<{ payment: { date?: string } & Record<string, unknown>; notified: PaymentNotifiedResult }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/payments`, {
     method: "POST",
     headers: {
@@ -528,7 +535,11 @@ export async function recordInvoicePayment(
   return response.json();
 }
 
-export async function markInvoiceAsSent(invoiceId: string, notify?: boolean, notifyContactId?: string) {
+export async function markInvoiceAsSent(
+  invoiceId: string,
+  notify?: boolean,
+  notifyContactId?: string,
+): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
     headers: {
@@ -540,6 +551,32 @@ export async function markInvoiceAsSent(invoiceId: string, notify?: boolean, not
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to mark invoice as sent (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Re-sends just the WhatsApp notification for an invoice — never repeats
+ * the payment or status change that triggered it the first time, so it's
+ * safe to retry after a failed notification without side effects.
+ */
+export async function resendInvoiceNotification(
+  invoiceId: string,
+  payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
+  notifyContactId?: string,
+): Promise<{ notified: boolean }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/notify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ...payload, ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}) }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to resend notification (${response.status})`);
   }
 
   return response.json();

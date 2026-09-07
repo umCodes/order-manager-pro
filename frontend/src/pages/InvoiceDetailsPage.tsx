@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Pencil, Printer } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Pencil, Printer, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
   markInvoiceAsSent,
   recordInvoicePayment,
+  resendInvoiceNotification,
   splitInvoiceToSelectedItems,
   updateInvoiceDate,
   updateInvoiceLineItems,
@@ -68,6 +69,14 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [isChangeCustomerOpen, setIsChangeCustomerOpen] = useState(false);
   const [isChangingCustomer, setIsChangingCustomer] = useState(false);
   const [changeCustomerError, setChangeCustomerError] = useState<string | null>(null);
+
+  // Result of the most recent WhatsApp notification attempt (from recording
+  // a payment or marking as sent), so the outcome is never just silent.
+  // `retry` re-sends only the notification — never repeats the payment or
+  // status change that triggered it — so it's safe to click again.
+  const [notifyBanner, setNotifyBanner] = useState<"success" | "failed" | null>(null);
+  const [notifyRetry, setNotifyRetry] = useState<(() => void) | null>(null);
+  const [isRetryingNotify, setIsRetryingNotify] = useState(false);
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
@@ -201,6 +210,29 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     );
   }
 
+  /**
+   * Re-sends just the WhatsApp notification for the current invoice — never
+   * the payment or status change that triggered it — so it's always safe to
+   * click again after a failure, with no risk of a duplicate side effect.
+   */
+  function retryNotification(
+    payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
+    notifyContactId?: string,
+  ) {
+    if (!invoice) return;
+    setIsRetryingNotify(true);
+    resendInvoiceNotification(invoice.invoice_id, payload, notifyContactId)
+      .then((result) => {
+        setNotifyBanner(result.notified ? "success" : "failed");
+        if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+      })
+      .catch(() => {
+        setNotifyBanner("failed");
+        setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+      })
+      .finally(() => setIsRetryingNotify(false));
+  }
+
   function handleSubmitPayment(
     amount: number,
     discount?: number,
@@ -209,12 +241,27 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     notifyContactId?: string,
   ) {
     if (!invoice) return;
+    // Captured before the payment runs: the backend decides which WhatsApp
+    // template to send (balance vs. payment-confirmation) based on whether
+    // the invoice was still a draft going into this call.
+    const wasDraft = invoice.status === "draft";
     setIsRecordingPayment(true);
+    setNotifyBanner(null);
     saveLineItemsIfDirty()
       .then(() => (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve()))
       .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactId))
-      .then(() => {
+      .then((result) => {
         setIsPaymentModalOpen(false);
+        if (notify) {
+          const succeeded = wasDraft ? result.notified.balance : result.notified.payment;
+          setNotifyBanner(succeeded ? "success" : "failed");
+          if (!succeeded) {
+            const payload = wasDraft
+              ? ({ kind: "sent" } as const)
+              : ({ kind: "payment", amount, date: result.payment?.date } as const);
+            setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+          }
+        }
         return fetchInvoiceById(invoiceId).then(setInvoice);
       })
       .catch((e) => setPaymentError(e instanceof Error ? e.message : "Failed to record payment"))
@@ -236,10 +283,17 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     if (!invoice) return;
     setIsMarkingSent(true);
     setActionError(null);
+    setNotifyBanner(null);
     saveLineItemsIfDirty()
       .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactId))
-      .then(() => {
+      .then((result) => {
         setMarkSentNotifyStep("closed");
+        if (notify) {
+          setNotifyBanner(result.notified ? "success" : "failed");
+          if (!result.notified) {
+            setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactId));
+          }
+        }
         return fetchInvoiceById(invoiceId).then(setInvoice);
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Failed to mark invoice as sent"))
@@ -324,18 +378,6 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             >
               <Printer size={14} />
             </button>
-            {isLineItemsDirty && (
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Save line item changes"
-                title="Save line item changes"
-                onClick={handleSaveLineItemsClick}
-                disabled={isSavingLineItems}
-              >
-                <Check size={14} />
-              </button>
-            )}
             <ResendButton
               invoiceId={invoice.invoice_id}
               currentDate={invoice.date}
@@ -388,7 +430,27 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             <span className="draft-card__status">{invoice.status}</span>
           </div>
 
-          {lineItemsSaveError && <div className="form-error">{lineItemsSaveError}</div>}
+          {notifyBanner === "success" && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              Customer notified on WhatsApp.
+            </div>
+          )}
+
+          {notifyBanner === "failed" && (
+            <div className="notify-banner notify-banner--failed">
+              <TriangleAlert className="notify-banner__icon" size={14} />
+              <span>The WhatsApp notification couldn't be sent.</span>
+              <button
+                type="button"
+                className="link-btn"
+                disabled={isRetryingNotify}
+                onClick={() => notifyRetry?.()}
+              >
+                {isRetryingNotify ? "Retrying..." : "Try again"}
+              </button>
+            </div>
+          )}
 
           <div className="line-items">
             <div className="line-items__header">Items</div>
@@ -458,6 +520,22 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             </div>
           </div>
 
+          {isLineItemsDirty && (
+            <div className="save-items-bar">
+              <span className="save-items-bar__message">You have unsaved item changes.</span>
+              <button
+                type="button"
+                className="btn btn--save"
+                onClick={handleSaveLineItemsClick}
+                disabled={isSavingLineItems}
+              >
+                {isSavingLineItems ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          )}
+
+          {lineItemsSaveError && <div className="form-error">{lineItemsSaveError}</div>}
+
           {isPartialSelection && (
             <div className="day-warning">
               {selectedItemIds.size} of {invoice.line_items.length} items selected — this action will apply to only
@@ -489,7 +567,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 setPaymentError(null);
                 setIsPaymentModalOpen(true);
               }}
-              disabled={displayBalance <= 0 || !customer}
+              disabled={displayBalance <= 0 || !customer || isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
             >
               Record Payment
             </button>
@@ -497,7 +576,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               type="button"
               className="btn btn--secondary"
               onClick={handleMarkAsSentClick}
-              disabled={invoice.status !== "draft"}
+              disabled={invoice.status !== "draft" || isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
             >
               {isMarkingSent ? "Marking..." : "Mark as Sent"}
             </button>

@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { fetchDraftInvoices, fetchInvoiceByIdCached, fetchRecentInvoices, invoiceCacheKey } from "../lib/api";
 import { invalidateCache } from "../lib/requestCache";
 import { currency } from "../lib/currency";
+import { formatStatus } from "../lib/status";
 import { describeScheduledDay } from "../lib/scheduledDate";
 import { formatInvoicesForCopy } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
@@ -15,12 +16,20 @@ import type { DraftInvoice } from "../types";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
 type ViewMode = "drafts" | "previous";
+type StatusFilter = "all" | "paid" | "overdue" | "partially_paid";
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "invoice_number", label: "Invoice #" },
   { key: "customer", label: "Customer" },
   { key: "total", label: "Total" },
   { key: "scheduled", label: "Scheduled" },
+];
+
+const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "paid", label: "Paid" },
+  { key: "overdue", label: "Overdue" },
+  { key: "partially_paid", label: "Partially Paid" },
 ];
 
 function sortInvoices(list: DraftInvoice[], sortKey: SortKey, direction: 1 | -1): DraftInvoice[] {
@@ -57,6 +66,7 @@ export default function DraftsPage({
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(true);
   const [previousError, setPreviousError] = useState<string | null>(null);
   const [previousQuery, setPreviousQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("scheduled");
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
@@ -95,16 +105,17 @@ export default function DraftsPage({
 
   const filteredPreviousTransactions = useMemo(() => {
     const q = previousQuery.trim().toLowerCase();
-    const filtered = !q
-      ? previousTransactions
-      : previousTransactions.filter(
-          (inv) =>
-            inv.invoice_number.toLowerCase().includes(q) ||
-            (inv.company_name || "").toLowerCase().includes(q) ||
-            (inv.customer_name || "").toLowerCase().includes(q),
-        );
+    const filtered = previousTransactions.filter((inv) => {
+      const matchesQuery =
+        !q ||
+        inv.invoice_number.toLowerCase().includes(q) ||
+        (inv.company_name || "").toLowerCase().includes(q) ||
+        (inv.customer_name || "").toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+      return matchesQuery && matchesStatus;
+    });
     return sortInvoices(filtered, sortKey, direction);
-  }, [previousTransactions, previousQuery, sortKey, direction]);
+  }, [previousTransactions, previousQuery, statusFilter, sortKey, direction]);
 
   function copyText() {
     return Promise.all(sortedDrafts.map((draft) => fetchInvoiceByIdCached(draft.invoice_id))).then(
@@ -164,7 +175,7 @@ export default function DraftsPage({
                     <div className="draft-card__top">
                       <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                       <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                        <span className="draft-card__status">{invoice.status}</span>
+                        <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                         <ResendButton
                           invoiceId={invoice.invoice_id}
                           currentDate={invoice.date}
@@ -205,6 +216,19 @@ export default function DraftsPage({
             />
           </div>
 
+          <div className="sort-row">
+            {STATUS_OPTIONS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`pill${statusFilter === key ? " pill--active" : ""}`}
+                onClick={() => setStatusFilter(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <SortRow
             options={SORT_OPTIONS}
             activeKey={sortKey}
@@ -225,7 +249,7 @@ export default function DraftsPage({
                 <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
                   <div className="draft-card__top">
                     <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
-                    <span className="draft-card__status">{invoice.status}</span>
+                    <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                   </div>
                   <div className="draft-card__company">{invoice.company_name || invoice.customer_name}</div>
                   <div className="draft-card__bottom">

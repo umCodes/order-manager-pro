@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { ZohoGetDrafts, ZohoGetInvoiceById } from "../../services/zoho/invoices/index.js";
+import { ZohoGetDrafts, ZohoGetInvoiceById, ZohoGetRecentNonDraftInvoices } from "../../services/zoho/invoices/index.js";
 import { ZohoGetCustomerById, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
@@ -11,6 +11,21 @@ export async function getDraftInvoices(req: Request, res: Response) {
 
     const drafts = await ZohoGetDrafts(access_token);
     res.status(200).json({ drafts });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Internal Server Error",
+    });
+  }
+}
+
+/** Lists invoices from the last 30 days that aren't drafts — the "Previous Transactions" view. */
+export async function getRecentInvoices(req: Request, res: Response) {
+  try {
+    const access_token = requireAccessToken(req, "A problem occured getting recent invoices");
+
+    const invoices = await ZohoGetRecentNonDraftInvoices(access_token);
+    res.status(200).json({ invoices });
   } catch (error) {
     console.error(error);
     res.status(500).json({

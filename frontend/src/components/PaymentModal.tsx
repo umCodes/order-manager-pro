@@ -36,7 +36,7 @@ type Props = {
     discount?: number,
     createNewDraft?: boolean,
     notify?: boolean,
-    notifyContactId?: string,
+    notifyContactIds?: string[],
   ) => void;
 };
 
@@ -102,14 +102,14 @@ export default function PaymentModal({
     trigger();
   }
 
-  function submitPayment(notify: boolean, notifyContactId?: string) {
+  function submitPayment(notify: boolean, notifyContactIds?: string[]) {
     const parsedDiscount = Number(discount);
     onSubmit(
       Number(amount),
       parsedDiscount > 0 ? parsedDiscount : undefined,
       !!itemsToSplitCount && createNewDraft,
       notify,
-      notifyContactId,
+      notifyContactIds,
     );
   }
 
@@ -119,7 +119,8 @@ export default function PaymentModal({
       setStep("pickContact");
       return;
     }
-    submitPayment(true, getPrimaryContact(customer)?.contact_person_id);
+    const primaryId = getPrimaryContact(customer)?.contact_person_id;
+    submitPayment(true, primaryId ? [primaryId] : undefined);
   }
 
   if (step === "pickContact") {
@@ -129,7 +130,7 @@ export default function PaymentModal({
         isSaving={isSaving}
         error={submitError}
         onCancel={onCancel}
-        onConfirm={(contactPersonId) => submitPayment(true, contactPersonId)}
+        onConfirm={(contactPersonIds) => submitPayment(true, contactPersonIds)}
       />
     );
   }

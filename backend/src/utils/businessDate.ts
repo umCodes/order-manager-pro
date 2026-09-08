@@ -14,6 +14,11 @@ export function todayInBusinessTimezone(): string {
   return formatInBusinessTimezone(new Date());
 }
 
+/** The date `days` days before today, as YYYY-MM-DD in the business's calendar. */
+export function daysAgoInBusinessTimezone(days: number): string {
+  return formatInBusinessTimezone(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
+}
+
 function formatInBusinessTimezone(date: Date): string {
   const shifted = new Date(date.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   const year = shifted.getUTCFullYear();

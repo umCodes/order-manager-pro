@@ -7,48 +7,91 @@ type Props = {
   isSaving: boolean;
   error?: string | null;
   onCancel: () => void;
-  /** Called with the chosen contact's id once a contact is selected/confirmed. */
-  onConfirm: (contactPersonId: string) => void;
+  /** Called with the chosen contact ids once confirmed — one, or several when "Notify multiple" is on. */
+  onConfirm: (contactPersonIds: string[]) => void;
 };
 
 /**
  * Second step of the notify flow, shown only after the user has already
- * confirmed "yes, notify" in the caller's own modal. Lets them pick which
- * contact receives the message when the customer has more than one; with a
- * single contact this step is skipped entirely by the caller (no need to
- * render a picker for a choice that isn't really a choice), so this
- * component can assume `contacts.length > 1` whenever it's shown.
+ * confirmed "yes, notify" in the caller's own modal. Defaults to picking a
+ * single contact (radio-style), but a toggle at the top switches to
+ * multi-select (checkbox-style) so the same message can go to several
+ * contacts at once. With a single contact on file this step is skipped
+ * entirely by the caller, so this component can assume `contacts.length > 1`
+ * whenever it's shown.
  */
 export default function NotifyContactModal({ customer, isSaving, error, onCancel, onConfirm }: Props) {
   const contacts = getContactList(customer);
-  const [selectedId, setSelectedId] = useState(() => {
+  const [isMultiSelect, setIsMultiSelect] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     const primary = contacts.find((c) => c.is_primary_contact) ?? contacts[0];
-    return primary?.contact_person_id ?? "";
+    return new Set(primary ? [primary.contact_person_id] : []);
   });
 
-  const selected = contacts.find((c) => c.contact_person_id === selectedId);
+  function selectSingleMode() {
+    setIsMultiSelect(false);
+    // Collapse down to just one selection: whichever of the currently
+    // selected contacts comes first in the list, or the first contact.
+    setSelectedIds((prev) => {
+      const first = contacts.find((c) => prev.has(c.contact_person_id)) ?? contacts[0];
+      return new Set(first ? [first.contact_person_id] : []);
+    });
+  }
+
+  function selectMultiMode() {
+    setIsMultiSelect(true);
+  }
+
+  function toggleContact(id: string) {
+    setSelectedIds((prev) => {
+      if (!isMultiSelect) return new Set([id]);
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedContacts = contacts.filter((c) => selectedIds.has(c.contact_person_id));
+  const canSend = selectedContacts.length > 0 && selectedContacts.every((c) => c.phone || c.mobile);
 
   return (
     <div className="modal-overlay">
       <div className="modal-overlay__backdrop" onClick={onCancel} />
       <div className="modal">
-        <div className="modal__title">Send to which contact?</div>
+        <div className="mode-toggle" style={{ marginBottom: 14 }}>
+          <button
+            type="button"
+            className={`mode-toggle__option${!isMultiSelect ? " mode-toggle__option--active" : ""}`}
+            onClick={selectSingleMode}
+          >
+            Single contact
+          </button>
+          <button
+            type="button"
+            className={`mode-toggle__option${isMultiSelect ? " mode-toggle__option--active" : ""}`}
+            onClick={selectMultiMode}
+          >
+            Notify multiple
+          </button>
+        </div>
+        <div className="modal__title">Send to which contact{isMultiSelect ? "s" : ""}?</div>
         <div className="contact-picker-list">
           {contacts.map((c) => {
             const phone = c.phone || c.mobile;
-            const isSelected = c.contact_person_id === selectedId;
+            const isSelected = selectedIds.has(c.contact_person_id);
             return (
               <div
                 key={c.contact_person_id}
                 className={`contact-picker-row${isSelected ? " contact-picker-row--selected" : ""}`}
-                role="radio"
+                role={isMultiSelect ? "checkbox" : "radio"}
                 aria-checked={isSelected}
                 tabIndex={0}
-                onClick={() => setSelectedId(c.contact_person_id)}
+                onClick={() => toggleContact(c.contact_person_id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setSelectedId(c.contact_person_id);
+                    toggleContact(c.contact_person_id);
                   }
                 }}
               >
@@ -72,10 +115,8 @@ export default function NotifyContactModal({ customer, isSaving, error, onCancel
           <button
             type="button"
             className="btn btn--primary"
-            disabled={isSaving || !selected || !(selected.phone || selected.mobile)}
-            onClick={() => {
-              if (selected) onConfirm(selected.contact_person_id);
-            }}
+            disabled={isSaving || !canSend}
+            onClick={() => onConfirm(selectedContacts.map((c) => c.contact_person_id))}
           >
             {isSaving ? "Sending..." : "Send"}
           </button>

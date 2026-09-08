@@ -161,7 +161,7 @@ export async function recordCustomerPayment(
   customerId: string,
   amount: number,
   notify?: boolean,
-  notifyContactId?: string,
+  notifyContactIds?: string[],
 ) {
   const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`, {
     method: "POST",
@@ -171,7 +171,7 @@ export async function recordCustomerPayment(
     body: JSON.stringify({
       amount,
       notify: !!notify,
-      ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}),
+      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
     }),
   });
 
@@ -306,6 +306,22 @@ async function fetchDraftInvoicesUncached(): Promise<DraftInvoice[]> {
 export function fetchDraftInvoices(options?: { force?: boolean }): Promise<DraftInvoice[]> {
   if (options?.force) invalidateCache("draftInvoices");
   return cachedFetch("draftInvoices", fetchDraftInvoicesUncached);
+}
+
+/**
+ * Invoices from the last 30 days that aren't drafts — fetched all at once
+ * (no pagination/lazy loading), for the Drafts tab's "Previous Transactions" view.
+ */
+export async function fetchRecentInvoices(): Promise<DraftInvoice[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/recent`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch recent invoices (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.invoices;
 }
 
 export async function sendTelegramMessage(text: string) {
@@ -512,7 +528,7 @@ export async function recordInvoicePayment(
   amount: number,
   discount?: number,
   notify?: boolean,
-  notifyContactId?: string,
+  notifyContactIds?: string[],
 ): Promise<{ payment: { date?: string } & Record<string, unknown>; notified: PaymentNotifiedResult }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/payments`, {
     method: "POST",
@@ -523,7 +539,7 @@ export async function recordInvoicePayment(
       amount,
       ...(discount ? { discount } : {}),
       notify: !!notify,
-      ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}),
+      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
     }),
   });
 
@@ -538,14 +554,14 @@ export async function recordInvoicePayment(
 export async function markInvoiceAsSent(
   invoiceId: string,
   notify?: boolean,
-  notifyContactId?: string,
+  notifyContactIds?: string[],
 ): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ notify: !!notify, ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}) }),
+    body: JSON.stringify({ notify: !!notify, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
   });
 
   if (!response.ok) {
@@ -564,14 +580,14 @@ export async function markInvoiceAsSent(
 export async function resendInvoiceNotification(
   invoiceId: string,
   payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-  notifyContactId?: string,
+  notifyContactIds?: string[],
 ): Promise<{ notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/notify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ ...payload, ...(notifyContactId ? { notify_contact_id: notifyContactId } : {}) }),
+    body: JSON.stringify({ ...payload, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
   });
 
   if (!response.ok) {

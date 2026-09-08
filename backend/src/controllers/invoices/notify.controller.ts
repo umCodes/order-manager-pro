@@ -21,15 +21,15 @@ export async function resendInvoiceNotification(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured resending the notification");
     if (!id) throw new Error("id not provided");
 
-    const { kind, notify_contact_id, amount, date } = req.body ?? {};
+    const { kind, notify_contact_ids, amount, date } = req.body ?? {};
     if (kind !== "sent" && kind !== "payment") throw new Error("kind must be 'sent' or 'payment'");
     if (kind === "payment" && !amount) throw new Error("amount is required to resend a payment notification");
 
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     const notified = kind === "sent"
-      ? await notifyInvoiceSent(access_token, invoice, notify_contact_id)
-      : await notifyPaymentRecorded(access_token, invoice, Number(amount), date || todayInBusinessTimezone(), notify_contact_id);
+      ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids)
+      : await notifyPaymentRecorded(access_token, invoice, Number(amount), date || todayInBusinessTimezone(), notify_contact_ids);
 
     res.status(200).json({ notified });
   } catch (error) {

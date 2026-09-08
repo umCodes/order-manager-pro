@@ -33,6 +33,25 @@ export function getContactPhoneById(contact: any, contactPersonId: string): stri
     return match?.phone || match?.mobile
 }
 
+/**
+ * Resolves phone numbers for a set of caller-selected contact person ids
+ * (each scoped to this customer's own contact list, same as
+ * getContactPhoneById), de-duplicated. With no ids given, falls back to the
+ * single default-resolved phone (getContactPhone) so existing single-contact
+ * callers keep working unchanged.
+ */
+export function getContactPhonesByIds(contact: any, contactPersonIds?: string[]): string[] {
+    if (!contactPersonIds || contactPersonIds.length === 0) {
+        const phone = getContactPhone(contact)
+        return phone ? [phone] : []
+    }
+
+    const phones = contactPersonIds
+        .map((id) => getContactPhoneById(contact, id))
+        .filter((phone): phone is string => !!phone)
+    return Array.from(new Set(phones))
+}
+
 /** Reads the "preferred_language" custom field off a fetched Zoho contact, falling back to Amharic if unset/invalid. */
 export function getContactPreferredLanguage(contact: any): PreferredLanguage {
     const field = contact?.custom_fields?.find(

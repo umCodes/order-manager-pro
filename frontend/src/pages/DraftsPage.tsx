@@ -192,7 +192,7 @@ export default function DraftsPage({
         </>
       ) : (
         <>
-          <p className="page-subtitle">Sent, paid, or overdue invoices from the last 30 days — view only, but you can record a payment</p>
+          <p className="previous-tx-hint">Last 30 days</p>
 
           <div className="search-field">
             <Search className="search-field__icon" size={16} />

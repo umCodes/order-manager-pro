@@ -13,6 +13,7 @@ import {
   invoicePdfUrl,
 } from "../lib/api";
 import { currency } from "../lib/currency";
+import { formatStatus } from "../lib/status";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
 import { printPdfUrl } from "../lib/printPdf";
@@ -434,7 +435,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               </div>
               <div className="invoice-details__summary-row">{currency(invoice.total)}</div>
             </div>
-            <span className="draft-card__status">{invoice.status}</span>
+            <span className="draft-card__status">{formatStatus(invoice.status)}</span>
           </div>
 
           {notifyBanner === "success" && (

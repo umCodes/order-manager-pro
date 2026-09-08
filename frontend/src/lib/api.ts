@@ -313,7 +313,7 @@ export function fetchDraftInvoices(options?: { force?: boolean }): Promise<Draft
  * (no pagination/lazy loading), for the Drafts tab's "Previous Transactions" view.
  */
 export async function fetchRecentInvoices(): Promise<DraftInvoice[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/invoices/recent`);
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/recent`, { cache: "no-store" });
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

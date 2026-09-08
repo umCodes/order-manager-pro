@@ -533,6 +533,12 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               <span>Balance due</span>
               <span>{currency(displayBalance)}</span>
             </div>
+            {!isDraft && (
+              <div className="invoice-details__totals-row">
+                <span>Amount paid</span>
+                <span>{currency(displayTotal - displayBalance)}</span>
+              </div>
+            )}
           </div>
 
           {isLineItemsDirty && (

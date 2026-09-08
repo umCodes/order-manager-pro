@@ -183,12 +183,16 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     onBack();
   }
 
+  // Only drafts are editable — a "Previous Transaction" (opened read-only)
+  // can still have a payment recorded against it, but nothing else.
+  const isDraft = invoice?.status === "draft";
+
   // A selection only matters if it's a draft (splitting a sent invoice's
   // line items isn't supported) and it's a strict subset of the items —
   // none selected or all selected both mean "act on the whole invoice".
   const isPartialSelection =
+    isDraft &&
     !!invoice &&
-    invoice.status === "draft" &&
     selectedItemIds.size > 0 &&
     selectedItemIds.size < invoice.line_items.length;
 
@@ -217,18 +221,18 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
    */
   function retryNotification(
     payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-    notifyContactId?: string,
+    notifyContactIds?: string[],
   ) {
     if (!invoice) return;
     setIsRetryingNotify(true);
-    resendInvoiceNotification(invoice.invoice_id, payload, notifyContactId)
+    resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
       .then((result) => {
         setNotifyBanner(result.notified ? "success" : "failed");
-        if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+        if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .catch(() => {
         setNotifyBanner("failed");
-        setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+        setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .finally(() => setIsRetryingNotify(false));
   }
@@ -238,7 +242,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     discount?: number,
     createNewDraft?: boolean,
     notify?: boolean,
-    notifyContactId?: string,
+    notifyContactIds?: string[],
   ) {
     if (!invoice) return;
     // Captured before the payment runs: the backend decides which WhatsApp
@@ -249,7 +253,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     setNotifyBanner(null);
     saveLineItemsIfDirty()
       .then(() => (isPartialSelection ? splitToSelection(!!createNewDraft) : Promise.resolve()))
-      .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactId))
+      .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactIds))
       .then((result) => {
         setIsPaymentModalOpen(false);
         if (notify) {
@@ -259,7 +263,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             const payload = wasDraft
               ? ({ kind: "sent" } as const)
               : ({ kind: "payment", amount, date: result.payment?.date } as const);
-            setNotifyRetry(() => () => retryNotification(payload, notifyContactId));
+            setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
           }
         }
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -279,19 +283,19 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     setMarkSentNotifyStep("confirmNotify");
   }
 
-  function runMarkAsSent(notify: boolean, notifyContactId?: string) {
+  function runMarkAsSent(notify: boolean, notifyContactIds?: string[]) {
     if (!invoice) return;
     setIsMarkingSent(true);
     setActionError(null);
     setNotifyBanner(null);
     saveLineItemsIfDirty()
-      .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactId))
+      .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactIds))
       .then((result) => {
         setMarkSentNotifyStep("closed");
         if (notify) {
           setNotifyBanner(result.notified ? "success" : "failed");
           if (!result.notified) {
-            setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactId));
+            setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactIds));
           }
         }
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -310,7 +314,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       setMarkSentNotifyStep("pickContact");
       return;
     }
-    runMarkAsSent(true, getPrimaryContact(customer)?.contact_person_id);
+    const primaryId = getPrimaryContact(customer)?.contact_person_id;
+    runMarkAsSent(true, primaryId ? [primaryId] : undefined);
   }
 
   function handleSplitConfirm(createNewDraft: boolean) {
@@ -414,16 +419,18 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               <div className="invoice-details__summary-row">{invoice.invoice_number}</div>
               <div className="invoice-details__summary-row invoice-details__summary-row--date">
                 {invoice.date}
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => {
-                    setDateError(null);
-                    setIsDateModalOpen(true);
-                  }}
-                >
-                  Change date
-                </button>
+                {isDraft && (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setDateError(null);
+                      setIsDateModalOpen(true);
+                    }}
+                  >
+                    Change date
+                  </button>
+                )}
               </div>
               <div className="invoice-details__summary-row">{currency(invoice.total)}</div>
             </div>
@@ -453,7 +460,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           )}
 
           <div className="line-items">
-            <div className="line-items__header">Items</div>
+            <div className="line-items__header">Items ({displayLineItems.length})</div>
             {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
               return (
@@ -463,21 +470,27 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                 >
                   <div
                     className="invoice-item-row__main"
-                    role="checkbox"
-                    aria-checked={isSelected}
-                    tabIndex={0}
-                    onClick={() => toggleItemSelected(item.line_item_id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleItemSelected(item.line_item_id);
-                      }
-                    }}
-                    style={{ display: "flex", gap: 10, cursor: "pointer" }}
+                    role={isDraft ? "checkbox" : undefined}
+                    aria-checked={isDraft ? isSelected : undefined}
+                    tabIndex={isDraft ? 0 : undefined}
+                    onClick={isDraft ? () => toggleItemSelected(item.line_item_id) : undefined}
+                    onKeyDown={
+                      isDraft
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleItemSelected(item.line_item_id);
+                            }
+                          }
+                        : undefined
+                    }
+                    style={{ display: "flex", gap: 10, cursor: isDraft ? "pointer" : "default" }}
                   >
-                    <span className={`checkbox${isSelected ? " checkbox--checked" : ""}`} aria-hidden="true">
-                      {isSelected && <Check size={12} strokeWidth={3} />}
-                    </span>
+                    {isDraft && (
+                      <span className={`checkbox${isSelected ? " checkbox--checked" : ""}`} aria-hidden="true">
+                        {isSelected && <Check size={12} strokeWidth={3} />}
+                      </span>
+                    )}
                     <div>
                       <div className="line-item__name">{item.name}</div>
                       {item.description && (
@@ -490,15 +503,17 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                   </div>
                   <div className="line-item__right">
                     <span className="line-item__total">{currency(item.item_total)}</span>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label={`Edit ${item.name}`}
-                      title="Edit item"
-                      onClick={() => setEditingItem(item)}
-                    >
-                      <Pencil size={14} />
-                    </button>
+                    {isDraft && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`Edit ${item.name}`}
+                        title="Edit item"
+                        onClick={() => setEditingItem(item)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -670,7 +685,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           isSaving={isMarkingSent}
           error={actionError}
           onCancel={() => setMarkSentNotifyStep("closed")}
-          onConfirm={(contactPersonId) => runMarkAsSent(true, contactPersonId)}
+          onConfirm={(contactPersonIds) => runMarkAsSent(true, contactPersonIds)}
         />
       )}
 

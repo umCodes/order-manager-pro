@@ -60,6 +60,14 @@
   margin: -12px 0 20px;
 }
 
+.previous-tx-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-gray-400);
+  margin: 0 0 16px;
+  padding: 2px 0;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;

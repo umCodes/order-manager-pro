@@ -1,4 +1,5 @@
 import { ZohoApi, ZohoApiRaw } from "../client.js"
+import { daysAgoInBusinessTimezone, todayInBusinessTimezone } from "../../../utils/businessDate.js"
 
 /** Every invoice currently in draft status. */
 export async function ZohoGetDrafts(headers: string){
@@ -18,6 +19,26 @@ export async function ZohoGetInvoices(headers: string, params?: Record<string, s
         const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ""
         const response = await ZohoApi(`invoices${query}`, headers)
         return response.invoices;
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
+ * Invoices dated within the last `days` days (inclusive of today), across
+ * every status except draft — used for the "Previous Transactions" view,
+ * which only ever shows finalized transactions, never works-in-progress.
+ * Assumes Zoho's invoices list endpoint accepts `date_start`/`date_end`
+ * filters on the invoice date, matching its documented list-invoices params.
+ */
+export async function ZohoGetRecentNonDraftInvoices(headers: string, days: number = 30){
+
+    try {
+        const invoices = await ZohoGetInvoices(headers, {
+            date_start: daysAgoInBusinessTimezone(days - 1),
+            date_end: todayInBusinessTimezone(),
+        })
+        return invoices.filter((invoice: any) => invoice.status !== "draft")
     } catch (error) {
         throw error;
     }

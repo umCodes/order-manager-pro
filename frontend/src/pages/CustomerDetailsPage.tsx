@@ -75,11 +75,11 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     _discount?: number,
     _createNewDraft?: boolean,
     notify?: boolean,
-    notifyContactId?: string,
+    notifyContactIds?: string[],
   ) {
     if (!customer) return;
     setIsRecordingPayment(true);
-    recordCustomerPayment(customer.contact_id, amount, notify, notifyContactId)
+    recordCustomerPayment(customer.contact_id, amount, notify, notifyContactIds)
       .then(() => {
         setIsPaymentModalOpen(false);
         return fetchCustomerById(customerId).then(setCustomer);

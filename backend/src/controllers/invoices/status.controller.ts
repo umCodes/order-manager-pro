@@ -21,7 +21,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured recording payment");
     if (!id) throw new Error("id not provided");
 
-    const { amount, payment_mode, discount, notify, notify_contact_id } = req.body ?? {};
+    const { amount, payment_mode, discount, notify, notify_contact_ids } = req.body ?? {};
     if (!amount) throw new Error("Amount not provided");
 
     const invoiceBeforePayment = await ZohoGetInvoiceById(access_token, id);
@@ -33,7 +33,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     if (notify) {
       const invoiceAfterPayment = await ZohoGetInvoiceById(access_token, id);
       if (wasDraft) {
-        notified.balance = await notifyInvoiceSent(access_token, invoiceAfterPayment, notify_contact_id);
+        notified.balance = await notifyInvoiceSent(access_token, invoiceAfterPayment, notify_contact_ids);
       }
       else {
         notified.payment = await notifyPaymentRecorded(
@@ -41,7 +41,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
           invoiceAfterPayment,
           amount,
           payment.date ?? todayInBusinessTimezone(),
-          notify_contact_id,
+          notify_contact_ids,
         );
       }
     }
@@ -63,12 +63,12 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured marking the invoice as sent");
     if (!id) throw new Error("id not provided");
 
-    const { notify, notify_contact_id } = req.body ?? {};
+    const { notify, notify_contact_ids } = req.body ?? {};
 
     await ZohoMarkInvoiceAsSent(access_token, id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
-    const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_id) : false;
+    const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
 
     res.status(200).json({ invoice, notified });
   } catch (error) {

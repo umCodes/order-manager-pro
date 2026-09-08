@@ -1,37 +1,41 @@
-import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhone, getContactPhoneById } from "../zoho/customers/index.js"
+import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js"
 import type { ZohoInvoice } from "../zoho/types.js"
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the
- * payment notification. Failures are logged, never thrown — a WhatsApp
- * failure must not roll back or fail the payment that already succeeded.
- * `contactPersonId`, when given, sends to a specific contact chosen by the
- * caller (e.g. picked in the UI when the customer has more than one
- * contact) instead of the customer's default-resolved phone — resolved
- * against this customer's own contact list, never a raw phone from the caller.
+ * payment notification, to one or more contacts. Failures are logged, never
+ * thrown — a WhatsApp failure must not roll back or fail the payment that
+ * already succeeded. `contactPersonIds`, when given, sends to the specific
+ * contacts chosen by the caller (e.g. picked in the UI) instead of the
+ * customer's single default-resolved phone — resolved against this
+ * customer's own contact list, never raw phone numbers from the caller.
+ * Returns true only if every resolved recipient was sent successfully.
  */
 export async function notifyPaymentRecorded(
     accessToken: string,
     invoice: ZohoInvoice,
     paymentAmount: number,
     paymentDate: string,
-    contactPersonId?: string,
+    contactPersonIds?: string[],
 ) {
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
-        const phone = contactPersonId ? getContactPhoneById(contact, contactPersonId) : getContactPhone(contact)
-        if (!phone) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
+        const phones = getContactPhonesByIds(contact, contactPersonIds)
+        if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
-        await sendPaymentNotification(
-            phone,
-            getContactPreferredLanguage(contact),
-            String(paymentAmount),
-            paymentDate,
-            String(invoice.balance),
-        )
-        return true
+        const preferredLanguage = getContactPreferredLanguage(contact)
+        let allSucceeded = true
+        for (const phone of phones) {
+            try {
+                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, String(invoice.balance))
+            } catch (error) {
+                console.error(`Failed to send WhatsApp payment notification to ${phone}:`, error)
+                allSucceeded = false
+            }
+        }
+        return allSucceeded
     } catch (error) {
         console.error("Failed to send WhatsApp payment notification:", error)
         return false
@@ -40,17 +44,18 @@ export async function notifyPaymentRecorded(
 
 /**
  * Resolves the invoice's customer phone/language from Zoho, fetches the
- * invoice PDF, and sends the balance notification. `customer.outstanding_receivable_amount`
- * is read *after* this invoice's own balance is already reflected in it (i.e.
- * after marking sent / recording payment), so "balance before" is derived by
- * subtracting this invoice's current balance back out. Failures are logged,
- * never thrown. `contactPersonId` behaves as in notifyPaymentRecorded above.
+ * invoice PDF once, and sends the balance notification to one or more
+ * contacts. `customer.outstanding_receivable_amount` is read *after* this
+ * invoice's own balance is already reflected in it (i.e. after marking sent
+ * / recording payment), so "balance before" is derived by subtracting this
+ * invoice's current balance back out. Failures are logged, never thrown.
+ * `contactPersonIds` behaves as in notifyPaymentRecorded above.
  */
-export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice, contactPersonId?: string) {
+export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice, contactPersonIds?: string[]) {
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
-        const phone = contactPersonId ? getContactPhoneById(contact, contactPersonId) : getContactPhone(contact)
-        if (!phone) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
+        const phones = getContactPhonesByIds(contact, contactPersonIds)
+        if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
         const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage)
@@ -58,18 +63,26 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         const balanceAfter = contact.outstanding_receivable_amount
         const balanceBefore = balanceAfter - invoice.balance
 
-        await sendBalanceNotification(
-            phone,
-            preferredLanguage,
-            pdf,
-            `${invoice.invoice_number}.pdf`,
-            invoice.invoice_number,
-            String(invoice.total),
-            String(paidAmountFromInvoice),
-            String(balanceBefore),
-            String(balanceAfter),
-        )
-        return true
+        let allSucceeded = true
+        for (const phone of phones) {
+            try {
+                await sendBalanceNotification(
+                    phone,
+                    preferredLanguage,
+                    pdf,
+                    `${invoice.invoice_number}.pdf`,
+                    invoice.invoice_number,
+                    String(invoice.total),
+                    String(paidAmountFromInvoice),
+                    String(balanceBefore),
+                    String(balanceAfter),
+                )
+            } catch (error) {
+                console.error(`Failed to send WhatsApp balance notification to ${phone}:`, error)
+                allSucceeded = false
+            }
+        }
+        return allSucceeded
     } catch (error) {
         console.error("Failed to send WhatsApp balance notification:", error)
         return false

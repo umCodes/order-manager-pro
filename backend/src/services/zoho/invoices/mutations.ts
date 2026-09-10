@@ -16,11 +16,15 @@ export async function ZohoCreateInvoice(headers: string, invoice_details: any){
 /**
  * Updates an invoice. Note that Zoho replaces the entire `line_items` array
  * when one is passed, so callers must send the full desired set, not a delta.
+ * Throws with Zoho's own message if it rejects the payload, rather than
+ * quietly returning nothing — a caller that goes on to check the invoice's
+ * balance needs to know the update actually took effect.
  */
 export async function ZohoUpdateInvoice(headers: string, id: string, invoice_details: any){
 
     try {
         const response = await ZohoApi(`invoices/${id}`, headers, "PUT", invoice_details)
+        if (!response.invoice) throw new Error(response.message)
         return response.invoice;
     } catch (error) {
         console.error(error);

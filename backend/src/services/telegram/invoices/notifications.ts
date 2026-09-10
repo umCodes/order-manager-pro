@@ -1,5 +1,6 @@
 import type { ItemWithQuantity } from "../../zoho/types.js"
 import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, TelegramDeleteMessage } from "../messages.js"
+import { redisClient } from "../../../config/redis.js"
 import {
     DELETED_CONTINUATION_NOTICE_AMHARIC,
     EDITED_NOTICE_AMHARIC,
@@ -81,5 +82,23 @@ export async function updateInvoiceDateTelegramMessage(
 
         console.error('Error editing invoice message, resending as a new message:', error);
         return { message: await sendInvoiceTelegramMessage(invoice, line_items), edited: false };
+    }
+}
+
+/**
+ * Removes an invoice's channel message once it's no longer pending
+ * fulfillment (marked as sent, or paid directly from draft) — a no-op if it
+ * never had one. Best-effort: a failed delete is logged, not thrown, since
+ * the invoice's own state change in Zoho is what actually matters.
+ */
+export async function deleteInvoiceTelegramMessage(invoiceId: string) {
+    try {
+        const messageId = await redisClient.get(invoiceId)
+        if (!messageId) return
+
+        await TelegramDeleteMessage(Number(messageId))
+        await redisClient.del(invoiceId)
+    } catch (error) {
+        console.error('Error deleting invoice message after it left draft:', error);
     }
 }

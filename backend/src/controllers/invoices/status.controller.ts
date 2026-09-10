@@ -5,6 +5,7 @@ import {
   recordInvoicePayment,
 } from "../../services/zoho/invoices/index.js";
 import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsapp/invoices.js";
+import { deleteInvoiceTelegramMessage } from "../../services/telegram/invoices/index.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 
@@ -28,6 +29,10 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     const wasDraft = invoiceBeforePayment.status === "draft";
 
     const payment = await recordInvoicePayment(access_token, id, amount, payment_mode, discount);
+
+    // A draft leaves "pending fulfillment" the moment any payment is recorded
+    // against it, so its channel message no longer applies.
+    if (wasDraft) await deleteInvoiceTelegramMessage(id);
 
     let notified = { balance: false, payment: false };
     if (notify) {
@@ -66,6 +71,7 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     const { notify, notify_contact_ids } = req.body ?? {};
 
     await ZohoMarkInvoiceAsSent(access_token, id);
+    await deleteInvoiceTelegramMessage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;

@@ -13,10 +13,16 @@ export async function recordInvoicePayment(headers: string, invoiceId: string, a
 
     try {
         if (discount) {
-            await ZohoUpdateInvoice(headers, invoiceId, {
+            const discounted = await ZohoUpdateInvoice(headers, invoiceId, {
                 discount,
                 discount_type: "entity_level",
             })
+            // Zoho can return 200 with the invoice unchanged instead of
+            // rejecting the update outright (seen on non-draft invoices) — so
+            // a successful call alone doesn't prove the discount took effect.
+            if (Number(discounted.discount) !== Number(discount)) {
+                throw new Error("Zoho did not apply the discount to this invoice — the payment was not recorded.")
+            }
         }
 
         const invoice = await ZohoGetInvoiceById(headers, invoiceId)

@@ -17,7 +17,7 @@ export function translateUnit(unit: string, language: InvoiceLanguage): string {
 /** The weight column's text: the same box×10 / sub-kg→grams math, with language-appropriate kg/g suffixes. */
 export function weightQtyText(item: InvoiceLineItem, language: InvoiceLanguage): string {
   if (language === "am") return `${quantityCalc(item.quantity, item.unit)}`;
-  const kgSuffix = language === "ar" ? "كجم" : "kg";
+  const kgSuffix = language === "ar" ? "كغ" : "kg";
   const gSuffix = language === "ar" ? "جم" : "g";
   return quantityCalcWithSuffix(item.quantity, item.unit, kgSuffix, gSuffix);
 }

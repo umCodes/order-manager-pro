@@ -37,6 +37,9 @@ export async function sendPaymentNotification(
 ) {
     try {
         const templateName = PAYMENT_NOTIFICATION_TEMPLATES[preferredLanguage]
+        console.log(
+            `[WhatsApp] payment notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}"`,
+        )
         if (!templateName) throw new Error(`No payment notification template configured for language "${preferredLanguage}"`)
 
         return await sendWhatsAppTemplate(
@@ -79,9 +82,13 @@ export async function sendBalanceNotification(
 ) {
     try {
         const templateName = BALANCE_NOTIFICATION_TEMPLATES[preferredLanguage]
+        console.log(
+            `[WhatsApp] balance notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}", pdfFilename="${pdfFilename}", pdfBytes=${pdf.length}`,
+        )
         if (!templateName) throw new Error(`No balance notification template configured for language "${preferredLanguage}"`)
 
         const mediaId = await uploadWhatsAppMedia(pdf, pdfFilename, "application/pdf")
+        console.log(`[WhatsApp] balance notification: uploaded PDF media id="${mediaId}"`)
 
         return await sendWhatsAppTemplate(
             to,

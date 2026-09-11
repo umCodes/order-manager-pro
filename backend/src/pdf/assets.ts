@@ -13,3 +13,15 @@ export const FONT_BOLD = path.join(__dirname, "../assets/fonts/NotoSansEthiopic-
 export const FONT_ARABIC_REGULAR = path.join(__dirname, "../assets/fonts/NotoSansArabic-Regular.ttf");
 export const FONT_ARABIC_BOLD = path.join(__dirname, "../assets/fonts/NotoSansArabic-Bold.ttf");
 export const DEFAULT_LOGO = path.join(__dirname, "../assets/images/logo.png");
+
+/**
+ * Ethiopic/Arabic subsets merged with their Latin+digit glyphs into one font
+ * file each (via fonttools), so the POS-receipt template can draw mixed
+ * Ethiopic/Arabic-and-Latin text (item names with "1L"/"25kg", currency
+ * codes, …) with a single `doc.font(...)`, without the classic template's
+ * per-run script-splitting in textRenderer.ts.
+ */
+export const FONT_ETHIOPIC_MERGED_REGULAR = path.join(__dirname, "../assets/fonts/NotoSansEthiopic-Merged-Regular.ttf");
+export const FONT_ETHIOPIC_MERGED_BOLD = path.join(__dirname, "../assets/fonts/NotoSansEthiopic-Merged-Bold.ttf");
+export const FONT_ARABIC_MERGED_REGULAR = path.join(__dirname, "../assets/fonts/NotoSansArabic-Merged-Regular.ttf");
+export const FONT_ARABIC_MERGED_BOLD = path.join(__dirname, "../assets/fonts/NotoSansArabic-Merged-Bold.ttf");

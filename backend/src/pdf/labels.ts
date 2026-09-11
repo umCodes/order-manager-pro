@@ -17,6 +17,10 @@ export type Labels = {
   paid: string;
   balanceDue: string;
   subTotal: string;
+  /** POS-receipt template's item-table header for its rightmost (line total) column. */
+  colTotal: string;
+  /** POS-receipt template's footer line. */
+  thankYou: string;
 };
 
 /** Arabic invoices deliberately use English labels, per business preference. */
@@ -37,6 +41,8 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "የተከፈለ:",
     balanceDue: "ቀሪ ሂሳብ:",
     subTotal: "ንዑስ ድምር:",
+    colTotal: "ድምር",
+    thankYou: "እናመሰግናለን!",
   },
   ar: {
     title: "Invoice",
@@ -54,6 +60,8 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "Paid:",
     balanceDue: "Balance Due:",
     subTotal: "Subtotal:",
+    colTotal: "Total",
+    thankYou: "Thank you!",
   },
   en: {
     title: "Invoice",
@@ -71,6 +79,8 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "Paid:",
     balanceDue: "Balance Due:",
     subTotal: "Subtotal:",
+    colTotal: "Total",
+    thankYou: "Thank you!",
   },
 };
 

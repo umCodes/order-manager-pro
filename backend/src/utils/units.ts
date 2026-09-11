@@ -39,7 +39,7 @@ export const UNIT_TRANSLATIONS: Record<UnitCode, UnitTranslation> = {
   box: { en: "box", ar: "كرتون", am: "ካርቶን" },
   dz: { en: "dz", ar: "دزينة", am: "ደርዘን" },
   pair: { en: "pair", ar: "زوج", am: "ጥንድ" },
-  kg: { en: "kg", ar: "كجم", am: "ኪ.ግ" },
+  kg: { en: "kg", ar: "كغ", am: "ኪሎ" },
   g: { en: "g", ar: "جم", am: "ግ" },
   mg: { en: "mg", ar: "ملجم", am: "ሚ.ግ" },
   lb: { en: "lb", ar: "رطل", am: "ፓውንድ" },

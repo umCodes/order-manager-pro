@@ -23,15 +23,19 @@ export async function notifyPaymentRecorded(
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
         const phones = getContactPhonesByIds(contact, contactPersonIds)
+        console.log(
+            `[WhatsApp] notifyPaymentRecorded: invoice=${invoice.invoice_number} customer=${invoice.customer_id} phones=${JSON.stringify(phones)}`,
+        )
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
+        console.log(`[WhatsApp] notifyPaymentRecorded: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         let allSucceeded = true
         for (const phone of phones) {
             try {
                 await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, String(invoice.balance))
             } catch (error) {
-                console.error(`Failed to send WhatsApp payment notification to ${phone}:`, error)
+                console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false
             }
         }
@@ -55,10 +59,15 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
         const phones = getContactPhonesByIds(contact, contactPersonIds)
+        console.log(
+            `[WhatsApp] notifyInvoiceSent: invoice=${invoice.invoice_number} customer=${invoice.customer_id} phones=${JSON.stringify(phones)}`,
+        )
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
+        console.log(`[WhatsApp] notifyInvoiceSent: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage)
+        console.log(`[WhatsApp] notifyInvoiceSent: generated PDF, bytes=${pdf.length}`)
         const paidAmountFromInvoice = invoice.total - invoice.balance
         const balanceAfter = contact.outstanding_receivable_amount
         const balanceBefore = balanceAfter - invoice.balance
@@ -78,7 +87,7 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
                     String(balanceAfter),
                 )
             } catch (error) {
-                console.error(`Failed to send WhatsApp balance notification to ${phone}:`, error)
+                console.error(`Failed to send WhatsApp balance notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false
             }
         }

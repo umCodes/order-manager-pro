@@ -2,18 +2,27 @@ import { renderToBuffer, renderToFile } from "./documentFactory.js";
 import { renderInvoiceDocument } from "./templates/classic.js";
 import type { InvoiceLanguage, InvoicePdfData } from "./types.js";
 
-/** Letter-size page with the standard 50pt margin, as the classic template's layout assumes. */
-const CLASSIC_PAGE_OPTIONS = { margin: 50 };
+/**
+ * No fixed page size here — the POS-receipt template sizes each page itself
+ * (it measures content per language before adding it), so the document just
+ * needs to start with no default first page for it to add its own to.
+ */
+const POS_RECEIPT_OPTIONS = { autoFirstPage: false };
+
+/** Amharic renders as two pages — Amharic, then an English repeat; other languages render as a single page. */
+function languagesFor(language: InvoiceLanguage): InvoiceLanguage[] {
+  return language === "am" ? ["am", "en"] : [language];
+}
 
 function createFile(filePath: string, invoice: InvoicePdfData, language: InvoiceLanguage): Promise<void> {
-  return renderToFile(filePath, CLASSIC_PAGE_OPTIONS, (doc) => renderInvoiceDocument(doc, invoice, language));
+  return renderToFile(filePath, POS_RECEIPT_OPTIONS, (doc) => renderInvoiceDocument(doc, invoice, languagesFor(language)));
 }
 
 function createBuffer(invoice: InvoicePdfData, language: InvoiceLanguage): Promise<Buffer> {
-  return renderToBuffer(CLASSIC_PAGE_OPTIONS, (doc) => renderInvoiceDocument(doc, invoice, language));
+  return renderToBuffer(POS_RECEIPT_OPTIONS, (doc) => renderInvoiceDocument(doc, invoice, languagesFor(language)));
 }
 
-/** Amharic invoice: Amharic labels, item.description as the display name, ኪሎ/ግራም weight suffixes. */
+/** Amharic invoice: two pages — Amharic first, then an English repeat — item.description as the Amharic display name, ኪሎ/ግራም weight suffixes. */
 export function createInvoicePdf(filePath: string, invoice: InvoicePdfData): Promise<void> {
   return createFile(filePath, invoice, "am");
 }

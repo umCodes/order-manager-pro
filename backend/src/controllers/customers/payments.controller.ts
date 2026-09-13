@@ -35,9 +35,11 @@ export async function payCustomerBalance(req: Request, res: Response){
                 // Chosen contacts must resolve to phones on this customer's own
                 // contact list — never trust raw phone numbers from the client.
                 const phones = getContactPhonesByIds(contact, notify_contact_ids)
+                console.log(`[WhatsApp] payCustomerBalance: customer=${id} phones=${JSON.stringify(phones)}`)
                 if (phones.length === 0) throw new Error(`No phone number on file for customer ${id}`)
 
                 const preferredLanguage = getContactPreferredLanguage(contact)
+                console.log(`[WhatsApp] payCustomerBalance: resolved preferred_language="${preferredLanguage}" for customer=${id}`)
                 let allSucceeded = true
                 for (const phone of phones) {
                     try {
@@ -49,7 +51,7 @@ export async function payCustomerBalance(req: Request, res: Response){
                             String(contact.outstanding_receivable_amount),
                         )
                     } catch (sendError) {
-                        console.error(`Failed to send WhatsApp payment notification to ${phone}:`, sendError)
+                        console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, sendError)
                         allSucceeded = false
                     }
                 }

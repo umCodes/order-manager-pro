@@ -4,9 +4,16 @@ export type Methods = "GET" | "POST"
 
 const WA_BASE_URL = `https://graph.facebook.com/v25.0/${ENV.WA_PHONE_NUMBER_ID}`
 
-/** Calls the WhatsApp Cloud API, throwing the error body as-is on a non-2xx response. */
+/**
+ * Calls the WhatsApp Cloud API, throwing the error body as-is on a non-2xx
+ * response. Logs the full outgoing request and the full response either
+ * way — Meta's own error object (template name/language mismatches,
+ * unapproved templates, parameter-count mismatches, …) is otherwise only
+ * visible here, at the point of the actual HTTP call.
+ */
 export async function WhatsAppApi(endPoint: string, method: Methods = "GET", body?: any) {
     try {
+        console.log(`[WhatsApp API] -> ${method} ${endPoint}`, body ? JSON.stringify(body) : "(no body)")
         const response = await fetch(`${WA_BASE_URL}/${endPoint}`, {
             method,
             headers: {
@@ -16,6 +23,7 @@ export async function WhatsAppApi(endPoint: string, method: Methods = "GET", bod
             ...(body && { body: JSON.stringify(body) }),
         })
         const data = await response.json()
+        console.log(`[WhatsApp API] <- ${response.status} ${method} ${endPoint}`, JSON.stringify(data))
         if (!response.ok) throw data
         return data
     } catch (error) {

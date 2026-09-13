@@ -11,6 +11,11 @@ export const ENV = {
   ORGANIZATION_ID: process.env.ORGANIZATION_ID,
   REDIRECT_URI: process.env.REDIRECT_URI,
 
+  /** Printed as the invoice header's shop name (Amharic invoices, and page 1 of the bilingual am+en receipt). */
+  BUSINESS_NAME_AM: process.env.BUSINESS_NAME_AM,
+  /** Printed as the invoice header's shop name for English invoices, and Arabic ones (which use English text per existing convention). */
+  BUSINESS_NAME_EN: process.env.BUSINESS_NAME_EN,
+
   TELEGRAM_CHANNEL_LINK: process.env.TELEGRAM_CHANNEL_LINK,
   TELEGRAM_CHATID: process.env.TELEGRAM_CHATID,
   TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN,

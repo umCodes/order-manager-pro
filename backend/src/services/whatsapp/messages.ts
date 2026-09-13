@@ -17,7 +17,11 @@ export async function sendWhatsAppTemplate(
     languageCode: string = "en",
 ) {
     try {
-        return await WhatsAppApi("messages", "POST", {
+        console.log(
+            `[WhatsApp template] sending "${templateName}" (language "${languageCode}") to ${to} — components:`,
+            JSON.stringify(components),
+        )
+        const result = await WhatsAppApi("messages", "POST", {
             messaging_product: "whatsapp",
             recipient_type: "individual",
             to,
@@ -28,8 +32,10 @@ export async function sendWhatsAppTemplate(
                 components,
             },
         })
+        console.log(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} succeeded`)
+        return result
     } catch (error) {
-        console.error(`Error sending WhatsApp template "${templateName}":`, error)
+        console.error(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} FAILED:`, error)
         throw error
     }
 }

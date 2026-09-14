@@ -2,6 +2,7 @@ import { customersRouter } from "./customers.routes.js";
 import { invoicesRouter } from "./invoices.routes.js";
 import { itemsRouter } from "./items.routes.js";
 import { telegramRouter } from "./telegram.routes.js";
+import { whatsappRouter } from "./whatsapp.routes.js";
 import { zohoUsageRouter } from "./zoho-usage.routes.js";
 
 export { waWebhookRouter } from "./wa-webhook.routes.js";
@@ -13,6 +14,7 @@ export { waWebhookRouter } from "./wa-webhook.routes.js";
  */
 export const apiRouters = [
     telegramRouter,
+    whatsappRouter,
     invoicesRouter,
     itemsRouter,
     customersRouter,

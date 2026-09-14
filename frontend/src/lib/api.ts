@@ -413,6 +413,36 @@ export async function deleteTelegramMessage(messageId: number) {
   return response.json();
 }
 
+export type WhatsAppMessageStatus = "sent" | "delivered" | "read" | "failed";
+
+export type WhatsAppLogMessage = {
+  message_id: string;
+  to: string;
+  template_name: string;
+  language: string;
+  status: WhatsAppMessageStatus;
+  created_at: number;
+  updated_at: number;
+  error?: { code?: number; message?: string };
+};
+
+/**
+ * WhatsApp notifications sent through this app in the last 7 days, with
+ * each one's delivery status as last reported by Meta (sent/delivered/read/
+ * failed) — not just whether the initial API call was accepted.
+ */
+export async function fetchWhatsAppMessages(): Promise<WhatsAppLogMessage[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/messages`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch WhatsApp messages (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.messages;
+}
+
 /** URL for the invoice's PDF, meant to be opened directly (new tab) rather than fetched via JS. */
 export function invoicePdfUrl(invoiceId: string): string {
   return `${API_BASE_URL}/api/invoices/${invoiceId}/pdf`;

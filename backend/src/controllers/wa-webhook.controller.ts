@@ -6,6 +6,7 @@ import type { PreferredLanguage } from '../services/zoho/customers/index.js';
 import { downloadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { replyWithUnmonitoredNumberNotice } from '../services/whatsapp/unmonitored-reply.js';
 import { sendWhatsAppMessageNotificationEmail, type InboundWhatsAppMessage } from '../services/email/whatsapp-notification.js';
+import { updateWhatsAppMessageStatus, type WhatsAppMessageStatus } from '../services/whatsapp/log.js';
 
 /** Meta's webhook verification handshake: echoes the challenge back when the verify token matches. */
 export async function handleWaWebhookVerification(req: Request, res: Response){
@@ -113,6 +114,28 @@ async function processInboundMessage(message: any, senderName: string | undefine
     }
 }
 
+/**
+ * Applies one delivery-status update ("sent"/"delivered"/"read"/"failed",
+ * with Meta's own error details when applicable) to the matching logged
+ * message — this is the only place the app ever learns whether a message
+ * it sent actually reached the recipient, since the initial send response
+ * only confirms Meta *accepted* it.
+ */
+async function processStatusUpdate(status: any) {
+    const id = status?.id as string | undefined
+    const newStatus = status?.status as WhatsAppMessageStatus | undefined
+    if (!id || !newStatus) return
+
+    const metaError = status?.errors?.[0]
+    console.log(`[WhatsApp status] ${id} -> ${newStatus}`, metaError ? JSON.stringify(metaError) : "")
+
+    await updateWhatsAppMessageStatus(
+        id,
+        newStatus,
+        metaError ? { code: metaError.code, message: metaError.title ?? metaError.message } : undefined,
+    )
+}
+
 export async function handleWaWebhookEvent(req: Request, res: Response) {
     // Meta requires a fast 200 response; process messages after acknowledging so retries aren't triggered by slow downstream work (Zoho lookup, media download, email send).
     res.sendStatus(200)
@@ -122,7 +145,17 @@ export async function handleWaWebhookEvent(req: Request, res: Response) {
         for (const entry of entries) {
             for (const change of entry?.changes ?? []) {
                 const value = change?.value
-                if (change?.field !== "messages" || !value?.messages?.length) continue
+                if (change?.field !== "messages") continue
+
+                for (const status of value?.statuses ?? []) {
+                    try {
+                        await processStatusUpdate(status)
+                    } catch (error) {
+                        console.error(`Error processing WhatsApp status update ${status?.id}:`, error)
+                    }
+                }
+
+                if (!value?.messages?.length) continue
 
                 const senderName = value.contacts?.[0]?.profile?.name
 

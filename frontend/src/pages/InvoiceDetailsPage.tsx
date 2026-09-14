@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, Printer, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Download, Pencil, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -16,7 +16,7 @@ import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
-import { printPdfUrl } from "../lib/printPdf";
+import { viewOrDownloadPdf } from "../lib/printPdf";
 import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
 import PaymentModal from "../components/PaymentModal";
@@ -80,6 +80,8 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [isRetryingNotify, setIsRetryingNotify] = useState(false);
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
+  const [isPreparingPdf, setIsPreparingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,6 +353,15 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     fetchInvoiceById(invoiceId).then(setInvoice).catch(() => {});
   }
 
+  function handleDownloadPdf() {
+    if (!invoice) return;
+    setIsPreparingPdf(true);
+    setPdfError(null);
+    viewOrDownloadPdf(invoicePdfUrl(invoice.invoice_id), `${invoice.invoice_number}.pdf`)
+      .catch((e) => setPdfError(e instanceof Error ? e.message : "Failed to download invoice"))
+      .finally(() => setIsPreparingPdf(false));
+  }
+
   function handleChangeCustomer(contact: Contact) {
     if (!invoice) return;
     setIsChangingCustomer(true);
@@ -378,11 +389,12 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             <button
               type="button"
               className="icon-btn"
-              onClick={() => printPdfUrl(invoicePdfUrl(invoice.invoice_id))}
-              aria-label="Print invoice"
-              title="Print invoice"
+              onClick={handleDownloadPdf}
+              disabled={isPreparingPdf}
+              aria-label="Download invoice"
+              title="Download invoice"
             >
-              <Printer size={14} />
+              <Download size={14} />
             </button>
             <ResendButton
               invoiceId={invoice.invoice_id}
@@ -394,6 +406,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+      {pdfError && <div className="form-error">{pdfError}</div>}
 
       {!invoice && !error && <div className="items-area__empty">Loading...</div>}
 

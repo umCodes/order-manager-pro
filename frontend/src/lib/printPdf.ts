@@ -1,3 +1,19 @@
+import { shareOrDownloadFile } from "./shareFile";
+
+/**
+ * Fetches a PDF and hands it to the user via shareOrDownloadFile — on an
+ * iOS PWA this pops the native share sheet (Quick Look preview, then "Save
+ * to Files"), and falls back to a plain download link everywhere else.
+ * Used instead of printPdfUrl below where the goal is "let me keep/view
+ * this file", not "print it right now".
+ */
+export async function viewOrDownloadPdf(url: string, filename: string): Promise<void> {
+  const response = await fetch(url, { headers: { "ngrok-skip-browser-warning": "true" } });
+  if (!response.ok) throw new Error(`Failed to load PDF (${response.status})`);
+  const blob = await response.blob();
+  await shareOrDownloadFile(blob, filename, "application/pdf");
+}
+
 /**
  * Loads a PDF into a hidden iframe and triggers the browser's native print
  * dialog once it's loaded, instead of just opening it in a new tab and

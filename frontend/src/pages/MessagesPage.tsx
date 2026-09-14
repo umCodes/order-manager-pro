@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Download, Pencil, Trash2 } from "lucide-react";
 import {
   deleteTelegramMessage,
   editTelegramMessage,
@@ -10,6 +10,7 @@ import {
   sendTelegramMessage,
 } from "../lib/api";
 import ConfirmModal from "../components/ConfirmModal";
+import { shareOrDownloadFile } from "../lib/shareFile";
 import type { TelegramLogMessage, WhatsAppLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
 
@@ -63,6 +64,34 @@ export default function MessagesPage() {
   const [waMessages, setWaMessages] = useState<WhatsAppLogMessage[]>([]);
   const [isLoadingWa, setIsLoadingWa] = useState(true);
   const [waError, setWaError] = useState<string | null>(null);
+  const [isExportingWa, setIsExportingWa] = useState(false);
+  const [waExportError, setWaExportError] = useState<string | null>(null);
+
+  // Newest-first per recipient number, with each number's group ordered by
+  // its own most recent message — this is what makes "under each number,
+  // you'll see the message that was sent to that number each time" work.
+  const waGroups = useMemo(() => {
+    const byNumber = new Map<string, { to: string; customerName?: string; messages: WhatsAppLogMessage[] }>();
+    for (const message of waMessages) {
+      const group = byNumber.get(message.to);
+      if (group) {
+        group.messages.push(message);
+        if (message.customer_name && !group.customerName) group.customerName = message.customer_name;
+      } else {
+        byNumber.set(message.to, {
+          to: message.to,
+          ...(message.customer_name && { customerName: message.customer_name }),
+          messages: [message],
+        });
+      }
+    }
+    const groups = Array.from(byNumber.values());
+    for (const group of groups) {
+      group.messages.sort((a, b) => b.updated_at - a.updated_at);
+    }
+    groups.sort((a, b) => b.messages[0]!.updated_at - a.messages[0]!.updated_at);
+    return groups;
+  }, [waMessages]);
 
   useEffect(() => {
     fetchDraftInvoices().then(setDrafts).catch(() => setDrafts([]));
@@ -77,6 +106,38 @@ export default function MessagesPage() {
       .then(setWaMessages)
       .catch((e) => setWaError(e instanceof Error ? e.message : "Failed to load WhatsApp messages"))
       .finally(() => setIsLoadingWa(false));
+  }
+
+  function csvCell(value: string): string {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+
+  async function handleDownloadWaLog() {
+    setIsExportingWa(true);
+    setWaExportError(null);
+    try {
+      const header = ["Customer", "Phone", "Template", "Language", "Status", "Sent At", "Last Updated", "Error"];
+      const rows = waMessages.map((m) =>
+        [
+          m.customer_name ?? "",
+          m.to,
+          m.template_name,
+          m.language,
+          WHATSAPP_STATUS_LABEL[m.status],
+          new Date(m.created_at).toLocaleString(),
+          new Date(m.updated_at).toLocaleString(),
+          m.error?.message ?? "",
+        ]
+          .map(csvCell)
+          .join(","),
+      );
+      const csv = [header.map(csvCell).join(","), ...rows].join("\r\n");
+      await shareOrDownloadFile(new Blob([csv], { type: "text/csv" }), "whatsapp-messages.csv", "text/csv");
+    } catch (e) {
+      setWaExportError(e instanceof Error ? e.message : "Failed to download WhatsApp log");
+    } finally {
+      setIsExportingWa(false);
+    }
   }
 
   function loadMessages() {
@@ -305,31 +366,56 @@ export default function MessagesPage() {
 
       {viewMode === "whatsapp" && (
         <>
-          <p className="page-subtitle">Notifications sent through this app in the last 7 days</p>
+          <div className="page-header">
+            <p className="page-subtitle" style={{ margin: 0 }}>
+              Notifications sent through this app in the last 7 days
+            </p>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={handleDownloadWaLog}
+              disabled={isExportingWa || waMessages.length === 0}
+              aria-label="Download WhatsApp log"
+              title="Download WhatsApp log"
+            >
+              <Download size={14} />
+            </button>
+          </div>
 
           {waError && <div className="form-error">{waError}</div>}
+          {waExportError && <div className="form-error">{waExportError}</div>}
 
           {isLoadingWa ? (
             <div className="items-area__empty">Loading…</div>
-          ) : waMessages.length === 0 ? (
+          ) : waGroups.length === 0 ? (
             <div className="items-area__empty">No WhatsApp notifications in the last 7 days</div>
           ) : (
-            <div className="telegram-log">
-              {waMessages.map((message) => (
-                <div key={message.message_id} className="telegram-log__row">
-                  <div className="telegram-log__main">
-                    <div className="telegram-log__text">
-                      {message.template_name} <span className="badge">{message.language}</span> → {message.to}
-                    </div>
-                    <div className="telegram-log__meta">
-                      {new Date(message.updated_at).toLocaleString()}
-                      <span className={WHATSAPP_STATUS_BADGE_CLASS[message.status]}>
-                        {WHATSAPP_STATUS_LABEL[message.status]}
-                      </span>
-                      {message.status === "failed" && message.error?.message && (
-                        <span title={message.error.message}>— {message.error.message}</span>
-                      )}
-                    </div>
+            <div className="wa-log">
+              {waGroups.map((group) => (
+                <div key={group.to} className="wa-log-group">
+                  <div className="wa-log-group__header">
+                    {group.customerName && <span className="wa-log-group__name">{group.customerName}</span>}
+                    <span className="wa-log-group__number">{group.to}</span>
+                  </div>
+                  <div className="telegram-log">
+                    {group.messages.map((message) => (
+                      <div key={message.message_id} className="telegram-log__row">
+                        <div className="telegram-log__main">
+                          <div className="telegram-log__text">
+                            {message.template_name} <span className="badge">{message.language}</span>
+                          </div>
+                          <div className="telegram-log__meta">
+                            {new Date(message.updated_at).toLocaleString()}
+                            <span className={WHATSAPP_STATUS_BADGE_CLASS[message.status]}>
+                              {WHATSAPP_STATUS_LABEL[message.status]}
+                            </span>
+                            {message.status === "failed" && message.error?.message && (
+                              <span title={message.error.message}>— {message.error.message}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

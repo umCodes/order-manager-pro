@@ -10,6 +10,8 @@ export type WhatsAppMessageLogEntry = {
     /** Meta's message id ("wamid...."), or a locally-generated one when the send itself was rejected before Meta returned an id. */
     message_id: string;
     to: string;
+    /** The resolved Zoho contact name at send time, if one was known (not looked up after the fact). */
+    customer_name?: string;
     template_name: string;
     language: string;
     status: WhatsAppMessageStatus;

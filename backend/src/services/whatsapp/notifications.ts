@@ -34,6 +34,7 @@ export async function sendPaymentNotification(
     paymentAmount: string,
     date: string,
     remainingBalance: string,
+    customerName?: string,
 ) {
     try {
         const templateName = PAYMENT_NOTIFICATION_TEMPLATES[preferredLanguage]
@@ -56,6 +57,7 @@ export async function sendPaymentNotification(
                 },
             ],
             WA_LANGUAGE_CODES[preferredLanguage],
+            customerName,
         )
     } catch (error) {
         console.error("Error sending payment notification:", error)
@@ -79,6 +81,7 @@ export async function sendBalanceNotification(
     paidAmountFromInvoice: string,
     balanceBeforeInvoice: string,
     balanceAfterInvoice: string,
+    customerName?: string,
 ) {
     try {
         const templateName = BALANCE_NOTIFICATION_TEMPLATES[preferredLanguage]
@@ -112,6 +115,7 @@ export async function sendBalanceNotification(
                 },
             ],
             WA_LANGUAGE_CODES[preferredLanguage],
+            customerName,
         )
     } catch (error) {
         console.error("Error sending balance notification:", error)

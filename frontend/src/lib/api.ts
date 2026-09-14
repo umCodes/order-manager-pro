@@ -418,6 +418,7 @@ export type WhatsAppMessageStatus = "sent" | "delivered" | "read" | "failed";
 export type WhatsAppLogMessage = {
   message_id: string;
   to: string;
+  customer_name?: string;
   template_name: string;
   language: string;
   status: WhatsAppMessageStatus;

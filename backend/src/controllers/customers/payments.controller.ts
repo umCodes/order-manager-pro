@@ -39,6 +39,7 @@ export async function payCustomerBalance(req: Request, res: Response){
                 if (phones.length === 0) throw new Error(`No phone number on file for customer ${id}`)
 
                 const preferredLanguage = getContactPreferredLanguage(contact)
+                const customerName = contact.contact_name || contact.company_name
                 console.log(`[WhatsApp] payCustomerBalance: resolved preferred_language="${preferredLanguage}" for customer=${id}`)
                 let allSucceeded = true
                 for (const phone of phones) {
@@ -49,6 +50,7 @@ export async function payCustomerBalance(req: Request, res: Response){
                             String(amount),
                             payment.date ?? todayInBusinessTimezone(),
                             String(contact.outstanding_receivable_amount),
+                            customerName,
                         )
                     } catch (sendError) {
                         console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, sendError)

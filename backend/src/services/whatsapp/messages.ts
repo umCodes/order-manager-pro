@@ -36,6 +36,7 @@ export async function sendWhatsAppTemplate(
     templateName: string,
     components: TemplateComponent[],
     languageCode: string = "en",
+    customerName?: string,
 ) {
     const normalizedTo = normalizePhoneForSending(to)
     warnIfLikelyMissingCountryCode(to, normalizedTo)
@@ -62,6 +63,7 @@ export async function sendWhatsAppTemplate(
         await recordWhatsAppMessage({
             message_id: messageId ?? `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             to: normalizedTo,
+            ...(customerName && { customer_name: customerName }),
             template_name: templateName,
             language: languageCode,
             status: "sent",
@@ -75,6 +77,7 @@ export async function sendWhatsAppTemplate(
         await recordWhatsAppMessage({
             message_id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             to: normalizedTo,
+            ...(customerName && { customer_name: customerName }),
             template_name: templateName,
             language: languageCode,
             status: "failed",

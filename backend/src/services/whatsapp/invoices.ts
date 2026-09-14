@@ -29,11 +29,12 @@ export async function notifyPaymentRecorded(
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
+        const customerName = contact.contact_name || contact.company_name
         console.log(`[WhatsApp] notifyPaymentRecorded: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         let allSucceeded = true
         for (const phone of phones) {
             try {
-                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, String(invoice.balance))
+                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, String(invoice.balance), customerName)
             } catch (error) {
                 console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false
@@ -65,6 +66,7 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
+        const customerName = contact.contact_name || contact.company_name
         console.log(`[WhatsApp] notifyInvoiceSent: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage)
         console.log(`[WhatsApp] notifyInvoiceSent: generated PDF, bytes=${pdf.length}`)
@@ -85,6 +87,7 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
                     String(paidAmountFromInvoice),
                     String(balanceBefore),
                     String(balanceAfter),
+                    customerName,
                 )
             } catch (error) {
                 console.error(`Failed to send WhatsApp balance notification to ${phone} (language="${preferredLanguage}"):`, error)

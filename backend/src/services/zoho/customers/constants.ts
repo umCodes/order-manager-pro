@@ -6,22 +6,14 @@ export const PREFERRED_LANGUAGE_CUSTOMFIELD_ID = "4645478000004349196";
 /** The languages a contact's preferred_language field is allowed to hold. */
 export const PREFERRED_LANGUAGES: PreferredLanguage[] = ["am", "ar", "en"];
 
-/**
- * customfield_id for the "business_type" custom field on contacts, in this
- * Zoho org. TODO: fill in the real id (Zoho Invoice settings → Contacts →
- * Custom Fields) — until set, business_type is not written to Zoho.
- */
-export const BUSINESS_TYPE_CUSTOMFIELD_ID = "";
+/** customfield_id for the "business_type" custom field on contacts, in this Zoho org. */
+export const BUSINESS_TYPE_CUSTOMFIELD_ID = "4645478000004558014";
 
 /** The business types a contact's business_type field is allowed to hold. */
 export const BUSINESS_TYPES: BusinessType[] = ["Grocery", "Restaurant", "Roastry"];
 
-/**
- * customfield_id for the "address" custom field on contacts (stores
- * "city, district, street") in this Zoho org. TODO: fill in the real id —
- * until set, the composed address is not written to Zoho.
- */
-export const ADDRESS_CUSTOMFIELD_ID = "";
+/** customfield_id for the "address" custom field on contacts (stores "city, district, street"), in this Zoho org. */
+export const ADDRESS_CUSTOMFIELD_ID = "4645478000004558007";
 
 /** Joins a customer's address parts into the single string stored in the "address" custom field. */
 export function formatAddress({ city, district, street }: CustomerAddress): string {

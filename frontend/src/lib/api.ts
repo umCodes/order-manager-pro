@@ -136,13 +136,8 @@ export function getContactPreferredLanguage(contact: Contact): PreferredLanguage
   return getRawContactPreferredLanguage(contact) ?? "am";
 }
 
-/**
- * customfield_id for the "business_type" custom field on contacts, in this
- * Zoho org. TODO: fill in the real id (Zoho Invoice settings → Contacts →
- * Custom Fields) — until then, business type isn't read from or written to
- * Zoho.
- */
-export const BUSINESS_TYPE_CUSTOMFIELD_ID = "";
+/** customfield_id for the "business_type" custom field on contacts, in this Zoho org. */
+export const BUSINESS_TYPE_CUSTOMFIELD_ID = "4645478000004558014";
 
 /** Reads a contact's raw business_type custom field, or undefined if unset. */
 export function getRawContactBusinessType(contact: Contact): BusinessType | undefined {
@@ -154,12 +149,8 @@ export function getRawContactBusinessType(contact: Contact): BusinessType | unde
   return value === "Grocery" || value === "Restaurant" || value === "Roastry" ? value : undefined;
 }
 
-/**
- * customfield_id for the "address" custom field on contacts (stores
- * "city, district, street") in this Zoho org. TODO: fill in the real id —
- * until then, the field isn't read from or written to Zoho.
- */
-export const ADDRESS_CUSTOMFIELD_ID = "";
+/** customfield_id for the "address" custom field on contacts (stores "city, district, street"), in this Zoho org. */
+export const ADDRESS_CUSTOMFIELD_ID = "4645478000004558007";
 
 /** Reads a contact's raw "address" custom field value ("city, district, street"), or undefined if unset. */
 export function getRawContactAddress(contact: Contact): string | undefined {

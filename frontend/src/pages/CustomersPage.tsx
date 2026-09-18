@@ -30,6 +30,15 @@ import type { Contact } from "../types";
 type StatusFilter = "all" | "outstanding" | "settled";
 type ActiveFilter = "all" | "active" | "inactive";
 type BusinessTypeFilter = BusinessType | "all";
+type DataFilter = "all" | "noPhone" | "noAddress" | "noBusinessType" | "noLanguage";
+
+const DATA_FILTER_OPTIONS: { key: DataFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "noPhone", label: "No phone" },
+  { key: "noAddress", label: "No address" },
+  { key: "noBusinessType", label: "Unlabeled (no business type)" },
+  { key: "noLanguage", label: "No language" },
+];
 
 type SortKey = "balance" | "name" | "district" | "city" | "businessType";
 
@@ -76,6 +85,7 @@ export default function CustomersPage({
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>("all");
   const [cityFilter, setCityFilter] = useState("all");
   const [districtFilter, setDistrictFilter] = useState("all");
+  const [dataFilter, setDataFilter] = useState<DataFilter>("all");
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("balance", "desc");
 
@@ -118,7 +128,23 @@ export default function CustomersPage({
       const address = parseAddress(getRawContactAddress(c));
       const matchesCity = cityFilter === "all" || address.city === cityFilter;
       const matchesDistrict = districtFilter === "all" || address.district === districtFilter;
-      return matchesQuery && matchesStatus && matchesActive && matchesBusinessType && matchesCity && matchesDistrict;
+      const matchesData =
+        dataFilter === "all" ||
+        (dataFilter === "noPhone" && !getPrimaryContactPhone(c)) ||
+        (dataFilter === "noAddress" && !getRawContactAddress(c)) ||
+        (dataFilter === "noBusinessType" && !getRawContactBusinessType(c)) ||
+        // Only flag a missing language if the list response actually carries
+        // custom_fields at all — otherwise every customer would falsely match.
+        (dataFilter === "noLanguage" && !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined);
+      return (
+        matchesQuery &&
+        matchesStatus &&
+        matchesActive &&
+        matchesBusinessType &&
+        matchesCity &&
+        matchesDistrict &&
+        matchesData
+      );
     });
 
     const direction = sortDirection === "asc" ? 1 : -1;
@@ -140,7 +166,18 @@ export default function CustomersPage({
     });
 
     return list;
-  }, [customers, query, statusFilter, activeFilter, businessTypeFilter, cityFilter, districtFilter, sortKey, sortDirection]);
+  }, [
+    customers,
+    query,
+    statusFilter,
+    activeFilter,
+    businessTypeFilter,
+    cityFilter,
+    districtFilter,
+    dataFilter,
+    sortKey,
+    sortDirection,
+  ]);
 
   return (
     <div>
@@ -270,6 +307,27 @@ export default function CustomersPage({
               {districtOptions.map((district) => (
                 <option key={district} value={district}>
                   {district}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="data-filter">
+            Missing info
+          </label>
+          <div className="select-wrap">
+            <select
+              id="data-filter"
+              className="select"
+              value={dataFilter}
+              onChange={(e) => setDataFilter(e.target.value as DataFilter)}
+            >
+              {DATA_FILTER_OPTIONS.map(({ key, label }) => (
+                <option key={key} value={key}>
+                  {label}
                 </option>
               ))}
             </select>

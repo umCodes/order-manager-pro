@@ -45,6 +45,31 @@
   overflow-y: auto;
 }
 
+/*
+ * Detail views (customer/invoice) render as an overlay on top of the tab
+ * content instead of replacing it, so the tab underneath — its scroll
+ * position, search text, filters — is still there when the overlay closes.
+ * Positioned/centered the same way as .tab-bar, since both need to sit above
+ * a possibly-wider viewport while staying pinned to the app's own column.
+ */
+.detail-overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-max-width);
+  z-index: 40;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-overlay--invoice {
+  z-index: 41;
+}
+
 /* Page */
 
 .page-title {

@@ -4,7 +4,7 @@ import { fetchDraftInvoices, fetchInvoiceByIdCached, fetchRecentInvoices, invoic
 import { invalidateCache } from "../lib/requestCache";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
-import { describeScheduledDay } from "../lib/scheduledDate";
+import { describeScheduledDay, scheduleDayISODate } from "../lib/scheduledDate";
 import { formatInvoicesForCopy } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import ResendButton from "../components/ResendButton";
@@ -103,6 +103,11 @@ export default function DraftsPage({
 
   const sortedDrafts = useMemo(() => sortInvoices(drafts, sortKey, direction), [drafts, sortKey, direction]);
 
+  const estimatedAmountToday = useMemo(() => {
+    const todayStr = scheduleDayISODate();
+    return drafts.filter((d) => d.date === todayStr).reduce((sum, d) => sum + d.total, 0);
+  }, [drafts]);
+
   const filteredPreviousTransactions = useMemo(() => {
     const q = previousQuery.trim().toLowerCase();
     const filtered = previousTransactions.filter((inv) => {
@@ -158,6 +163,11 @@ export default function DraftsPage({
 
       {viewMode === "drafts" ? (
         <>
+          <div className="estimate-card">
+            <span className="estimate-card__label">Estimated amount for the day</span>
+            <span className="estimate-card__amount">{currency(estimatedAmountToday)}</span>
+          </div>
+
           <p className="page-subtitle">
             {drafts.length} draft{drafts.length === 1 ? "" : "s"}
           </p>

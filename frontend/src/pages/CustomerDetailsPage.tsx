@@ -277,6 +277,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         <PaymentModal
           title={customer.contact_name || customer.company_name}
           outstandingBalance={customer.outstanding_receivable_amount}
+          prefillAmount={false}
           isSaving={isRecordingPayment}
           submitError={paymentError}
           customer={customer}

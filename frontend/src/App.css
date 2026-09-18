@@ -60,6 +60,28 @@
   margin: -12px 0 20px;
 }
 
+.estimate-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-blue-50);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  margin: 0 0 16px;
+}
+
+.estimate-card__label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-gray-700);
+}
+
+.estimate-card__amount {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-blue-600);
+}
+
 .previous-tx-hint {
   font-size: 12px;
   font-weight: 400;

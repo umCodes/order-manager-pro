@@ -12,6 +12,14 @@ type Props = {
   /** Heading/subject shown above the balance, e.g. customer or invoice name. */
   title: string;
   outstandingBalance: number;
+  /**
+   * Whether the amount field starts pre-filled with the outstanding balance.
+   * Defaults to true (invoice/draft payments). Customer-level payments pass
+   * false so the field starts blank, since the customer's total balance
+   * isn't necessarily what's being paid right now and pre-filling it risks
+   * the full amount being recorded by mistake.
+   */
+  prefillAmount?: boolean;
   isSaving: boolean;
   /** Error from the last submit attempt (e.g. API failure), shown below the input. */
   submitError?: string | null;
@@ -55,6 +63,7 @@ type Props = {
 export default function PaymentModal({
   title,
   outstandingBalance,
+  prefillAmount = true,
   isSaving,
   submitError,
   allowDiscount,
@@ -63,11 +72,11 @@ export default function PaymentModal({
   onCancel,
   onSubmit,
 }: Props) {
-  const [amount, setAmount] = useState(String(outstandingBalance));
+  const [amount, setAmount] = useState(prefillAmount ? String(outstandingBalance) : "");
   // True while `amount` reflects the pre-filled balance (adjusted for
   // discount), rather than something the user typed themselves — governs
   // whether changing the discount keeps auto-subtracting from the amount.
-  const [isAmountAutoSet, setIsAmountAutoSet] = useState(true);
+  const [isAmountAutoSet, setIsAmountAutoSet] = useState(prefillAmount);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [discount, setDiscount] = useState("");
   const [createNewDraft, setCreateNewDraft] = useState(false);

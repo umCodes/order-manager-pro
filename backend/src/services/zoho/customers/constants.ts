@@ -12,12 +12,20 @@ export const BUSINESS_TYPE_CUSTOMFIELD_ID = "4645478000004558014";
 /** The business types a contact's business_type field is allowed to hold. */
 export const BUSINESS_TYPES: BusinessType[] = ["Grocery", "Restaurant", "Roastry"];
 
-/** customfield_id for the "address" custom field on contacts (stores "city, district, street"), in this Zoho org. */
+/** customfield_id for the "address" custom field on contacts (stores "city, district, street, location_link"), in this Zoho org. */
 export const ADDRESS_CUSTOMFIELD_ID = "4645478000004558007";
 
-/** Joins a customer's address parts into the single string stored in the "address" custom field. */
-export function formatAddress({ city, district, street }: CustomerAddress): string {
-    return [city, district, street].map((part) => part.trim()).join(", ");
+/**
+ * Joins a customer's address parts into the single string stored in the
+ * "address" custom field: "city, district, street" plus, when set, a 4th
+ * part with the Google Maps link. The link is appended as-is (never split),
+ * so it's free to contain its own commas (e.g. coordinate query params) —
+ * see parseAddress in contactDetails.ts for the matching reconstruction.
+ */
+export function formatAddress({ city, district, street, location_link }: CustomerAddress): string {
+    const parts = [city, district, street].map((part) => part.trim());
+    if (location_link?.trim()) parts.push(location_link.trim());
+    return parts.join(", ");
 }
 
 /**

@@ -84,6 +84,7 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
   const [city, setCity] = useState(existingAddress?.city || SAUDI_CITIES[0]);
   const [district, setDistrict] = useState(existingAddress?.district ?? "");
   const [street, setStreet] = useState(existingAddress?.street ?? "");
+  const [locationLink, setLocationLink] = useState(existingAddress?.locationLink ?? "");
   const [districtOptions, setDistrictOptions] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +114,8 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
     businessType !== ((customer && getRawContactBusinessType(customer)) || "Grocery") ||
     city !== (existingAddress?.city || SAUDI_CITIES[0]) ||
     district !== (existingAddress?.district ?? "") ||
-    street !== (existingAddress?.street ?? "");
+    street !== (existingAddress?.street ?? "") ||
+    locationLink !== (existingAddress?.locationLink ?? "");
 
   function handleSubmit() {
     if (isSaving) return;
@@ -147,7 +149,12 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
       customer_sub_type: customerType,
       preferred_language: preferredLanguage,
       business_type: businessType,
-      address: { city: city.trim(), district: district.trim(), street: street.trim() },
+      address: {
+        city: city.trim(),
+        district: district.trim(),
+        street: street.trim(),
+        location_link: locationLink.trim(),
+      },
       contact_persons: [{ first_name: contactName.trim(), phone: phone.trim() }],
     };
     (isEditing ? updateCustomer(customer.contact_id, payload) : createCustomer(payload))
@@ -314,6 +321,27 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
             className="input"
             value={street}
             onChange={(e) => setStreet(e.target.value)}
+          />
+        </div>
+
+        <div className="field">
+          <div className="field-label-row">
+            <label className="field-label" htmlFor="customer-location-link">
+              Location link
+            </label>
+            {locationLink.trim() && (
+              <a href={locationLink.trim()} target="_blank" rel="noopener noreferrer" className="field-label-row__action">
+                Open
+              </a>
+            )}
+          </div>
+          <input
+            id="customer-location-link"
+            type="url"
+            className="input"
+            placeholder="Paste a Google Maps link"
+            value={locationLink}
+            onChange={(e) => setLocationLink(e.target.value)}
           />
         </div>
 

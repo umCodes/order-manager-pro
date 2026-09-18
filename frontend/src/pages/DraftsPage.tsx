@@ -103,9 +103,10 @@ export default function DraftsPage({
 
   const sortedDrafts = useMemo(() => sortInvoices(drafts, sortKey, direction), [drafts, sortKey, direction]);
 
-  const estimatedAmountToday = useMemo(() => {
+  const estimatedTotalToday = useMemo(() => {
     const todayStr = scheduleDayISODate();
-    return drafts.filter((d) => d.date === todayStr).reduce((sum, d) => sum + d.total, 0);
+    const draftsToday = drafts.filter((d) => d.date === todayStr);
+    return { amount: draftsToday.reduce((sum, d) => sum + d.total, 0), count: draftsToday.length };
   }, [drafts]);
 
   const filteredPreviousTransactions = useMemo(() => {
@@ -163,10 +164,10 @@ export default function DraftsPage({
 
       {viewMode === "drafts" ? (
         <>
-          <div className="estimate-card">
-            <span className="estimate-card__label">Estimated amount for the day</span>
-            <span className="estimate-card__amount">{currency(estimatedAmountToday)}</span>
-          </div>
+          <p className="estimate-line">
+            Estimated for today: <strong>{currency(estimatedTotalToday.amount)}</strong> from{" "}
+            {estimatedTotalToday.count} draft{estimatedTotalToday.count === 1 ? "" : "s"}
+          </p>
 
           <p className="page-subtitle">
             {drafts.length} draft{drafts.length === 1 ? "" : "s"}

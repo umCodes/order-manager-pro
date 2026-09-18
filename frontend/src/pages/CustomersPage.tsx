@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
-import { fetchCustomers, getRawContactPreferredLanguage } from "../lib/api";
+import { fetchCustomers, getRawContactPreferredLanguage, getRawContactAddress } from "../lib/api";
+import { parseAddress } from "../lib/address";
 import { getPrimaryContactPhone } from "../lib/contacts";
 import { currency } from "../lib/currency";
 import { useSortState } from "../hooks/useSortState";
@@ -157,6 +158,9 @@ export default function CustomersPage({
             // Only flag a missing language if the list response actually carries
             // custom_fields at all — otherwise every customer would falsely show as missing.
             const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
+            const { city, district } = parseAddress(getRawContactAddress(c));
+            const location = [district, city].filter(Boolean).join(", ");
+            const meta = [c.customer_sub_type, location].filter(Boolean).join(" · ");
             return (
               <ClickableCard
                 key={c.contact_id}
@@ -185,6 +189,7 @@ export default function CustomersPage({
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="draft-card__company">{c.company_name}</div>
                 )}
+                {meta && <div className="customer-card__meta">{meta}</div>}
                 <div className="draft-card__bottom">
                   <span className="draft-card__scheduled">
                     {contactNumber || "No contact number"}

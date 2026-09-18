@@ -1,6 +1,46 @@
 import { ZohoApi } from "../client.js"
-import { PREFERRED_LANGUAGE_CUSTOMFIELD_ID } from "./constants.js"
+import {
+    ADDRESS_CUSTOMFIELD_ID,
+    BUSINESS_TYPE_CUSTOMFIELD_ID,
+    PREFERRED_LANGUAGE_CUSTOMFIELD_ID,
+    formatAddress,
+} from "./constants.js"
 import type { CreateCustomerPayload } from "./types.js"
+
+/**
+ * Builds the custom_fields array for a create/update request: preferred_language
+ * always, plus business_type/address only when both this payload carries a
+ * value and the corresponding customfield_id has been configured (empty id
+ * means that custom field hasn't been set up in Zoho yet — omitting it keeps
+ * the request from being rejected wholesale over an unknown field id).
+ */
+function buildCustomFields(payload: CreateCustomerPayload) {
+    const fields: { customfield_id: string; value: string }[] = [
+        { customfield_id: PREFERRED_LANGUAGE_CUSTOMFIELD_ID, value: payload.preferred_language },
+    ]
+    if (BUSINESS_TYPE_CUSTOMFIELD_ID && payload.business_type) {
+        fields.push({ customfield_id: BUSINESS_TYPE_CUSTOMFIELD_ID, value: payload.business_type })
+    }
+    if (ADDRESS_CUSTOMFIELD_ID && payload.address) {
+        fields.push({ customfield_id: ADDRESS_CUSTOMFIELD_ID, value: formatAddress(payload.address) })
+    }
+    return fields
+}
+
+/**
+ * Builds the billing/shipping address Zoho stores on the contact (and pulls
+ * onto invoices) from the form's city/district/street. Both addresses are
+ * set to the same value — this app doesn't distinguish billing from shipping.
+ */
+function buildZohoAddress(address: CreateCustomerPayload["address"]) {
+    if (!address) return undefined
+    return {
+        address: address.street,
+        street2: address.district,
+        city: address.city,
+        country: "Saudi Arabia",
+    }
+}
 
 /** Strips everything but digits, then drops a leading '00' or a leading country-exit '0' so numbers in differing formats (+2519..., 2519..., 09...) compare equal on their trailing digits. */
 function normalizePhoneForMatch(phone: string): string {
@@ -67,6 +107,7 @@ export async function findCustomerByPhone(headers: string, phone: string): Promi
 
 /** Creates a customer along with its initial contact person(s). */
 export async function ZohoCreateCustomer(headers: string, payload: CreateCustomerPayload){
+    const zohoAddress = buildZohoAddress(payload.address)
 
     try {
         const response = await ZohoApi("contacts", headers, "POST", {
@@ -74,9 +115,8 @@ export async function ZohoCreateCustomer(headers: string, payload: CreateCustome
             company_name: payload.company_name,
             customer_sub_type: payload.customer_sub_type,
             contact_persons: payload.contact_persons,
-            custom_fields: [
-                { customfield_id: PREFERRED_LANGUAGE_CUSTOMFIELD_ID, value: payload.preferred_language },
-            ],
+            custom_fields: buildCustomFields(payload),
+            ...(zohoAddress && { billing_address: zohoAddress, shipping_address: zohoAddress }),
         })
         if (response.code !== 0) {
             throw new Error(response.message || "Zoho rejected the contact creation");
@@ -96,15 +136,15 @@ export async function ZohoCreateCustomer(headers: string, payload: CreateCustome
  * contactpersons sub-resource endpoints (see ZohoAddContactPerson etc.).
  */
 export async function ZohoUpdateCustomer(headers: string, customerId: string, payload: CreateCustomerPayload){
+    const zohoAddress = buildZohoAddress(payload.address)
 
     try {
         const response = await ZohoApi(`contacts/${customerId}`, headers, "PUT", {
             contact_name: payload.contact_name,
             company_name: payload.company_name,
             customer_sub_type: payload.customer_sub_type,
-            custom_fields: [
-                { customfield_id: PREFERRED_LANGUAGE_CUSTOMFIELD_ID, value: payload.preferred_language },
-            ],
+            custom_fields: buildCustomFields(payload),
+            ...(zohoAddress && { billing_address: zohoAddress, shipping_address: zohoAddress }),
         })
         if (response.code !== 0) {
             throw new Error(response.message || "Zoho rejected the contact update");

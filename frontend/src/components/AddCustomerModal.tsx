@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   createCustomer,
   updateCustomer,
+  fetchCustomers,
   getContactPreferredLanguage,
+  getRawContactAddress,
+  getRawContactBusinessType,
   type CustomerType,
   type PreferredLanguage,
+  type BusinessType,
 } from "../lib/api";
+import { SAUDI_CITIES, buildDistrictOptions, parseAddress } from "../lib/address";
 import type { Contact } from "../types";
 
 type Props = {
@@ -25,6 +31,12 @@ const LANGUAGE_OPTIONS: { value: PreferredLanguage; label: string }[] = [
   { value: "am", label: "Amharic" },
   { value: "ar", label: "Arabic" },
   { value: "en", label: "English" },
+];
+
+const BUSINESS_TYPE_OPTIONS: { value: BusinessType; label: string }[] = [
+  { value: "Grocery", label: "Grocery" },
+  { value: "Restaurant", label: "Restaurant" },
+  { value: "Roastry", label: "Roastry" },
 ];
 
 function isCustomerType(value: string | undefined): value is CustomerType {
@@ -65,8 +77,26 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>(
     customer ? getContactPreferredLanguage(customer) : "am",
   );
+  const existingAddress = customer ? parseAddress(getRawContactAddress(customer)) : undefined;
+  const [businessType, setBusinessType] = useState<BusinessType>(
+    (customer && getRawContactBusinessType(customer)) || "Grocery",
+  );
+  const [city, setCity] = useState(existingAddress?.city || SAUDI_CITIES[0]);
+  const [district, setDistrict] = useState(existingAddress?.district ?? "");
+  const [street, setStreet] = useState(existingAddress?.street ?? "");
+  const [districtOptions, setDistrictOptions] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCustomers()
+      .then((customers) => {
+        setDistrictOptions(
+          buildDistrictOptions(customers, (c) => parseAddress(getRawContactAddress(c))),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   const isEditing = !!customer;
 
@@ -79,7 +109,11 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
     // falls back to "am" when unset) — comparing against that same fallback-applied
     // value means a customer with no language on file isn't flagged dirty just for
     // showing the "am" default; only an actual pill click away from the start is.
-    preferredLanguage !== getContactPreferredLanguage(customer);
+    preferredLanguage !== getContactPreferredLanguage(customer) ||
+    businessType !== ((customer && getRawContactBusinessType(customer)) || "Grocery") ||
+    city !== (existingAddress?.city || SAUDI_CITIES[0]) ||
+    district !== (existingAddress?.district ?? "") ||
+    street !== (existingAddress?.street ?? "");
 
   function handleSubmit() {
     if (isSaving) return;
@@ -95,6 +129,10 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
       setError("Phone is required");
       return;
     }
+    if (!isEditing && !street.trim()) {
+      setError("Street is required");
+      return;
+    }
     setError(null);
 
     if (isEditing && !isDirty) {
@@ -108,6 +146,8 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
       company_name: companyName.trim(),
       customer_sub_type: customerType,
       preferred_language: preferredLanguage,
+      business_type: businessType,
+      address: { city: city.trim(), district: district.trim(), street: street.trim() },
       contact_persons: [{ first_name: contactName.trim(), phone: phone.trim() }],
     };
     (isEditing ? updateCustomer(customer.contact_id, payload) : createCustomer(payload))
@@ -205,6 +245,76 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label">Business type</label>
+          <div className="day-pill-row">
+            {BUSINESS_TYPE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`pill${businessType === option.value ? " pill--active" : ""}`}
+                onClick={() => setBusinessType(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="customer-city">
+            City
+          </label>
+          <div className="select-wrap">
+            <select
+              id="customer-city"
+              className="select"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+            >
+              {SAUDI_CITIES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={18} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="customer-district">
+            District
+          </label>
+          <input
+            id="customer-district"
+            type="text"
+            className="input"
+            list="customer-district-options"
+            placeholder="Select or type a district"
+            value={district}
+            onChange={(e) => setDistrict(e.target.value)}
+          />
+          <datalist id="customer-district-options">
+            {districtOptions.map((option) => (
+              <option key={option} value={option} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="customer-street">
+            Street
+          </label>
+          <input
+            id="customer-street"
+            type="text"
+            className="input"
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+          />
         </div>
 
         {error && <div className="form-error">{error}</div>}

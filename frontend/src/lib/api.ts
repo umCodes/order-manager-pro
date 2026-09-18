@@ -70,12 +70,15 @@ export function fetchCustomers(options?: { force?: boolean }): Promise<Contact[]
 
 export type CustomerType = "business" | "individual";
 export type PreferredLanguage = "am" | "ar" | "en";
+export type BusinessType = "Grocery" | "Restaurant" | "Roastry";
 
 export type CreateCustomerPayload = {
   contact_name: string;
   company_name: string;
   customer_sub_type: CustomerType;
   preferred_language: PreferredLanguage;
+  business_type: BusinessType;
+  address: { city: string; district: string; street: string };
   /** Zoho stores phone on the contact person, not the contact itself. */
   contact_persons: { first_name: string; phone: string }[];
 };
@@ -131,6 +134,40 @@ export function getRawContactPreferredLanguage(contact: Contact): PreferredLangu
 /** Reads a contact's preferred_language custom field, falling back to Amharic if unset/invalid. */
 export function getContactPreferredLanguage(contact: Contact): PreferredLanguage {
   return getRawContactPreferredLanguage(contact) ?? "am";
+}
+
+/**
+ * customfield_id for the "business_type" custom field on contacts, in this
+ * Zoho org. TODO: fill in the real id (Zoho Invoice settings → Contacts →
+ * Custom Fields) — until then, business type isn't read from or written to
+ * Zoho.
+ */
+export const BUSINESS_TYPE_CUSTOMFIELD_ID = "";
+
+/** Reads a contact's raw business_type custom field, or undefined if unset. */
+export function getRawContactBusinessType(contact: Contact): BusinessType | undefined {
+  if (!BUSINESS_TYPE_CUSTOMFIELD_ID) return undefined;
+  const field = contact.custom_fields?.find(
+    (cf) => (cf.customfield_id ?? cf.field_id) === BUSINESS_TYPE_CUSTOMFIELD_ID,
+  );
+  const value = field?.value;
+  return value === "Grocery" || value === "Restaurant" || value === "Roastry" ? value : undefined;
+}
+
+/**
+ * customfield_id for the "address" custom field on contacts (stores
+ * "city, district, street") in this Zoho org. TODO: fill in the real id —
+ * until then, the field isn't read from or written to Zoho.
+ */
+export const ADDRESS_CUSTOMFIELD_ID = "";
+
+/** Reads a contact's raw "address" custom field value ("city, district, street"), or undefined if unset. */
+export function getRawContactAddress(contact: Contact): string | undefined {
+  if (!ADDRESS_CUSTOMFIELD_ID) return undefined;
+  const field = contact.custom_fields?.find(
+    (cf) => (cf.customfield_id ?? cf.field_id) === ADDRESS_CUSTOMFIELD_ID,
+  );
+  return typeof field?.value === "string" && field.value ? field.value : undefined;
 }
 
 export async function fetchCustomerById(customerId: string): Promise<Contact> {

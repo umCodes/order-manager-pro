@@ -1,5 +1,12 @@
-import { LEGACY_CONTACT_ID, PREFERRED_LANGUAGE_CUSTOMFIELD_ID, PREFERRED_LANGUAGES } from "./constants.js"
-import type { PreferredLanguage } from "./types.js"
+import {
+    ADDRESS_CUSTOMFIELD_ID,
+    BUSINESS_TYPE_CUSTOMFIELD_ID,
+    BUSINESS_TYPES,
+    LEGACY_CONTACT_ID,
+    PREFERRED_LANGUAGE_CUSTOMFIELD_ID,
+    PREFERRED_LANGUAGES,
+} from "./constants.js"
+import type { BusinessType, CustomerAddress, PreferredLanguage } from "./types.js"
 
 /**
  * Reads details off an already-fetched Zoho contact. Pure functions — no
@@ -59,4 +66,25 @@ export function getContactPreferredLanguage(contact: any): PreferredLanguage {
     )
     const value = field?.value
     return PREFERRED_LANGUAGES.includes(value) ? value : "am"
+}
+
+/** Reads the "business_type" custom field off a fetched Zoho contact, or undefined if unset/invalid/not configured. */
+export function getContactBusinessType(contact: any): BusinessType | undefined {
+    if (!BUSINESS_TYPE_CUSTOMFIELD_ID) return undefined
+    const field = contact?.custom_fields?.find(
+        (cf: any) => String(cf.customfield_id ?? cf.field_id) === BUSINESS_TYPE_CUSTOMFIELD_ID,
+    )
+    const value = field?.value
+    return BUSINESS_TYPES.includes(value) ? value : undefined
+}
+
+/** Reads and splits the "address" custom field ("city, district, street") off a fetched Zoho contact, or undefined if unset/not configured. */
+export function getContactAddress(contact: any): CustomerAddress | undefined {
+    if (!ADDRESS_CUSTOMFIELD_ID) return undefined
+    const field = contact?.custom_fields?.find(
+        (cf: any) => String(cf.customfield_id ?? cf.field_id) === ADDRESS_CUSTOMFIELD_ID,
+    )
+    if (typeof field?.value !== "string" || !field.value) return undefined
+    const [city = "", district = "", street = ""] = field.value.split(",").map((part: string) => part.trim())
+    return { city, district, street }
 }

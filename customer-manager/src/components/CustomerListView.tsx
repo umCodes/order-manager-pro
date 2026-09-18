@@ -15,12 +15,18 @@ type Props = {
   customers: Contact[];
   isLoading: boolean;
   error: string | null;
+  selectedCustomerId: string | undefined;
   onSelect: (customer: Contact) => void;
   onAddNew: () => void;
 };
 
-/** Customer search/list — the entry screen: find an existing customer to edit, or add a new one. */
-export default function CustomerListView({ customers, isLoading, error, onSelect, onAddNew }: Props) {
+/**
+ * Customer search/list. On desktop this is the permanent left-hand pane of
+ * a master-detail layout, so it highlights whichever customer the detail
+ * pane is currently showing; on mobile it's the whole screen until a
+ * customer is picked.
+ */
+export default function CustomerListView({ customers, isLoading, error, selectedCustomerId, onSelect, onAddNew }: Props) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -36,8 +42,12 @@ export default function CustomerListView({ customers, isLoading, error, onSelect
 
   return (
     <div>
-      <div className="page-header">
+      <div className="list-header">
         <h1 className="page-title">Customers</h1>
+        <button type="button" className="btn btn--primary btn--icon-label" onClick={onAddNew}>
+          <Plus size={16} />
+          New Customer
+        </button>
       </div>
       <p className="page-subtitle">Add or edit a customer's info</p>
 
@@ -67,7 +77,12 @@ export default function CustomerListView({ customers, isLoading, error, onSelect
             const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
             const phone = getPrimaryContactPhone(c);
             return (
-              <button key={c.contact_id} type="button" className="customer-row" onClick={() => onSelect(c)}>
+              <button
+                key={c.contact_id}
+                type="button"
+                className={`customer-row${c.contact_id === selectedCustomerId ? " customer-row--active" : ""}`}
+                onClick={() => onSelect(c)}
+              >
                 <div className="customer-row__name">{c.contact_name || c.company_name}</div>
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="customer-row__company">{c.company_name}</div>
@@ -106,10 +121,6 @@ export default function CustomerListView({ customers, isLoading, error, onSelect
           })}
         </div>
       )}
-
-      <button type="button" className="fab" onClick={onAddNew} aria-label="Add new customer" title="Add new customer">
-        <Plus size={26} />
-      </button>
     </div>
   );
 }

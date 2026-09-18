@@ -1,7 +1,5 @@
 .app-frame {
-  max-width: var(--app-max-width);
   min-height: 100vh;
-  margin: 0 auto;
   background: var(--color-white);
   display: flex;
   flex-direction: column;
@@ -9,11 +7,10 @@
 
 .app-frame__body {
   flex: 1;
-  padding: 20px 16px 32px;
 }
 
 .server-wakeup {
-  max-width: var(--app-max-width);
+  max-width: 420px;
   min-height: 100vh;
   margin: 0 auto;
   background: var(--color-white);
@@ -74,6 +71,100 @@
   margin: 4px 0 20px;
 }
 
+/* Workspace: desktop master-detail (list + form side by side), mobile paged (one screen at a time) */
+
+.workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 32px 64px;
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.workspace__list {
+  width: 400px;
+  flex-shrink: 0;
+}
+
+.workspace__detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.list-header .page-title {
+  flex: initial;
+}
+
+.detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  min-height: 360px;
+  border: 1.5px dashed var(--color-gray-200);
+  border-radius: var(--radius-xl);
+  padding: 40px 24px;
+  color: var(--color-gray-400);
+}
+
+.detail-empty__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-gray-600);
+}
+
+.detail-empty__subtitle {
+  font-size: 13.5px;
+  max-width: 320px;
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    flex-direction: column;
+    padding: 16px 16px 32px;
+    gap: 0;
+  }
+
+  .workspace__list,
+  .workspace__detail {
+    width: 100%;
+  }
+
+  .workspace:not(.workspace--detail-active) .workspace__detail {
+    display: none;
+  }
+
+  .workspace.workspace--detail-active .workspace__list {
+    display: none;
+  }
+}
+
+@media (min-width: 861px) {
+  .workspace__list {
+    position: sticky;
+    top: 28px;
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  /* Both panes are always visible side by side on desktop, so there's nothing to go "back" to. */
+  .page-header__back {
+    display: none;
+  }
+}
+
 /* Buttons */
 
 .btn {
@@ -123,22 +214,10 @@
   flex-shrink: 0;
 }
 
-.fab {
-  position: fixed;
-  bottom: 24px;
-  right: max(16px, calc((100vw - var(--app-max-width)) / 2 + 16px));
-  width: 60px;
-  height: 60px;
-  border-radius: var(--radius-full);
-  border: none;
-  background: var(--color-gray-900);
-  color: var(--color-white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-  z-index: 20;
+.btn--icon-label {
+  padding: 10px 16px;
+  min-height: 42px;
+  font-size: 14.5px;
 }
 
 /* Search */
@@ -250,6 +329,18 @@
   margin: 0 0 14px;
 }
 
+/* Lets a section's text fields sit side by side once there's room, collapsing
+   to one per row on narrow screens — no separate mobile/desktop rules needed. */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 16px;
+}
+
+.form-grid .field {
+  min-width: 0;
+}
+
 .form-error {
   background: #fef2f2;
   color: var(--color-red-600);
@@ -281,14 +372,14 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 90px;
+  padding-bottom: 8px;
 }
 
 .customer-row {
   display: block;
   width: 100%;
   text-align: left;
-  border: 1px solid var(--color-gray-200);
+  border: 1.5px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   padding: 14px 16px;
   background: var(--color-white);
@@ -297,6 +388,11 @@
 
 .customer-row:hover {
   border-color: var(--color-gray-300);
+  background: var(--color-gray-50);
+}
+
+.customer-row--active {
+  border-color: var(--color-gray-900);
   background: var(--color-gray-50);
 }
 

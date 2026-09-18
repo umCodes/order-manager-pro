@@ -120,48 +120,50 @@ export default function CustomerForm({ customer, customers, onBack, onSaved }: P
       <div className="form-section">
         <div className="form-section__title">Basic info</div>
 
-        <div className="field">
-          <label className="field-label" htmlFor="contact-name">
-            Contact name
-          </label>
-          <input
-            id="contact-name"
-            type="text"
-            className="input"
-            placeholder="Name of the person who uses the phone number below"
-            value={contactName}
-            onChange={(e) => setContactName(e.target.value)}
-          />
-        </div>
-
-        <div className="field">
-          <label className="field-label" htmlFor="company-name">
-            Company name
-          </label>
-          <input
-            id="company-name"
-            type="text"
-            className="input"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-          />
-        </div>
-
-        {!isEditing && (
+        <div className="form-grid">
           <div className="field">
-            <label className="field-label" htmlFor="phone">
-              Phone
+            <label className="field-label" htmlFor="contact-name">
+              Contact name
             </label>
             <input
-              id="phone"
-              type="tel"
+              id="contact-name"
+              type="text"
               className="input"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Name of the person who uses the phone number below"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
             />
-            <span className="field-hint">This becomes the customer's primary contact.</span>
           </div>
-        )}
+
+          <div className="field">
+            <label className="field-label" htmlFor="company-name">
+              Company name
+            </label>
+            <input
+              id="company-name"
+              type="text"
+              className="input"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+            />
+          </div>
+
+          {!isEditing && (
+            <div className="field">
+              <label className="field-label" htmlFor="phone">
+                Phone
+              </label>
+              <input
+                id="phone"
+                type="tel"
+                className="input"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+              <span className="field-hint">This becomes the customer's primary contact.</span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="form-section">
@@ -219,47 +221,49 @@ export default function CustomerForm({ customer, customers, onBack, onSaved }: P
       <div className="form-section">
         <div className="form-section__title">Address</div>
 
-        <div className="field">
-          <label className="field-label" htmlFor="city">
-            City
-          </label>
-          <div className="select-wrap">
-            <select id="city" className="select" value={city} onChange={(e) => setCity(e.target.value)}>
-              {SAUDI_CITIES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="select-wrap__chevron" size={18} />
+        <div className="form-grid">
+          <div className="field">
+            <label className="field-label" htmlFor="city">
+              City
+            </label>
+            <div className="select-wrap">
+              <select id="city" className="select" value={city} onChange={(e) => setCity(e.target.value)}>
+                {SAUDI_CITIES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="select-wrap__chevron" size={18} />
+            </div>
           </div>
-        </div>
 
-        <div className="field">
-          <label className="field-label" htmlFor="district">
-            District
-          </label>
-          <input
-            id="district"
-            type="text"
-            className="input"
-            list="district-options"
-            placeholder="Select or type a district"
-            value={district}
-            onChange={(e) => setDistrict(e.target.value)}
-          />
-          <datalist id="district-options">
-            {districtOptions.map((option) => (
-              <option key={option} value={option} />
-            ))}
-          </datalist>
-        </div>
+          <div className="field">
+            <label className="field-label" htmlFor="district">
+              District
+            </label>
+            <input
+              id="district"
+              type="text"
+              className="input"
+              list="district-options"
+              placeholder="Select or type a district"
+              value={district}
+              onChange={(e) => setDistrict(e.target.value)}
+            />
+            <datalist id="district-options">
+              {districtOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </div>
 
-        <div className="field">
-          <label className="field-label" htmlFor="street">
-            Street
-          </label>
-          <input id="street" type="text" className="input" value={street} onChange={(e) => setStreet(e.target.value)} />
+          <div className="field">
+            <label className="field-label" htmlFor="street">
+              Street
+            </label>
+            <input id="street" type="text" className="input" value={street} onChange={(e) => setStreet(e.target.value)} />
+          </div>
         </div>
       </div>
 

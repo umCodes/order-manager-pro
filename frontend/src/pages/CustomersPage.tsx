@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, UserPlus } from "lucide-react";
-import { fetchCustomers, getRawContactPreferredLanguage, getRawContactAddress } from "../lib/api";
+import { Coffee, MapPin, Search, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import {
+  fetchCustomers,
+  getRawContactPreferredLanguage,
+  getRawContactAddress,
+  getRawContactBusinessType,
+  type BusinessType,
+} from "../lib/api";
 import { parseAddress } from "../lib/address";
 import { getPrimaryContactPhone } from "../lib/contacts";
 import { currency } from "../lib/currency";
@@ -32,6 +38,13 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
   { key: "balance", label: "Balance" },
 ];
+
+/** Icon per business type, used on the customer list's business-type chip. */
+const BUSINESS_TYPE_ICON: Record<BusinessType, LucideIcon> = {
+  Grocery: ShoppingBasket,
+  Restaurant: UtensilsCrossed,
+  Roastry: Coffee,
+};
 
 /** Customer directory: search, filter by status/activity, and sort by name or balance. */
 export default function CustomersPage({
@@ -159,8 +172,8 @@ export default function CustomersPage({
             // custom_fields at all — otherwise every customer would falsely show as missing.
             const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
             const { city, district } = parseAddress(getRawContactAddress(c));
-            const location = [district, city].filter(Boolean).join(", ");
-            const meta = [c.customer_sub_type, location].filter(Boolean).join(" · ");
+            const businessType = getRawContactBusinessType(c);
+            const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
             return (
               <ClickableCard
                 key={c.contact_id}
@@ -189,7 +202,34 @@ export default function CustomersPage({
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="draft-card__company">{c.company_name}</div>
                 )}
-                {meta && <div className="customer-card__meta">{meta}</div>}
+                {(district || city || businessType) && (
+                  <div className="customer-card__tags">
+                    {(district || city) && (
+                      <span className="location-chip">
+                        <MapPin className="location-chip__icon" size={11} />
+                        {district ? (
+                          <>
+                            <span className="location-chip__district">{district}</span>
+                            {city && (
+                              <>
+                                <span className="location-chip__divider">·</span>
+                                <span className="location-chip__city">{city}</span>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <span className="location-chip__district">{city}</span>
+                        )}
+                      </span>
+                    )}
+                    {businessType && BusinessTypeIcon && (
+                      <span className={`business-type-chip business-type-chip--${businessType.toLowerCase()}`}>
+                        <BusinessTypeIcon size={11} />
+                        {businessType}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="draft-card__bottom">
                   <span className="draft-card__scheduled">
                     {contactNumber || "No contact number"}

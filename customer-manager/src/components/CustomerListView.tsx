@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Coffee, ExternalLink, MapPin, Plus, Search, ShoppingBasket, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { Coffee, MapPin, Plus, Search, ShoppingBasket, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import { getRawContactAddress, getRawContactBusinessType, type BusinessType } from "../lib/api";
 import { parseAddress } from "../lib/address";
 import { getPrimaryContactPhone } from "../lib/contacts";
@@ -72,7 +72,7 @@ export default function CustomerListView({ customers, isLoading, error, selected
       ) : (
         <div className="customer-row-list">
           {filtered.map((c) => {
-            const { city, district, locationLink } = parseAddress(getRawContactAddress(c));
+            const { city, district } = parseAddress(getRawContactAddress(c));
             const businessType = getRawContactBusinessType(c);
             const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
             const phone = getPrimaryContactPhone(c);
@@ -87,7 +87,7 @@ export default function CustomerListView({ customers, isLoading, error, selected
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="customer-row__company">{c.company_name}</div>
                 )}
-                {(district || city || businessType || locationLink) && (
+                {(district || city || businessType) && (
                   <div className="customer-row__tags">
                     {(district || city) && (
                       <span className="location-chip">
@@ -111,31 +111,6 @@ export default function CustomerListView({ customers, isLoading, error, selected
                       <span className={`business-type-chip business-type-chip--${businessType.toLowerCase()}`}>
                         <BusinessTypeIcon size={11} />
                         {businessType}
-                      </span>
-                    )}
-                    {locationLink && (
-                      // Not a real <a> — this row is already a <button>, and interactive
-                      // content can't validly nest inside one — so it's a keyboard-
-                      // reachable span that opens the link itself, stopping the click
-                      // from also triggering the row's onSelect.
-                      <span
-                        role="link"
-                        tabIndex={0}
-                        className="maps-link-icon"
-                        title="Open in Google Maps"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(locationLink, "_blank", "noopener,noreferrer");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            window.open(locationLink, "_blank", "noopener,noreferrer");
-                          }
-                        }}
-                      >
-                        <ExternalLink size={12} />
                       </span>
                     )}
                   </div>

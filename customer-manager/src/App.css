@@ -496,15 +496,3 @@
   color: #78350f;
 }
 
-.maps-link-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: var(--color-blue-50);
-  color: var(--color-blue-600);
-  cursor: pointer;
-}
-

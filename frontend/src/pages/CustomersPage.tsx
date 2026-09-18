@@ -7,7 +7,6 @@ import {
   MapPin,
   Search,
   ShoppingBasket,
-  SlidersHorizontal,
   UserPlus,
   UtensilsCrossed,
   type LucideIcon,
@@ -29,7 +28,7 @@ import AddCustomerModal from "../components/AddCustomerModal";
 import type { Contact } from "../types";
 
 type StatusFilter = "all" | "outstanding" | "settled";
-type ActiveFilter = "active" | "inactive";
+type ActiveFilter = "all" | "active" | "inactive";
 type BusinessTypeFilter = BusinessType | "all";
 
 type SortKey = "balance" | "name" | "district" | "city" | "businessType";
@@ -77,21 +76,8 @@ export default function CustomersPage({
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>("all");
   const [cityFilter, setCityFilter] = useState("all");
   const [districtFilter, setDistrictFilter] = useState("all");
-  const [isMoreFiltersOpen, setIsMoreFiltersOpen] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("balance", "desc");
-
-  // "All" and "Active" are the implicit defaults — toggling one of the pills
-  // below switches to it, tapping the already-active one switches back off.
-  function toggleStatusFilter(target: Exclude<StatusFilter, "all">) {
-    setStatusFilter((prev) => (prev === target ? "all" : target));
-  }
-  function toggleActiveFilter() {
-    setActiveFilter((prev) => (prev === "inactive" ? "active" : "inactive"));
-  }
-  function toggleBusinessTypeFilter(target: BusinessType) {
-    setBusinessTypeFilter((prev) => (prev === target ? "all" : target));
-  }
 
   const loadCustomers = useCallback((options?: { force?: boolean }) => {
     return fetchCustomers(options).then(setCustomers).catch(() => setCustomers([]));
@@ -112,9 +98,6 @@ export default function CustomersPage({
     () => rankedOptions(customers, (c) => parseAddress(getRawContactAddress(c)).district || undefined),
     [customers],
   );
-  const advancedFilterCount = [businessTypeFilter !== "all", cityFilter !== "all", districtFilter !== "all"].filter(
-    Boolean,
-  ).length;
 
   const filteredCustomers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -128,7 +111,8 @@ export default function CustomersPage({
         (statusFilter === "outstanding" && c.outstanding_receivable_amount > 0) ||
         (statusFilter === "settled" && c.outstanding_receivable_amount <= 0);
       const matchesActive =
-        activeFilter === "active" ? c.status === "active" : c.status !== "active";
+        activeFilter === "all" ||
+        (activeFilter === "active" ? c.status === "active" : c.status !== "active");
       const matchesBusinessType =
         businessTypeFilter === "all" || getRawContactBusinessType(c) === businessTypeFilter;
       const address = parseAddress(getRawContactAddress(c));
@@ -188,108 +172,111 @@ export default function CustomersPage({
         />
       </div>
 
-      <div className="sort-row sort-row--with-count">
-        <div className="sort-row__pills">
-          <button
-            type="button"
-            className={`pill${statusFilter === "outstanding" ? " pill--active" : ""}`}
-            onClick={() => toggleStatusFilter("outstanding")}
-          >
-            Outstanding
-          </button>
-          <button
-            type="button"
-            className={`pill${statusFilter === "settled" ? " pill--active" : ""}`}
-            onClick={() => toggleStatusFilter("settled")}
-          >
-            Settled
-          </button>
+      <div className="filters-grid">
+        <div className="field">
+          <label className="field-label" htmlFor="balance-filter">
+            Balance
+          </label>
+          <div className="select-wrap">
+            <select
+              id="balance-filter"
+              className="select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
+              <option value="all">All</option>
+              <option value="outstanding">Outstanding</option>
+              <option value="settled">Settled</option>
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
         </div>
-        <button
-          type="button"
-          className={`pill${activeFilter === "inactive" ? " pill--active" : ""}`}
-          onClick={toggleActiveFilter}
-        >
-          Inactive
-        </button>
-      </div>
 
-      <button
-        type="button"
-        className={`filters-toggle${isMoreFiltersOpen ? " filters-toggle--open" : ""}`}
-        onClick={() => setIsMoreFiltersOpen((open) => !open)}
-      >
-        <SlidersHorizontal size={13} />
-        More filters
-        {advancedFilterCount > 0 && <span className="filters-toggle__count">{advancedFilterCount}</span>}
-        <ChevronDown className="filters-toggle__chevron" size={14} />
-      </button>
+        <div className="field">
+          <label className="field-label" htmlFor="status-filter">
+            Status
+          </label>
+          <div className="select-wrap">
+            <select
+              id="status-filter"
+              className="select"
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All</option>
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
+        </div>
 
-      {isMoreFiltersOpen && (
-        <div className="filters-panel">
-          <div className="field">
-            <label className="field-label">Business type</label>
-            <div className="day-pill-row">
+        <div className="field">
+          <label className="field-label" htmlFor="business-type-filter">
+            Business type
+          </label>
+          <div className="select-wrap">
+            <select
+              id="business-type-filter"
+              className="select"
+              value={businessTypeFilter}
+              onChange={(e) => setBusinessTypeFilter(e.target.value as BusinessTypeFilter)}
+            >
+              <option value="all">All</option>
               {BUSINESS_TYPES.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`pill${businessTypeFilter === type ? " pill--active" : ""}`}
-                  onClick={() => toggleBusinessTypeFilter(type)}
-                >
+                <option key={type} value={type}>
                   {type}
-                </button>
+                </option>
               ))}
-            </div>
-          </div>
-
-          <div className="filters-panel__row">
-            <div className="field">
-              <label className="field-label" htmlFor="city-filter">
-                City
-              </label>
-              <div className="select-wrap">
-                <select
-                  id="city-filter"
-                  className="select"
-                  value={cityFilter}
-                  onChange={(e) => setCityFilter(e.target.value)}
-                >
-                  <option value="all">All cities</option>
-                  {cityOptions.map((city) => (
-                    <option key={city} value={city}>
-                      {city}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="select-wrap__chevron" size={16} />
-              </div>
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="district-filter">
-                District
-              </label>
-              <div className="select-wrap">
-                <select
-                  id="district-filter"
-                  className="select"
-                  value={districtFilter}
-                  onChange={(e) => setDistrictFilter(e.target.value)}
-                >
-                  <option value="all">All districts</option>
-                  {districtOptions.map((district) => (
-                    <option key={district} value={district}>
-                      {district}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="select-wrap__chevron" size={16} />
-              </div>
-            </div>
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
           </div>
         </div>
-      )}
+
+        <div className="field">
+          <label className="field-label" htmlFor="city-filter">
+            City
+          </label>
+          <div className="select-wrap">
+            <select
+              id="city-filter"
+              className="select"
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+            >
+              <option value="all">All cities</option>
+              {cityOptions.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="district-filter">
+            District
+          </label>
+          <div className="select-wrap">
+            <select
+              id="district-filter"
+              className="select"
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+            >
+              <option value="all">All districts</option>
+              {districtOptions.map((district) => (
+                <option key={district} value={district}>
+                  {district}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
+        </div>
+      </div>
 
       <div className="sort-row sort-row--with-count">
         <div className="sort-select-group">

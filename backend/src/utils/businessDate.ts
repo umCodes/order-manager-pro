@@ -48,3 +48,41 @@ export function describeBusinessDate(dateStr: string, from: Date = new Date()) {
     weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
   };
 }
+
+/**
+ * The "business day" doesn't reset at midnight — the shop is still running
+ * its previous day's shift for the first few hours after midnight, so the
+ * boundary is 5am business time instead. Used to key the daily estimate/
+ * collected-today Redis entries (see services/dailyTotals.ts) so they cover
+ * "today" the way staff actually think of it, not the calendar date.
+ */
+const BUSINESS_DAY_CUTOFF_HOUR = 5;
+
+/** Today's "business day" (YYYY-MM-DD, business timezone, 5am-to-5am), for keying per-day Redis entries. */
+export function businessDayKey(from: Date = new Date()): string {
+  const shifted = new Date(from.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  if (shifted.getUTCHours() < BUSINESS_DAY_CUTOFF_HOUR) {
+    shifted.setUTCDate(shifted.getUTCDate() - 1);
+  }
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Seconds from `from` until the next 5am business-day boundary — the TTL for per-day Redis entries. */
+export function secondsUntilNextBusinessDay(from: Date = new Date()): number {
+  const shifted = new Date(from.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  const boundary = new Date(Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate(),
+    BUSINESS_DAY_CUTOFF_HOUR, 0, 0, 0,
+  ));
+  if (shifted.getUTCHours() >= BUSINESS_DAY_CUTOFF_HOUR) {
+    boundary.setUTCDate(boundary.getUTCDate() + 1);
+  }
+  // boundary was computed in shifted (business) time — shift back to get the real instant.
+  const boundaryInstant = boundary.getTime() - BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+  return Math.max(1, Math.round((boundaryInstant - from.getTime()) / 1000));
+}

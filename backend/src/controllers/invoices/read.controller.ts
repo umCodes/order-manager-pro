@@ -3,6 +3,8 @@ import { ZohoGetDrafts, ZohoGetInvoiceById, ZohoGetRecentNonDraftInvoices } from
 import { ZohoGetCustomerById, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { businessDayKey } from "../../utils/businessDate.js";
+import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyTotals.js";
 
 /** Lists every invoice currently in draft status. */
 export async function getDraftInvoices(req: Request, res: Response) {
@@ -11,6 +13,36 @@ export async function getDraftInvoices(req: Request, res: Response) {
 
     const drafts = await ZohoGetDrafts(access_token);
     res.status(200).json({ drafts });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Internal Server Error",
+    });
+  }
+}
+
+/**
+ * The Drafts tab's "estimated amount for the day": today's scheduled drafts
+ * summed up, reconciled against a Redis-cached high-water mark so the
+ * number never drops within the same business day just because a draft got
+ * paid/sent and left the draft list (see services/dailyTotals.ts) — plus
+ * how much of it has actually been collected so far today.
+ */
+export async function getTodayEstimate(req: Request, res: Response) {
+  try {
+    const access_token = requireAccessToken(req, "A problem occured getting today's estimate");
+
+    const drafts = await ZohoGetDrafts(access_token);
+    const today = businessDayKey();
+    const draftsToday = drafts.filter((d: any) => d.date === today);
+    const freshTotal = draftsToday.reduce((sum: number, d: any) => sum + (d.total ?? 0), 0);
+
+    const [estimatedTotal, collectedToday] = await Promise.all([
+      reconcileDailyEstimate(freshTotal),
+      getCollectedToday(),
+    ]);
+
+    res.status(200).json({ estimatedTotal, collectedToday, draftCountToday: draftsToday.length });
   } catch (error) {
     console.error(error);
     res.status(500).json({

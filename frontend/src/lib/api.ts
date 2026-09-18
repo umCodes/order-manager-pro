@@ -359,6 +359,30 @@ export function fetchDraftInvoices(options?: { force?: boolean }): Promise<Draft
   return cachedFetch("draftInvoices", fetchDraftInvoicesUncached);
 }
 
+export type TodayEstimate = {
+  estimatedTotal: number;
+  collectedToday: number;
+  draftCountToday: number;
+};
+
+/**
+ * The Drafts tab's "estimated amount for the day" plus how much of it has
+ * been collected so far — computed and cached server-side (Redis) so the
+ * estimate doesn't shrink as today's drafts get paid/sent. Always fetched
+ * fresh (never cached client-side): it reflects payments recorded from
+ * anywhere in the app, not just this tab.
+ */
+export async function fetchTodayEstimate(): Promise<TodayEstimate> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/estimate/today`, { cache: "no-store" });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch today's estimate (${response.status})`);
+  }
+
+  return response.json();
+}
+
 /**
  * Invoices from the last 30 days that aren't drafts — fetched all at once
  * (no pagination/lazy loading), for the Drafts tab's "Previous Transactions" view.

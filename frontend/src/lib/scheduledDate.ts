@@ -26,20 +26,6 @@ function fromISODate(dateStr: string): Date {
   return new Date(year, month - 1, day);
 }
 
-const SCHEDULE_DAY_CUTOFF_HOUR = 4;
-
-/**
- * Today's date (YYYY-MM-DD, local) for "which day are we operating in"
- * purposes, e.g. the estimated-amount-for-the-day total: before 4am it's
- * still yesterday, since the day's drafts/deliveries haven't started yet.
- */
-export function scheduleDayISODate(from: Date = new Date()): string {
-  const shifted = new Date(from);
-  if (from.getHours() < SCHEDULE_DAY_CUTOFF_HOUR) {
-    shifted.setDate(shifted.getDate() - 1);
-  }
-  return toISODate(shifted);
-}
 
 /** Builds the next 7 days of pickable schedule options, starting today, labeled Today/Tomorrow/weekday. */
 export function buildScheduleOptions(from: Date = new Date()): ScheduleOption[] {

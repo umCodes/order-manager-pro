@@ -8,6 +8,7 @@ import {
 import { sendPaymentNotification } from '../../services/whatsapp/notifications.js';
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
+import { addToCollectedToday } from '../../services/dailyTotals.js';
 
 /**
  * Records a payment against the customer as a whole, spread across their open
@@ -27,6 +28,7 @@ export async function payCustomerBalance(req: Request, res: Response){
         if(!amount) throw new Error("Amount not provided")
 
         const payment = await recordCustomerPayment(access_token, id as string, amount, payment_mode)
+        await addToCollectedToday(Number(amount))
 
         let notified = false
         if (notify) {

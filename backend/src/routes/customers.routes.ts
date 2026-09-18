@@ -4,6 +4,7 @@ import {
     getCustomerById,
     createCustomer,
     updateCustomer,
+    setCustomerStatus,
     payCustomerBalance,
     getCustomerDraftInvoices,
     addCustomerContact,
@@ -18,6 +19,7 @@ customersRouter.get('/customers', getCustomers);
 customersRouter.post('/customers', createCustomer);
 customersRouter.get('/customers/:id', getCustomerById);
 customersRouter.put('/customers/:id', updateCustomer);
+customersRouter.patch('/customers/:id/status', setCustomerStatus);
 customersRouter.get('/customers/:id/invoices/drafts', getCustomerDraftInvoices);
 customersRouter.post('/customers/:id/payments', payCustomerBalance);
 customersRouter.post('/customers/:id/contacts', addCustomerContact);

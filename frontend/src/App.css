@@ -599,16 +599,6 @@
   color: var(--color-gray-500);
 }
 
-.filter-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.filter-columns .sort-row {
-  margin-bottom: 16px;
-}
-
 .draft-list {
   display: flex;
   flex-direction: column;

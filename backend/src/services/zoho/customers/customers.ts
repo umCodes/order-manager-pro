@@ -155,3 +155,22 @@ export async function ZohoUpdateCustomer(headers: string, customerId: string, pa
         throw error;
     }
 }
+
+/**
+ * Marks a customer active or inactive in Zoho (its own dedicated endpoints —
+ * not a field on the regular update payload). Zoho's response here doesn't
+ * carry the updated contact, so the caller gets back a fresh GET instead of
+ * this response.
+ */
+export async function ZohoSetCustomerStatus(headers: string, customerId: string, active: boolean){
+    try {
+        const response = await ZohoApi(`contacts/${customerId}/${active ? "active" : "inactive"}`, headers, "POST")
+        if (response.code !== 0) {
+            throw new Error(response.message || `Zoho rejected marking the contact ${active ? "active" : "inactive"}`);
+        }
+        return ZohoGetCustomerById(headers, customerId);
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}

@@ -18,19 +18,7 @@ import AddCustomerModal from "../components/AddCustomerModal";
 import type { Contact } from "../types";
 
 type StatusFilter = "all" | "outstanding" | "settled";
-
-const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "outstanding", label: "Outstanding" },
-  { key: "settled", label: "Settled" },
-];
-
 type ActiveFilter = "active" | "inactive";
-
-const ACTIVE_OPTIONS: { key: ActiveFilter; label: string }[] = [
-  { key: "active", label: "Active" },
-  { key: "inactive", label: "Inactive" },
-];
 
 type SortKey = "name" | "balance";
 
@@ -58,6 +46,15 @@ export default function CustomersPage({
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("balance", "desc");
+
+  // "All" and "Active" are the implicit defaults — toggling one of the pills
+  // below switches to it, tapping the already-active one switches back off.
+  function toggleStatusFilter(target: Exclude<StatusFilter, "all">) {
+    setStatusFilter((prev) => (prev === target ? "all" : target));
+  }
+  function toggleActiveFilter() {
+    setActiveFilter((prev) => (prev === "inactive" ? "active" : "inactive"));
+  }
 
   const loadCustomers = useCallback((options?: { force?: boolean }) => {
     return fetchCustomers(options).then(setCustomers).catch(() => setCustomers([]));
@@ -124,32 +121,30 @@ export default function CustomersPage({
         />
       </div>
 
-      <div className="filter-columns">
-        <div className="sort-row">
-          {STATUS_OPTIONS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={`pill${statusFilter === key ? " pill--active" : ""}`}
-              onClick={() => setStatusFilter(key)}
-            >
-              {label}
-            </button>
-          ))}
+      <div className="sort-row sort-row--with-count">
+        <div className="sort-row__pills">
+          <button
+            type="button"
+            className={`pill${statusFilter === "outstanding" ? " pill--active" : ""}`}
+            onClick={() => toggleStatusFilter("outstanding")}
+          >
+            Outstanding
+          </button>
+          <button
+            type="button"
+            className={`pill${statusFilter === "settled" ? " pill--active" : ""}`}
+            onClick={() => toggleStatusFilter("settled")}
+          >
+            Settled
+          </button>
         </div>
-
-        <div className="sort-row">
-          {ACTIVE_OPTIONS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={`pill${activeFilter === key ? " pill--active" : ""}`}
-              onClick={() => setActiveFilter(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className={`pill${activeFilter === "inactive" ? " pill--active" : ""}`}
+          onClick={toggleActiveFilter}
+        >
+          Inactive
+        </button>
       </div>
 
       <SortRow

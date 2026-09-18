@@ -119,6 +119,29 @@ export async function updateCustomer(customerId: string, payload: CreateCustomer
   return data.customer;
 }
 
+/** Marks a customer active or inactive. */
+export async function setCustomerActive(customerId: string, active: boolean): Promise<Contact> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ active }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to update customer status (${response.status})`);
+  }
+
+  const data = await response.json();
+  // The customer list (fetchCustomers) is cached and has no other way to learn
+  // its active/inactive filter just went stale, so drop it here rather than
+  // leaving it to whichever page happens to show the list next.
+  invalidateCache("customers");
+  return data.customer;
+}
+
 /** customfield_id for the "preferred_language" custom field on contacts, in this Zoho org. */
 export const PREFERRED_LANGUAGE_CUSTOMFIELD_ID = "4645478000004349196";
 

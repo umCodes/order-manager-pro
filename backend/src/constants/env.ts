@@ -50,3 +50,5 @@ export const ENV = {
 // FRONTEND_URL is only required in production, not on every request.
 export const IS_PRODUCTION = process.env.NODE_ENV === "production";
 export const FRONTEND_URL = process.env.FRONTEND_URL;
+/** Origin of the standalone customer-manager app (see /customer-manager) — optional, only needed in production if that app is deployed. */
+export const CUSTOMER_MANAGER_URL = process.env.CUSTOMER_MANAGER_URL;

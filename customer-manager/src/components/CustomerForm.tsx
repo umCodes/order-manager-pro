@@ -62,6 +62,7 @@ export default function CustomerForm({ customer, customers, onBack, onSaved }: P
   const [city, setCity] = useState(existingAddress.city || SAUDI_CITIES[0]);
   const [district, setDistrict] = useState(existingAddress.district);
   const [street, setStreet] = useState(existingAddress.street);
+  const [locationLink, setLocationLink] = useState(existingAddress.locationLink);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +99,12 @@ export default function CustomerForm({ customer, customers, onBack, onSaved }: P
       customer_sub_type: customerType,
       preferred_language: preferredLanguage,
       business_type: businessType,
-      address: { city: city.trim(), district: district.trim(), street: street.trim() },
+      address: {
+        city: city.trim(),
+        district: district.trim(),
+        street: street.trim(),
+        location_link: locationLink.trim(),
+      },
       contact_persons: [{ first_name: contactName.trim(), phone: phone.trim() }],
     };
 
@@ -263,6 +269,32 @@ export default function CustomerForm({ customer, customers, onBack, onSaved }: P
               Street
             </label>
             <input id="street" type="text" className="input" value={street} onChange={(e) => setStreet(e.target.value)} />
+          </div>
+
+          <div className="field">
+            <div className="field-label-row">
+              <label className="field-label" htmlFor="location-link">
+                Location link
+              </label>
+              {locationLink.trim() && (
+                <a
+                  href={locationLink.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="field-label-row__action"
+                >
+                  Open
+                </a>
+              )}
+            </div>
+            <input
+              id="location-link"
+              type="url"
+              className="input"
+              placeholder="Paste a Google Maps link"
+              value={locationLink}
+              onChange={(e) => setLocationLink(e.target.value)}
+            />
           </div>
         </div>
       </div>

@@ -97,17 +97,33 @@ export const RIYADH_DISTRICTS: string[] = [
   "Utaiqah",
 ];
 
-export type CustomerAddress = { city: string; district: string; street: string };
+export type CustomerAddress = { city: string; district: string; street: string; locationLink: string };
 
-/** Joins the three address parts into the single string stored in Zoho's "address" custom field. */
-export function formatAddress({ city, district, street }: CustomerAddress): string {
-  return [city, district, street].map((part) => part.trim()).join(", ");
+/**
+ * Joins the address parts into the single string stored in Zoho's "address"
+ * custom field: "city, district, street" plus, when set, a 4th part with the
+ * Google Maps link. The link is appended whole (never split), so it's free
+ * to contain its own commas (e.g. coordinate query params) — see
+ * parseAddress for the matching reconstruction.
+ */
+export function formatAddress({ city, district, street, locationLink }: CustomerAddress): string {
+  const parts = [city, district, street].map((part) => part.trim());
+  if (locationLink.trim()) parts.push(locationLink.trim());
+  return parts.join(", ");
 }
 
-/** Splits a stored "city, district, street" string back into its parts. Missing parts come back as "". */
+/**
+ * Splits a stored "city, district, street[, locationLink]" string back into
+ * its parts. Missing parts come back as "". Only the first three commas are
+ * treated as separators — everything after them is rejoined as
+ * locationLink, so a Google Maps link containing its own commas round-trips
+ * intact instead of being chopped up.
+ */
 export function parseAddress(value: string | undefined): CustomerAddress {
-  const [city = "", district = "", street = ""] = (value ?? "").split(",").map((part) => part.trim());
-  return { city, district, street };
+  const parts = (value ?? "").split(",").map((part) => part.trim());
+  const [city = "", district = "", street = ""] = parts;
+  const locationLink = parts.slice(3).join(",");
+  return { city, district, street, locationLink };
 }
 
 /**

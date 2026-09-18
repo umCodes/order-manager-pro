@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { fetchDraftInvoices, fetchInvoiceByIdCached, fetchRecentInvoices, invoiceCacheKey } from "../lib/api";
+import {
+  fetchDraftInvoices,
+  fetchInvoiceByIdCached,
+  fetchRecentInvoices,
+  fetchTodayEstimate,
+  invoiceCacheKey,
+  type TodayEstimate,
+} from "../lib/api";
 import { invalidateCache } from "../lib/requestCache";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
-import { describeScheduledDay, scheduleDayISODate } from "../lib/scheduledDate";
+import { describeScheduledDay } from "../lib/scheduledDate";
 import { formatInvoicesForCopy } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import ResendButton from "../components/ResendButton";
@@ -62,6 +69,7 @@ export default function DraftsPage({
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("drafts");
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
+  const [todayEstimate, setTodayEstimate] = useState<TodayEstimate | null>(null);
   const [previousTransactions, setPreviousTransactions] = useState<DraftInvoice[]>([]);
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(true);
   const [previousError, setPreviousError] = useState<string | null>(null);
@@ -71,6 +79,14 @@ export default function DraftsPage({
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
     return fetchDraftInvoices(options).then(setDrafts).catch(() => setDrafts([]));
+  }, []);
+
+  // Server-computed (and Redis-cached) so it never shrinks within the same
+  // business day just because a draft got paid/sent — see fetchTodayEstimate.
+  // Always refetched fresh: it reflects payments recorded anywhere in the
+  // app, not just from this tab.
+  const loadTodayEstimate = useCallback(() => {
+    return fetchTodayEstimate().then(setTodayEstimate).catch(() => {});
   }, []);
 
   const loadPreviousTransactions = useCallback(() => {
@@ -85,13 +101,14 @@ export default function DraftsPage({
 
   function refreshDrafts() {
     for (const draft of drafts) invalidateCache(invoiceCacheKey(draft.invoice_id));
-    return loadDrafts({ force: true });
+    return Promise.all([loadDrafts({ force: true }), loadTodayEstimate()]);
   }
 
   useEffect(() => {
     loadDrafts();
+    loadTodayEstimate();
     loadPreviousTransactions();
-  }, [loadDrafts, loadPreviousTransactions]);
+  }, [loadDrafts, loadTodayEstimate, loadPreviousTransactions]);
 
   function handleResent(invoiceId: string, date: string) {
     setDrafts((prev) =>
@@ -102,12 +119,6 @@ export default function DraftsPage({
   const direction = sortDirection === "asc" ? 1 : -1;
 
   const sortedDrafts = useMemo(() => sortInvoices(drafts, sortKey, direction), [drafts, sortKey, direction]);
-
-  const estimatedTotalToday = useMemo(() => {
-    const todayStr = scheduleDayISODate();
-    const draftsToday = drafts.filter((d) => d.date === todayStr);
-    return { amount: draftsToday.reduce((sum, d) => sum + d.total, 0), count: draftsToday.length };
-  }, [drafts]);
 
   const filteredPreviousTransactions = useMemo(() => {
     const q = previousQuery.trim().toLowerCase();
@@ -164,10 +175,14 @@ export default function DraftsPage({
 
       {viewMode === "drafts" ? (
         <>
-          <p className="estimate-line">
-            Estimated for today: <strong>{currency(estimatedTotalToday.amount)}</strong> from{" "}
-            {estimatedTotalToday.count} draft{estimatedTotalToday.count === 1 ? "" : "s"}
-          </p>
+          {todayEstimate && (
+            <p className="estimate-line">
+              Estimated for today: <strong>{currency(todayEstimate.estimatedTotal)}</strong> from{" "}
+              {todayEstimate.draftCountToday} draft{todayEstimate.draftCountToday === 1 ? "" : "s"}
+              {" · "}
+              Collected so far: <strong>{currency(todayEstimate.collectedToday)}</strong>
+            </p>
+          )}
 
           <p className="page-subtitle">
             {drafts.length} draft{drafts.length === 1 ? "" : "s"}

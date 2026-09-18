@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createInvoice,
   getDraftInvoices,
+  getTodayEstimate,
   getRecentInvoices,
   updateInvoiceDate,
   updateInvoiceLineItems,
@@ -18,6 +19,7 @@ import {
 export const invoicesRouter = Router();
 
 invoicesRouter.get("/invoices/drafts", getDraftInvoices);
+invoicesRouter.get("/invoices/estimate/today", getTodayEstimate);
 invoicesRouter.get("/invoices/recent", getRecentInvoices);
 invoicesRouter.get("/invoices/:id", getInvoiceById);
 invoicesRouter.get("/invoices/:id/pdf", getInvoicePdf);

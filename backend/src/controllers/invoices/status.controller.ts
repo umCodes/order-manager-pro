@@ -8,6 +8,7 @@ import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsap
 import { deleteInvoiceTelegramMessage } from "../../services/telegram/invoices/index.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { addToCollectedToday } from "../../services/dailyTotals.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -29,6 +30,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     const wasDraft = invoiceBeforePayment.status === "draft";
 
     const payment = await recordInvoicePayment(access_token, id, amount, payment_mode, discount);
+    await addToCollectedToday(Number(amount));
 
     // A draft leaves "pending fulfillment" the moment any payment is recorded
     // against it, so its channel message no longer applies.

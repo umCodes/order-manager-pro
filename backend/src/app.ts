@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { FRONTEND_URL, IS_PRODUCTION } from "./constants/env.js";
+import { CUSTOMER_MANAGER_URL, FRONTEND_URL, IS_PRODUCTION } from "./constants/env.js";
 import { refreshZohoToken, validateEnv } from "./middlewares/index.js";
 import { apiRouters, waWebhookRouter } from "./routes/index.js";
 
@@ -20,7 +20,7 @@ export function createApp() {
     app.use(express.json());
     app.use(cors({
         origin: IS_PRODUCTION
-            ? FRONTEND_URL
+            ? [FRONTEND_URL, CUSTOMER_MANAGER_URL].filter((url): url is string => !!url)
             : [/^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/, /^http:\/\/localhost:\d+$/]
     }));
 

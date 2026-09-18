@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Coffee, ExternalLink, MapPin, Search, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { Coffee, MapPin, Search, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomers,
   getRawContactPreferredLanguage,
@@ -171,7 +171,7 @@ export default function CustomersPage({
             // Only flag a missing language if the list response actually carries
             // custom_fields at all — otherwise every customer would falsely show as missing.
             const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
-            const { city, district, locationLink } = parseAddress(getRawContactAddress(c));
+            const { city, district } = parseAddress(getRawContactAddress(c));
             const businessType = getRawContactBusinessType(c);
             const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
             return (
@@ -202,7 +202,7 @@ export default function CustomersPage({
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="draft-card__company">{c.company_name}</div>
                 )}
-                {(district || city || businessType || locationLink) && (
+                {(district || city || businessType) && (
                   <div className="customer-card__tags">
                     {(district || city) && (
                       <span className="location-chip">
@@ -227,18 +227,6 @@ export default function CustomersPage({
                         <BusinessTypeIcon size={11} />
                         {businessType}
                       </span>
-                    )}
-                    {locationLink && (
-                      <a
-                        href={locationLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="maps-link-icon"
-                        title="Open in Google Maps"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink size={12} />
-                      </a>
                     )}
                   </div>
                 )}

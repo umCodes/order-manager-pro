@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Coffee, ExternalLink, MapPin, Pencil, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Coffee, ExternalLink, MapPin, Pencil, ShoppingBasket, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
@@ -8,6 +8,7 @@ import {
   updateCustomerContact,
   deleteCustomerContact,
   markCustomerContactPrimary,
+  setCustomerActive,
   getRawContactAddress,
   getRawContactBusinessType,
   getRawContactPreferredLanguage,
@@ -65,6 +66,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [isSavingContact, setIsSavingContact] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +161,16 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       .finally(() => setIsSavingContact(false));
   }
 
+  function handleToggleStatus() {
+    if (!customer || isTogglingStatus) return;
+    setIsTogglingStatus(true);
+    setStatusError(null);
+    setCustomerActive(customer.contact_id, customer.status !== "active")
+      .then(setCustomer)
+      .catch((e) => setStatusError(e instanceof Error ? e.message : "Failed to update customer status"))
+      .finally(() => setIsTogglingStatus(false));
+  }
+
   const contacts = customer ? getContactList(customer) : [];
   const { city, district, street, locationLink } = parseAddress(customer ? getRawContactAddress(customer) : undefined);
   const businessType = customer ? getRawContactBusinessType(customer) : undefined;
@@ -176,6 +189,16 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             <button
               type="button"
               className="icon-btn"
+              onClick={handleToggleStatus}
+              disabled={isTogglingStatus}
+              aria-label={customer.status === "active" ? "Mark inactive" : "Mark active"}
+              title={customer.status === "active" ? "Mark inactive" : "Mark active"}
+            >
+              {customer.status === "active" ? <UserX size={16} /> : <UserCheck size={16} />}
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
               onClick={() => setIsEditCustomerOpen(true)}
               aria-label="Edit customer"
               title="Edit customer"
@@ -187,6 +210,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+      {statusError && <div className="form-error">{statusError}</div>}
 
       {!customer && !error && <div className="items-area__empty">Loading...</div>}
 
@@ -194,6 +218,9 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         <>
           <div className="invoice-details__customer">
             {customer.contact_name || customer.company_name}
+            {customer.status !== "active" && (
+              <span className="badge customer-card__inactive-badge">inactive</span>
+            )}
           </div>
 
           <div className="invoice-details__summary">

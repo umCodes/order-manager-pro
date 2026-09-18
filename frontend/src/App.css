@@ -45,6 +45,31 @@
   overflow-y: auto;
 }
 
+/*
+ * Detail views (customer/invoice) render as an overlay on top of the tab
+ * content instead of replacing it, so the tab underneath — its scroll
+ * position, search text, filters — is still there when the overlay closes.
+ * Positioned/centered the same way as .tab-bar, since both need to sit above
+ * a possibly-wider viewport while staying pinned to the app's own column.
+ */
+.detail-overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-max-width);
+  z-index: 40;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-overlay--invoice {
+  z-index: 41;
+}
+
 /* Page */
 
 .page-title {
@@ -599,14 +624,81 @@
   color: var(--color-gray-500);
 }
 
-.filter-columns {
+.sort-select-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select--sort {
+  width: auto;
+  min-width: 150px;
+  padding: 8px 30px 8px 12px;
+  font-size: 14px;
+}
+
+/* Customers: collapsible advanced filters (business type / city / district / missing info) */
+
+.filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gray-600);
+  cursor: pointer;
+}
+
+.filters-toggle__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-gray-900);
+  color: var(--color-white);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.filters-toggle__chevron {
+  transition: transform 0.15s ease;
+}
+
+.filters-toggle--open .filters-toggle__chevron {
+  transform: rotate(180deg);
+}
+
+.filters-panel {
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.filters-panel .field {
+  margin-bottom: 14px;
+}
+
+.filters-panel .field:last-child {
+  margin-bottom: 0;
+}
+
+.filters-panel__row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
-.filter-columns .sort-row {
-  margin-bottom: 16px;
+.filters-panel__row .field {
+  margin-bottom: 0;
 }
 
 .draft-list {

@@ -78,7 +78,7 @@ export type CreateCustomerPayload = {
   customer_sub_type: CustomerType;
   preferred_language: PreferredLanguage;
   business_type: BusinessType;
-  address: { city: string; district: string; street: string };
+  address: { city: string; district: string; street: string; location_link: string };
   /** Zoho stores phone on the contact person, not the contact itself. */
   contact_persons: { first_name: string; phone: string }[];
 };

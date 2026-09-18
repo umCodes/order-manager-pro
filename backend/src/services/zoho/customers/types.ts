@@ -7,6 +7,8 @@ export type CustomerAddress = {
     city: string;
     district: string;
     street: string;
+    /** Google Maps link to the customer's location, stored as a 4th comma-separated part of the "address" custom field. */
+    location_link?: string;
 };
 
 /** Payload for creating or updating a customer. */

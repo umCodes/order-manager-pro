@@ -34,11 +34,14 @@ function parseOptionalBusinessFields(body: any): { business_type?: BusinessType;
     }
 
     if (address !== undefined && address !== null) {
-        const { city, district, street } = address ?? {};
+        const { city, district, street, location_link } = address ?? {};
         if (typeof city !== "string" || typeof district !== "string" || typeof street !== "string") {
             throw new Error("address must include city, district, and street")
         }
-        result.address = { city, district, street };
+        if (location_link !== undefined && location_link !== null && typeof location_link !== "string") {
+            throw new Error("address.location_link must be a string")
+        }
+        result.address = { city, district, street, ...(location_link && { location_link }) };
     }
 
     return result;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Coffee, MapPin, Pencil, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Coffee, ExternalLink, MapPin, Pencil, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
@@ -159,7 +159,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   }
 
   const contacts = customer ? getContactList(customer) : [];
-  const { city, district, street } = parseAddress(customer ? getRawContactAddress(customer) : undefined);
+  const { city, district, street, locationLink } = parseAddress(customer ? getRawContactAddress(customer) : undefined);
   const businessType = customer ? getRawContactBusinessType(customer) : undefined;
   const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
   const preferredLanguage = customer ? getRawContactPreferredLanguage(customer) : undefined;
@@ -201,7 +201,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
               {customer.company_name && customer.company_name !== customer.contact_name && (
                 <div className="invoice-details__summary-row">{customer.company_name}</div>
               )}
-              {(district || city || businessType) && (
+              {(district || city || businessType || locationLink) && (
                 <div className="customer-card__tags">
                   {(district || city) && (
                     <span className="location-chip">
@@ -226,6 +226,17 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                       <BusinessTypeIcon size={11} />
                       {businessType}
                     </span>
+                  )}
+                  {locationLink && (
+                    <a
+                      href={locationLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="maps-link-icon"
+                      title="Open in Google Maps"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
                   )}
                 </div>
               )}

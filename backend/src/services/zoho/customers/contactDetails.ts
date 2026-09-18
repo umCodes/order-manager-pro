@@ -78,13 +78,22 @@ export function getContactBusinessType(contact: any): BusinessType | undefined {
     return BUSINESS_TYPES.includes(value) ? value : undefined
 }
 
-/** Reads and splits the "address" custom field ("city, district, street") off a fetched Zoho contact, or undefined if unset/not configured. */
+/**
+ * Reads and splits the "address" custom field ("city, district, street" plus
+ * an optional 4th "location_link" part) off a fetched Zoho contact, or
+ * undefined if unset/not configured. Only the first three commas are treated
+ * as separators — everything after them is rejoined as location_link, so a
+ * Google Maps link containing its own commas (e.g. coordinates) round-trips
+ * intact instead of being chopped up.
+ */
 export function getContactAddress(contact: any): CustomerAddress | undefined {
     if (!ADDRESS_CUSTOMFIELD_ID) return undefined
     const field = contact?.custom_fields?.find(
         (cf: any) => String(cf.customfield_id ?? cf.field_id) === ADDRESS_CUSTOMFIELD_ID,
     )
     if (typeof field?.value !== "string" || !field.value) return undefined
-    const [city = "", district = "", street = ""] = field.value.split(",").map((part: string) => part.trim())
-    return { city, district, street }
+    const parts = field.value.split(",").map((part: string) => part.trim())
+    const [city = "", district = "", street = ""] = parts
+    const location_link = parts.slice(3).join(",")
+    return { city, district, street, ...(location_link && { location_link }) }
 }

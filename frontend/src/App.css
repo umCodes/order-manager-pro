@@ -928,6 +928,11 @@
   color: var(--color-gray-700);
 }
 
+.invoice-details__summary-row--muted {
+  font-size: 12.5px;
+  color: var(--color-gray-400);
+}
+
 .invoice-details__summary-row--date {
   display: flex;
   align-items: center;

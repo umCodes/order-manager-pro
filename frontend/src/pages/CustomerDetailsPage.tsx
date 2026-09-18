@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Pencil, UserPlus } from "lucide-react";
+import { ArrowLeft, Coffee, MapPin, Pencil, ShoppingBasket, UserPlus, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
@@ -8,7 +8,12 @@ import {
   updateCustomerContact,
   deleteCustomerContact,
   markCustomerContactPrimary,
+  getRawContactAddress,
+  getRawContactBusinessType,
+  getRawContactPreferredLanguage,
+  type BusinessType,
 } from "../lib/api";
+import { parseAddress } from "../lib/address";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import { getContactList, LEGACY_CONTACT_ID } from "../lib/contacts";
@@ -24,6 +29,19 @@ type Props = {
   customerId: string;
   onBack: () => void;
   onSelectInvoice: (invoiceId: string) => void;
+};
+
+/** Icon per business type, matching the customer list's business-type chip. */
+const BUSINESS_TYPE_ICON: Record<BusinessType, LucideIcon> = {
+  Grocery: ShoppingBasket,
+  Restaurant: UtensilsCrossed,
+  Roastry: Coffee,
+};
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  am: "Amharic",
+  ar: "Arabic",
+  en: "English",
 };
 
 /**
@@ -141,6 +159,11 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   }
 
   const contacts = customer ? getContactList(customer) : [];
+  const { city, district, street } = parseAddress(customer ? getRawContactAddress(customer) : undefined);
+  const businessType = customer ? getRawContactBusinessType(customer) : undefined;
+  const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
+  const preferredLanguage = customer ? getRawContactPreferredLanguage(customer) : undefined;
+  const languageLabel = preferredLanguage ? LANGUAGE_LABELS[preferredLanguage] : undefined;
 
   return (
     <div className="invoice-details">
@@ -177,6 +200,46 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             <div className="invoice-details__summary-left">
               {customer.company_name && customer.company_name !== customer.contact_name && (
                 <div className="invoice-details__summary-row">{customer.company_name}</div>
+              )}
+              {(district || city || businessType) && (
+                <div className="customer-card__tags">
+                  {(district || city) && (
+                    <span className="location-chip">
+                      <MapPin className="location-chip__icon" size={11} />
+                      {district ? (
+                        <>
+                          <span className="location-chip__district">{district}</span>
+                          {city && (
+                            <>
+                              <span className="location-chip__divider">·</span>
+                              <span className="location-chip__city">{city}</span>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="location-chip__district">{city}</span>
+                      )}
+                    </span>
+                  )}
+                  {businessType && BusinessTypeIcon && (
+                    <span className={`business-type-chip business-type-chip--${businessType.toLowerCase()}`}>
+                      <BusinessTypeIcon size={11} />
+                      {businessType}
+                    </span>
+                  )}
+                </div>
+              )}
+              {street && <div className="invoice-details__summary-row">{street}</div>}
+              {(customer.customer_sub_type || languageLabel) && (
+                <div className="invoice-details__summary-row invoice-details__summary-row--muted">
+                  {[
+                    customer.customer_sub_type &&
+                      customer.customer_sub_type[0].toUpperCase() + customer.customer_sub_type.slice(1),
+                    languageLabel,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
               )}
             </div>
           </div>

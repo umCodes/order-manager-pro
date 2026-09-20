@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import {
-  ZohoAddInvoiceComment,
   ZohoGetInvoiceById,
   ZohoUpdateInvoice,
   splitInvoiceToSelectedItems,
@@ -15,19 +14,6 @@ import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 
 /**
- * Edits below a "sent" invoice (anything past draft) are exceptional — the
- * customer may already have this invoice in hand — so a non-empty reason is
- * required and recorded as a Zoho comment. A draft edit needs neither.
- */
-function requireReasonIfSent(status: string, reason: unknown): string {
-  const trimmed = typeof reason === "string" ? reason.trim() : "";
-  if (status !== "draft" && !trimmed) {
-    throw new Error("A reason is required when updating a sent invoice");
-  }
-  return trimmed;
-}
-
-/**
  * Reschedules an invoice and edits its existing channel message in place, so
  * the team sees the new day on the original message rather than a duplicate.
  * An empty date resets it to today. When the message couldn't be edited a
@@ -36,17 +22,16 @@ function requireReasonIfSent(status: string, reason: unknown): string {
 export async function updateInvoiceDate(req: Request, res: Response) {
   const id  = req.params.id as string;
   const date = req.body.date;
+  const reason = req.body.reason;
 
   try {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
 
-    const existing = await ZohoGetInvoiceById(access_token, id);
-    const wasSent = existing.status !== "draft";
-    const reason = requireReasonIfSent(existing.status, req.body.reason);
-
-    await ZohoUpdateInvoice(access_token, id, { date: date || todayInBusinessTimezone() });
-    if (wasSent) await ZohoAddInvoiceComment(access_token, id, `Date changed: ${reason}`);
+    await ZohoUpdateInvoice(access_token, id, {
+      date: date || todayInBusinessTimezone(),
+      ...(reason ? { reason } : {}),
+    });
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     if (!date) invoice.date = undefined
@@ -79,8 +64,8 @@ export async function updateInvoiceDate(req: Request, res: Response) {
  * replaces the entire line_items array, so callers must always send the full
  * current set of line items, not just the edited ones. Deliberately has no
  * Telegram/Redis side effects, unlike createInvoice's update path — this is a
- * quiet correction, not a re-send. If the invoice is already sent, a `reason`
- * is required and logged as a Zoho comment.
+ * quiet correction, not a re-send. `reason` is forwarded to Zoho, which
+ * requires it once the invoice is no longer a draft.
  */
 export async function updateInvoiceLineItems(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -89,14 +74,10 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
 
-    const { line_items, reason: rawReason } = req.body ?? {};
+    const { line_items, reason } = req.body ?? {};
     if (!Array.isArray(line_items) || line_items.length === 0) {
       throw new Error("line_items (non-empty array) is required");
     }
-
-    const existing = await ZohoGetInvoiceById(access_token, id);
-    const wasSent = existing.status !== "draft";
-    const reason = requireReasonIfSent(existing.status, rawReason);
 
     const zohoLineItems = line_items.map((item: any) => ({
       item_id: item.item_id,
@@ -106,8 +87,10 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
       unit: item.unit,
     }));
 
-    const invoice = await ZohoUpdateInvoice(access_token, id, { line_items: zohoLineItems });
-    if (wasSent) await ZohoAddInvoiceComment(access_token, id, `Line items changed: ${reason}`);
+    const invoice = await ZohoUpdateInvoice(access_token, id, {
+      line_items: zohoLineItems,
+      ...(reason ? { reason } : {}),
+    });
 
     res.status(200).json({ invoice });
   } catch (error) {
@@ -120,8 +103,8 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
 
 /**
  * Reassigns an invoice to a different customer, e.g. when it was created
- * against the wrong contact. If the invoice is already sent, a `reason` is
- * required and logged as a Zoho comment.
+ * against the wrong contact. `reason` is forwarded to Zoho, which requires
+ * it once the invoice is no longer a draft.
  */
 export async function updateInvoiceCustomer(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -130,15 +113,10 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice customer");
     if (!id) throw new Error("id not provided");
 
-    const { customer_id, reason: rawReason } = req.body ?? {};
+    const { customer_id, reason } = req.body ?? {};
     if (!customer_id) throw new Error("customer_id not provided");
 
-    const existing = await ZohoGetInvoiceById(access_token, id);
-    const wasSent = existing.status !== "draft";
-    const reason = requireReasonIfSent(existing.status, rawReason);
-
-    await ZohoUpdateInvoice(access_token, id, { customer_id });
-    if (wasSent) await ZohoAddInvoiceComment(access_token, id, `Customer changed: ${reason}`);
+    await ZohoUpdateInvoice(access_token, id, { customer_id, ...(reason ? { reason } : {}) });
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     res.status(200).json({ invoice });

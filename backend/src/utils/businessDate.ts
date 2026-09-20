@@ -19,6 +19,28 @@ export function daysAgoInBusinessTimezone(days: number): string {
   return formatInBusinessTimezone(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
 }
 
+/**
+ * One calendar month after today, as YYYY-MM-DD in the business's calendar —
+ * used as the invoice due date, i.e. the date Zoho marks an unpaid invoice
+ * "overdue". Clamps to the last day of the target month when today's day of
+ * month doesn't exist there (e.g. Jan 31 -> Feb 28/29, not Mar 3).
+ */
+export function oneMonthFromTodayInBusinessTimezone(): string {
+  const shifted = new Date(Date.now() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+
+  const daysInTargetMonth = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
+  const targetDay = Math.min(day, daysInTargetMonth);
+  const result = new Date(Date.UTC(year, month + 1, targetDay));
+
+  const resultYear = result.getUTCFullYear();
+  const resultMonth = String(result.getUTCMonth() + 1).padStart(2, "0");
+  const resultDay = String(result.getUTCDate()).padStart(2, "0");
+  return `${resultYear}-${resultMonth}-${resultDay}`;
+}
+
 function formatInBusinessTimezone(date: Date): string {
   const shifted = new Date(date.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   const year = shifted.getUTCFullYear();

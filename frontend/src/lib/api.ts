@@ -528,17 +528,22 @@ export type UpdateLineItemPayload = {
   unit: string;
 };
 
-/** Persists edited line items on an existing invoice. Must always include the full current set of line items. */
+/**
+ * Persists edited line items on an existing invoice. Must always include the
+ * full current set of line items. `reason` is required by the backend when
+ * the invoice is already sent (not a draft).
+ */
 export async function updateInvoiceLineItems(
   invoiceId: string,
   lineItems: UpdateLineItemPayload[],
+  reason?: string,
 ): Promise<InvoiceDetail> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/line-items`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ line_items: lineItems }),
+    body: JSON.stringify({ line_items: lineItems, ...(reason ? { reason } : {}) }),
   });
 
   if (!response.ok) {
@@ -550,14 +555,18 @@ export async function updateInvoiceLineItems(
   return data.invoice;
 }
 
-/** Reassigns a draft invoice to a different customer. */
-export async function updateInvoiceCustomer(invoiceId: string, customerId: string): Promise<InvoiceDetail> {
+/** Reassigns an invoice to a different customer. `reason` is required by the backend when the invoice is already sent. */
+export async function updateInvoiceCustomer(
+  invoiceId: string,
+  customerId: string,
+  reason?: string,
+): Promise<InvoiceDetail> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/customer`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ customer_id: customerId }),
+    body: JSON.stringify({ customer_id: customerId, ...(reason ? { reason } : {}) }),
   });
 
   if (!response.ok) {
@@ -673,13 +682,14 @@ export async function resendInvoiceNotification(
   return response.json();
 }
 
-export async function updateInvoiceDate(invoiceId: string, date: string) {
+/** `reason` is required by the backend when the invoice is already sent (not a draft). */
+export async function updateInvoiceDate(invoiceId: string, date: string, reason?: string) {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/date`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ date }),
+    body: JSON.stringify({ date, ...(reason ? { reason } : {}) }),
   });
 
   if (!response.ok) {

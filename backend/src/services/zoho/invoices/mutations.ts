@@ -32,6 +32,23 @@ export async function ZohoUpdateInvoice(headers: string, id: string, invoice_det
     }
 }
 
+/**
+ * Adds a comment to an invoice's activity timeline in Zoho — used to record
+ * why a sent invoice was edited after the fact, since Zoho doesn't otherwise
+ * track a reason for a PUT against an already-sent invoice.
+ */
+export async function ZohoAddInvoiceComment(headers: string, id: string, description: string){
+
+    try {
+        const response = await ZohoApi(`invoices/${id}/comments`, headers, "POST", { description })
+        if (!response.comment) throw new Error(response.message)
+        return response.comment;
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 /** Moves an invoice out of draft into "sent" status. */
 export async function ZohoMarkInvoiceAsSent(headers: string, id: string){
 

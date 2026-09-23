@@ -3,14 +3,9 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  Coffee,
-  MapPin,
   Search,
-  ShoppingBasket,
   SlidersHorizontal,
   UserPlus,
-  UtensilsCrossed,
-  type LucideIcon,
 } from "lucide-react";
 import {
   fetchCustomers,
@@ -26,6 +21,7 @@ import { useSortState } from "../hooks/useSortState";
 import ClickableCard from "../components/ClickableCard";
 import RefreshButton from "../components/RefreshButton";
 import AddCustomerModal from "../components/AddCustomerModal";
+import CustomerTags from "../components/CustomerTags";
 import type { Contact } from "../types";
 
 type StatusFilter = "all" | "outstanding" | "settled";
@@ -51,13 +47,6 @@ const DATA_FILTER_OPTIONS: { key: Exclude<DataFilter, "all">; label: string }[] 
   { key: "noBusinessType", label: "Unlabeled" },
   { key: "noLanguage", label: "No language" },
 ];
-
-/** Icon per business type, used on the customer list's business-type chip. */
-const BUSINESS_TYPE_ICON: Record<BusinessType, LucideIcon> = {
-  Grocery: ShoppingBasket,
-  Restaurant: UtensilsCrossed,
-  Roastry: Coffee,
-};
 
 /** Sorts values already ranked most-to-least common, falling back to alphabetical among ties. */
 function rankedOptions(customers: Contact[], pick: (c: Contact) => string | undefined): string[] {
@@ -392,9 +381,6 @@ export default function CustomersPage({
             // Only flag a missing language if the list response actually carries
             // custom_fields at all — otherwise every customer would falsely show as missing.
             const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
-            const { city, district } = parseAddress(getRawContactAddress(c));
-            const businessType = getRawContactBusinessType(c);
-            const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
             return (
               <ClickableCard
                 key={c.contact_id}
@@ -423,34 +409,7 @@ export default function CustomersPage({
                 {c.company_name && c.company_name !== c.contact_name && (
                   <div className="draft-card__company">{c.company_name}</div>
                 )}
-                {(district || city || businessType) && (
-                  <div className="customer-card__tags">
-                    {(district || city) && (
-                      <span className="location-chip">
-                        <MapPin className="location-chip__icon" size={11} />
-                        {district ? (
-                          <>
-                            <span className="location-chip__district">{district}</span>
-                            {city && (
-                              <>
-                                <span className="location-chip__divider">·</span>
-                                <span className="location-chip__city">{city}</span>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <span className="location-chip__district">{city}</span>
-                        )}
-                      </span>
-                    )}
-                    {businessType && BusinessTypeIcon && (
-                      <span className={`business-type-chip business-type-chip--${businessType.toLowerCase()}`}>
-                        <BusinessTypeIcon size={11} />
-                        {businessType}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <CustomerTags customer={c} />
                 <div className="draft-card__bottom">
                   <span className="draft-card__scheduled">
                     {contactNumber || "No contact number"}

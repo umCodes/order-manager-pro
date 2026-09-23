@@ -1,4 +1,5 @@
 import { ZohoApi } from "../client.js"
+import { getCache, setTTLCache } from "../../../utils/cache.js"
 import {
     ADDRESS_CUSTOMFIELD_ID,
     BUSINESS_TYPE_CUSTOMFIELD_ID,
@@ -58,6 +59,25 @@ export async function ZohoGetCustomers(headers: string){
         console.error(error);
         throw error;
     }
+}
+
+/** Customer list cache lifetime: 12h, invalidated eagerly on every write (see the write/contacts controllers). */
+const CUSTOMERS_CACHE_TTL_SECONDS = 43200;
+
+/**
+ * The full customer list, served from the in-memory "customers" cache when
+ * it's warm (one Zoho request to fill it otherwise). Shared by the customers
+ * list endpoint and anything that needs to look customers up in bulk — e.g.
+ * the drafts list attaching each customer's custom fields — so those never
+ * fall back to one request per customer.
+ */
+export async function ZohoGetCustomersCached(headers: string){
+    const cached = getCache("customers")
+    if (cached) return cached
+
+    const customers = await ZohoGetCustomers(headers)
+    setTTLCache("customers", customers, CUSTOMERS_CACHE_TTL_SECONDS)
+    return customers
 }
 
 /** Fetches one customer, including its contact_persons and custom fields. */

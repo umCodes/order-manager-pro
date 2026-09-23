@@ -4,6 +4,8 @@ export type ItemBreakdownEntry = {
   invoice_id: string | number;
   invoice_number: string;
   customer_name: string;
+  /** The source invoice's scheduled (invoice) date, so the frontend can group items by day. */
+  date: string;
   quantity: number;
   unit: string;
 };
@@ -34,6 +36,7 @@ export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
           invoice_id: inv.invoice_id,
           invoice_number: inv.invoice_number,
           customer_name: inv.customer_name,
+          date: inv.date,
         }))
       );
 
@@ -47,6 +50,7 @@ export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
         invoice_id: item.invoice_id,
         invoice_number: item.invoice_number,
         customer_name: item.customer_name,
+        date: item.date,
         quantity: item.quantity,
         unit: item.unit,
       };

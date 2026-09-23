@@ -61,3 +61,50 @@ export function describeScheduledDay(dateStr: string, from: Date = new Date()): 
 
   return { date: dateStr, label, formattedDate, isPast };
 }
+
+/**
+ * Where an unsent draft belongs on the calendar *today*: its own scheduled
+ * date, or — if that date has already passed (e.g. yesterday's delivery that
+ * never went out) — today, flagged as carried over. Display-only: the
+ * invoice's real date in Zoho is never touched.
+ */
+export function effectiveScheduledDate(dateStr: string, from: Date = new Date()): { date: string; isCarriedOver: boolean } {
+  const today = toISODate(from);
+  return dateStr < today ? { date: today, isCarriedOver: true } : { date: dateStr, isCarriedOver: false };
+}
+
+export type ScheduledDayGroup<T> = {
+  /** The effective day (YYYY-MM-DD), or null for entries with no scheduled date. */
+  date: string | null;
+  entries: { value: T; isCarriedOver: boolean }[];
+};
+
+/**
+ * Buckets entries by their effective scheduled day (see
+ * effectiveScheduledDate), earliest day first with undated entries last.
+ * Entries keep their incoming order within each day.
+ */
+export function groupByScheduledDay<T>(
+  values: T[],
+  getDate: (value: T) => string | null | undefined,
+  from: Date = new Date(),
+): ScheduledDayGroup<T>[] {
+  const groups = new Map<string | null, ScheduledDayGroup<T>>();
+
+  for (const value of values) {
+    const raw = getDate(value);
+    const { date, isCarriedOver } = raw ? effectiveScheduledDate(raw, from) : { date: null, isCarriedOver: false };
+    let group = groups.get(date);
+    if (!group) {
+      group = { date, entries: [] };
+      groups.set(date, group);
+    }
+    group.entries.push({ value, isCarriedOver });
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.date === null) return 1;
+    if (b.date === null) return -1;
+    return a.date.localeCompare(b.date);
+  });
+}

@@ -59,6 +59,9 @@ export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggle
           {item.breakdown.map((entry) => (
             <div key={entry.invoice_id} className="item-breakdown__row">
               <span className="item-breakdown__source">
+                {entry.isCarriedOver && (
+                  <span className="draft-card__overdue-dot" aria-label="Past due" title="Past due — carried over from an earlier day" />
+                )}
                 {entry.customer_name} · {entry.invoice_number}
               </span>
               <span className="item-breakdown__quantity">

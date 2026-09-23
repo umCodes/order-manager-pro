@@ -11,7 +11,7 @@ import {
 import { invalidateCache } from "../lib/requestCache";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
-import { describeScheduledDay } from "../lib/scheduledDate";
+import { describeScheduledDay, groupByScheduledDay } from "../lib/scheduledDate";
 import { formatInvoicesForCopy } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import ResendButton from "../components/ResendButton";
@@ -19,6 +19,8 @@ import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
+import CustomerTags from "../components/CustomerTags";
+import DayGroupHeader from "../components/DayGroupHeader";
 import type { DraftInvoice } from "../types";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
@@ -120,6 +122,12 @@ export default function DraftsPage({
 
   const sortedDrafts = useMemo(() => sortInvoices(drafts, sortKey, direction), [drafts, sortKey, direction]);
 
+  // Sections by the day each draft is due to go out. A draft whose date has
+  // already passed but is still unsent is shown under today, flagged past
+  // due — its actual date in Zoho is left alone. The chosen sort applies
+  // within each day; the days themselves always run earliest first.
+  const draftDayGroups = useMemo(() => groupByScheduledDay(sortedDrafts, (d) => d.date), [sortedDrafts]);
+
   const filteredPreviousTransactions = useMemo(() => {
     const q = previousQuery.trim().toLowerCase();
     const filtered = previousTransactions.filter((inv) => {
@@ -135,7 +143,8 @@ export default function DraftsPage({
   }, [previousTransactions, previousQuery, statusFilter, sortKey, direction]);
 
   function copyText() {
-    return Promise.all(sortedDrafts.map((draft) => fetchInvoiceByIdCached(draft.invoice_id))).then(
+    const displayed = draftDayGroups.flatMap((group) => group.entries.map((entry) => entry.value));
+    return Promise.all(displayed.map((draft) => fetchInvoiceByIdCached(draft.invoice_id))).then(
       formatInvoicesForCopy,
     );
   }
@@ -190,42 +199,68 @@ export default function DraftsPage({
 
           <SortRow options={SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
 
-          <div className="draft-list">
-            {sortedDrafts.length === 0 ? (
+          {sortedDrafts.length === 0 ? (
+            <div className="draft-list">
               <div className="items-area__empty">No draft invoices</div>
-            ) : (
-              sortedDrafts.map((invoice) => {
-                const scheduled = invoice.date ? describeScheduledDay(invoice.date) : null;
-                return (
-                  <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
-                    <div className="draft-card__top">
-                      <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
-                      <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                        <span className="draft-card__status">{formatStatus(invoice.status)}</span>
-                        <ResendButton
-                          invoiceId={invoice.invoice_id}
-                          currentDate={invoice.date}
-                          onResent={(date) => handleResent(invoice.invoice_id, date)}
-                        />
-                      </div>
-                    </div>
-                    <div className="draft-card__company">{invoice.company_name || invoice.customer_name}</div>
-                    <div className="draft-card__bottom">
-                      {scheduled && (
-                        <span className="draft-card__scheduled">
-                          {scheduled.isPast && (
-                            <span className="draft-card__overdue-dot" aria-label="Overdue" title="Overdue" />
+            </div>
+          ) : (
+            draftDayGroups.map((group) => (
+              <section key={group.date ?? "unscheduled"} className="day-group">
+                <DayGroupHeader
+                  date={group.date}
+                  count={group.entries.length}
+                  noun="draft"
+                  carriedOverCount={group.entries.filter((e) => e.isCarriedOver).length}
+                />
+                <div className="draft-list">
+                  {group.entries.map(({ value: invoice, isCarriedOver }) => {
+                    const scheduled = invoice.date ? describeScheduledDay(invoice.date) : null;
+                    return (
+                      <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
+                        <div className="draft-card__top">
+                          <span className="draft-card__invoice-number">
+                            {invoice.invoice_number}
+                            {isCarriedOver && (
+                              <span
+                                className="badge badge--carried-over draft-card__carried-over"
+                                title="Scheduled for an earlier day but still unsent — carried over to today"
+                              >
+                                past due
+                              </span>
+                            )}
+                          </span>
+                          <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
+                            <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                            <ResendButton
+                              invoiceId={invoice.invoice_id}
+                              currentDate={invoice.date}
+                              onResent={(date) => handleResent(invoice.invoice_id, date)}
+                            />
+                          </div>
+                        </div>
+                        <div className="draft-card__company">{invoice.company_name || invoice.customer_name}</div>
+                        {invoice.customer_custom_fields && (
+                          <CustomerTags customer={{ custom_fields: invoice.customer_custom_fields }} />
+                        )}
+                        <div className="draft-card__bottom">
+                          {scheduled && (
+                            <span className="draft-card__scheduled">
+                              {scheduled.isPast && (
+                                <span className="draft-card__overdue-dot" aria-label="Overdue" title="Overdue" />
+                              )}
+                              {isCarriedOver ? "originally " : ""}
+                              {scheduled.label.toLowerCase()} {scheduled.formattedDate}
+                            </span>
                           )}
-                          {scheduled.label.toLowerCase()} {scheduled.formattedDate}
-                        </span>
-                      )}
-                      <span className="draft-card__total">{currency(invoice.total)}</span>
-                    </div>
-                  </ClickableCard>
-                );
-              })
-            )}
-          </div>
+                          <span className="draft-card__total">{currency(invoice.total)}</span>
+                        </div>
+                      </ClickableCard>
+                    );
+                  })}
+                </div>
+              </section>
+            ))
+          )}
         </>
       ) : (
         <>

@@ -29,14 +29,15 @@ export default function DayGroupHeader({
         {day && <span className="day-group__date">{day.formattedDate}</span>}
       </div>
       <div className="day-group__meta">
-        {carriedOverCount > 0 && (
-          <span className="badge badge--carried-over" title="Scheduled for an earlier day but still unsent">
-            {carriedOverCount} past due
-          </span>
-        )}
         <span className="day-group__count">
           {count} {noun}
           {count === 1 ? "" : "s"}
+          {carriedOverCount > 0 && (
+            <span className="day-group__past-due" title="Scheduled for an earlier day but still unsent">
+              {" · "}
+              {carriedOverCount} past due
+            </span>
+          )}
         </span>
         {actions}
       </div>

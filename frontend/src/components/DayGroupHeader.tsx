@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { describeScheduledDay } from "../lib/scheduledDate";
 
 /**
- * Section heading for one scheduled day in a day-grouped list ("Today ·
- * 23-9-2026", "Tomorrow · …", weekday otherwise), with a count and, when
+ * Section heading for one scheduled day in a day-grouped list ("Today
+ * 23-9", "Tomorrow …", weekday otherwise), with a count and, when
  * any entries were carried over from an earlier day, how many.
  */
 export default function DayGroupHeader({
@@ -26,7 +26,7 @@ export default function DayGroupHeader({
     <div className="day-group__header">
       <div className="day-group__title">
         <span className="day-group__label">{day ? day.label : "Unscheduled"}</span>
-        {day && <span className="day-group__date">{day.formattedDate}</span>}
+        {day && <span className="day-group__date">{day.shortDate}</span>}
       </div>
       <div className="day-group__meta">
         <span className="day-group__count">

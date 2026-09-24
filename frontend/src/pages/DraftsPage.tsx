@@ -21,7 +21,7 @@ import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
-import CustomerTags from "../components/CustomerTags";
+import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import type { DraftInvoice } from "../types";
 
@@ -286,6 +286,8 @@ export default function DraftsPage({
                 <div className="draft-list">
                   {group.entries.map(({ value: invoice, isCarriedOver }) => {
                     const scheduled = invoice.date ? describeScheduledDay(invoice.date) : null;
+                    const customerFields = { custom_fields: invoice.customer_custom_fields };
+                    const district = draftDistrict(invoice);
                     return (
                       <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
                         <div className="draft-card__top">
@@ -301,10 +303,9 @@ export default function DraftsPage({
                         </div>
                         <div className="draft-card__company draft-card__company--with-tags">
                           <span className="draft-card__company-name">{invoice.company_name || invoice.customer_name}</span>
-                          {invoice.customer_custom_fields && (
-                            <CustomerTags customer={{ custom_fields: invoice.customer_custom_fields }} compact />
-                          )}
+                          <BusinessTypeIcon customer={customerFields} />
                         </div>
+                        {district && <div className="draft-card__district">{district}</div>}
                         <div className="draft-card__bottom">
                           {/* The day section already names the date; only a past-due draft shows its own. */}
                           {isCarriedOver && scheduled ? (
@@ -313,7 +314,7 @@ export default function DraftsPage({
                               title={`Past due — originally scheduled ${scheduled.formattedDate}`}
                             >
                               <span className="draft-card__overdue-dot" aria-hidden="true" />
-                              {scheduled.label.toLowerCase()} {scheduled.formattedDate}
+                              {scheduled.label} {scheduled.shortDate}
                             </span>
                           ) : (
                             <span />

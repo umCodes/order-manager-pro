@@ -9,6 +9,8 @@ export type ScheduledDayInfo = {
   date: string;
   label: string;
   formattedDate: string;
+  /** Day-month without the year ("22-9"), for compact lists. */
+  shortDate: string;
   isPast: boolean;
 };
 
@@ -53,13 +55,14 @@ export function describeScheduledDay(dateStr: string, from: Date = new Date()): 
   const isTomorrow = date.toDateString() === tomorrow.toDateString();
   const label = isToday ? "Today" : isTomorrow ? "Tomorrow" : WEEKDAY_ABBR[date.getDay()];
 
-  const formattedDate = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
+  const shortDate = `${date.getDate()}-${date.getMonth() + 1}`;
+  const formattedDate = `${shortDate}-${date.getFullYear()}`;
 
   const startOfToday = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const isPast = startOfDate < startOfToday;
 
-  return { date: dateStr, label, formattedDate, isPast };
+  return { date: dateStr, label, formattedDate, shortDate, isPast };
 }
 
 /**

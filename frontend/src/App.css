@@ -893,33 +893,28 @@
   white-space: nowrap;
 }
 
-.customer-inline-tags {
+.business-type-icon {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
   flex-shrink: 0;
-}
-
-.customer-inline-tags__type {
-  display: inline-flex;
   color: var(--color-gray-400);
 }
 
-.customer-inline-tags__type--grocery {
+.business-type-icon--grocery {
   color: #047857;
 }
 
-.customer-inline-tags__type--restaurant {
+.business-type-icon--restaurant {
   color: #c2410c;
 }
 
-.customer-inline-tags__type--roastry {
+.business-type-icon--roastry {
   color: #78350f;
 }
 
-.customer-inline-tags__place {
+.draft-card__district {
   font-size: 12px;
   color: var(--color-gray-400);
+  margin: -4px 0 8px;
 }
 
 /* Day-grouped lists (Drafts, Items) */

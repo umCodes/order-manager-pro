@@ -54,6 +54,11 @@ export async function getDraftInvoices(req: Request, res: Response) {
  * number never drops within the same business day just because a draft got
  * paid/sent and left the draft list (see services/dailyTotals.ts) — plus
  * how much of it has actually been collected so far today.
+ *
+ * Also reports drafts dated before today that are still unsent ("past
+ * due" — the Drafts tab shows them under today), summed live on every
+ * request and deliberately kept out of the Redis high-water mark: they're
+ * leftovers from earlier days, not part of today's own schedule.
  */
 export async function getTodayEstimate(req: Request, res: Response) {
   try {
@@ -63,13 +68,21 @@ export async function getTodayEstimate(req: Request, res: Response) {
     const today = businessDayKey();
     const draftsToday = drafts.filter((d: any) => d.date === today);
     const freshTotal = draftsToday.reduce((sum: number, d: any) => sum + (d.total ?? 0), 0);
+    const draftsPastDue = drafts.filter((d: any) => d.date && d.date < today);
+    const pastDueTotal = draftsPastDue.reduce((sum: number, d: any) => sum + (d.total ?? 0), 0);
 
     const [estimatedTotal, collectedToday] = await Promise.all([
       reconcileDailyEstimate(freshTotal),
       getCollectedToday(),
     ]);
 
-    res.status(200).json({ estimatedTotal, collectedToday, draftCountToday: draftsToday.length });
+    res.status(200).json({
+      estimatedTotal,
+      collectedToday,
+      draftCountToday: draftsToday.length,
+      pastDueTotal,
+      pastDueCount: draftsPastDue.length,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({

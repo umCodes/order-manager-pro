@@ -10,6 +10,25 @@ const BUSINESS_TYPE_ICON: Record<BusinessType, LucideIcon> = {
 };
 
 /**
+ * A customer's business type as a bare colored icon (named on hover), for
+ * dense lists like the Drafts tab. Renders nothing when unset.
+ */
+export function BusinessTypeIcon({ customer }: { customer: CustomFieldsHolder }) {
+  const businessType = getRawContactBusinessType(customer);
+  if (!businessType) return null;
+  const Icon = BUSINESS_TYPE_ICON[businessType];
+  return (
+    <span
+      className={`business-type-icon business-type-icon--${businessType.toLowerCase()}`}
+      title={businessType}
+      aria-label={businessType}
+    >
+      <Icon size={13} />
+    </span>
+  );
+}
+
+/**
  * A customer's location (district · city) and business-type chips, read off
  * their custom fields. Renders nothing when neither is set.
  */

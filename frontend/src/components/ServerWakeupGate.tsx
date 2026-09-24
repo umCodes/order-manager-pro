@@ -56,7 +56,7 @@ export default function ServerWakeupGate({ children }: { children: ReactNode }) 
           <div className="server-wakeup__title">Loading…</div>
           {isSlow && (
             <div className="server-wakeup__subtitle">
-              The server is waking up — this usually takes 30–60 seconds, sometimes up to a minute.
+              Starting up, this can take up to a minute.
             </div>
           )}
         </>

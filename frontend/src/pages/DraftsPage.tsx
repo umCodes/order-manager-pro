@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import {
   fetchDraftInvoices,
   fetchInvoiceByIdCached,
   fetchRecentInvoices,
   fetchTodayEstimate,
+  getRawContactAddress,
   invoiceCacheKey,
   type TodayEstimate,
 } from "../lib/api";
 import { invalidateCache } from "../lib/requestCache";
+import { parseAddress } from "../lib/address";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import { describeScheduledDay, groupByScheduledDay } from "../lib/scheduledDate";
@@ -19,11 +21,12 @@ import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
-import CustomerTags from "../components/CustomerTags";
+import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import type { DraftInvoice } from "../types";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
+type DraftSortKey = Extract<SortKey, "invoice_number" | "customer">;
 type ViewMode = "drafts" | "previous";
 type StatusFilter = "all" | "paid" | "overdue" | "partially_paid";
 
@@ -33,6 +36,19 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "total", label: "Total" },
   { key: "scheduled", label: "Scheduled" },
 ];
+
+// Drafts are already sectioned by day, so only name/number sorts apply within each day.
+const DRAFT_SORT_OPTIONS: { key: DraftSortKey; label: string }[] = [
+  { key: "customer", label: "Customer" },
+  { key: "invoice_number", label: "Invoice #" },
+];
+
+const ALL_DISTRICTS = "all";
+
+/** A draft's customer district, from the custom fields attached by the drafts endpoint ("" if unknown). */
+function draftDistrict(draft: DraftInvoice): string {
+  return parseAddress(getRawContactAddress({ custom_fields: draft.customer_custom_fields })).district;
+}
 
 const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -78,6 +94,8 @@ export default function DraftsPage({
   const [previousQuery, setPreviousQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("scheduled");
+  const draftSort = useSortState<DraftSortKey>("customer");
+  const [districtFilter, setDistrictFilter] = useState(ALL_DISTRICTS);
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
     return fetchDraftInvoices(options).then(setDrafts).catch(() => setDrafts([]));
@@ -120,12 +138,29 @@ export default function DraftsPage({
 
   const direction = sortDirection === "asc" ? 1 : -1;
 
-  const sortedDrafts = useMemo(() => sortInvoices(drafts, sortKey, direction), [drafts, sortKey, direction]);
+  // Districts present among the current drafts, most drafts first, then alphabetical.
+  const districtOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const draft of drafts) {
+      const district = draftDistrict(draft);
+      if (district) counts.set(district, (counts.get(district) ?? 0) + 1);
+    }
+    return Array.from(counts.keys()).sort((a, b) => counts.get(b)! - counts.get(a)! || a.localeCompare(b));
+  }, [drafts]);
+
+  // Drop a stale selection (e.g. its last draft got sent) instead of showing an empty list.
+  const activeDistrict = districtOptions.includes(districtFilter) ? districtFilter : ALL_DISTRICTS;
+
+  const sortedDrafts = useMemo(() => {
+    const filtered =
+      activeDistrict === ALL_DISTRICTS ? drafts : drafts.filter((draft) => draftDistrict(draft) === activeDistrict);
+    return sortInvoices(filtered, draftSort.sortKey, draftSort.sortDirection === "asc" ? 1 : -1);
+  }, [drafts, activeDistrict, draftSort.sortKey, draftSort.sortDirection]);
 
   // Sections by the day each draft is due to go out. A draft whose date has
   // already passed but is still unsent is shown under today, flagged past
-  // due — its actual date in Zoho is left alone. The chosen sort applies
-  // within each day; the days themselves always run earliest first.
+  // due — its actual date in Zoho is left alone. The chosen sort (and
+  // district filter) apply within each day; days always run earliest first.
   const draftDayGroups = useMemo(() => groupByScheduledDay(sortedDrafts, (d) => d.date), [sortedDrafts]);
 
   const filteredPreviousTransactions = useMemo(() => {
@@ -185,23 +220,59 @@ export default function DraftsPage({
       {viewMode === "drafts" ? (
         <>
           {todayEstimate && (
-            <p className="estimate-line">
-              Estimated for today: <strong>{currency(todayEstimate.estimatedTotal)}</strong> from{" "}
-              {todayEstimate.draftCountToday} draft{todayEstimate.draftCountToday === 1 ? "" : "s"}
-              {" · "}
-              Collected so far: <strong>{currency(todayEstimate.collectedToday)}</strong>
-            </p>
+            // Today's total includes past-due drafts (they're shown under
+            // today), with that share called out in brackets.
+            <div className="estimate-line">
+              <div>
+                Today <strong>{currency(todayEstimate.estimatedTotal + (todayEstimate.pastDueTotal ?? 0))}</strong>
+                {!!todayEstimate.pastDueTotal && (
+                  <span className="estimate-line__past-due"> ({currency(todayEstimate.pastDueTotal)} past due)</span>
+                )}
+              </div>
+              <div>
+                Collected <strong>{currency(todayEstimate.collectedToday)}</strong>
+              </div>
+            </div>
           )}
 
           <p className="page-subtitle">
-            {drafts.length} draft{drafts.length === 1 ? "" : "s"}
+            {activeDistrict === ALL_DISTRICTS
+              ? `${drafts.length} draft${drafts.length === 1 ? "" : "s"}`
+              : `${sortedDrafts.length} of ${drafts.length} drafts`}
           </p>
 
-          <SortRow options={SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
+          <SortRow
+            options={DRAFT_SORT_OPTIONS}
+            activeKey={draftSort.sortKey}
+            direction={draftSort.sortDirection}
+            onToggle={draftSort.toggleSort}
+            trailing={
+              districtOptions.length > 0 ? (
+                <div className="select-wrap">
+                  <select
+                    className="select select--sort"
+                    value={activeDistrict}
+                    onChange={(e) => setDistrictFilter(e.target.value)}
+                    aria-label="Filter by district"
+                  >
+                    <option value={ALL_DISTRICTS}>All districts</option>
+                    {districtOptions.map((district) => (
+                      <option key={district} value={district}>
+                        {district}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="select-wrap__chevron" size={16} />
+                </div>
+              ) : undefined
+            }
+          />
 
           {sortedDrafts.length === 0 ? (
             <div className="draft-list">
-              <div className="items-area__empty">No draft invoices</div>
+              <div className="items-area__empty">
+                {drafts.length === 0 ? "No draft invoices" : "No drafts in this district"}
+              </div>
             </div>
           ) : (
             draftDayGroups.map((group) => (
@@ -215,20 +286,12 @@ export default function DraftsPage({
                 <div className="draft-list">
                   {group.entries.map(({ value: invoice, isCarriedOver }) => {
                     const scheduled = invoice.date ? describeScheduledDay(invoice.date) : null;
+                    const customerFields = { custom_fields: invoice.customer_custom_fields };
+                    const district = draftDistrict(invoice);
                     return (
                       <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
                         <div className="draft-card__top">
-                          <span className="draft-card__invoice-number">
-                            {invoice.invoice_number}
-                            {isCarriedOver && (
-                              <span
-                                className="badge badge--carried-over draft-card__carried-over"
-                                title="Scheduled for an earlier day but still unsent — carried over to today"
-                              >
-                                past due
-                              </span>
-                            )}
-                          </span>
+                          <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <ResendButton
@@ -238,19 +301,23 @@ export default function DraftsPage({
                             />
                           </div>
                         </div>
-                        <div className="draft-card__company">{invoice.company_name || invoice.customer_name}</div>
-                        {invoice.customer_custom_fields && (
-                          <CustomerTags customer={{ custom_fields: invoice.customer_custom_fields }} />
-                        )}
+                        <div className="draft-card__company draft-card__company--with-tags">
+                          <span className="draft-card__company-name">{invoice.company_name || invoice.customer_name}</span>
+                          <BusinessTypeIcon customer={customerFields} />
+                        </div>
+                        {district && <div className="draft-card__district">{district}</div>}
                         <div className="draft-card__bottom">
-                          {scheduled && (
-                            <span className="draft-card__scheduled">
-                              {scheduled.isPast && (
-                                <span className="draft-card__overdue-dot" aria-label="Overdue" title="Overdue" />
-                              )}
-                              {isCarriedOver ? "originally " : ""}
-                              {scheduled.label.toLowerCase()} {scheduled.formattedDate}
+                          {/* The day section already names the date; only a past-due draft shows its own. */}
+                          {isCarriedOver && scheduled ? (
+                            <span
+                              className="draft-card__scheduled draft-card__scheduled--past-due"
+                              title={`Past due — originally scheduled ${scheduled.formattedDate}`}
+                            >
+                              <span className="draft-card__overdue-dot" aria-hidden="true" />
+                              {scheduled.label} {scheduled.shortDate}
                             </span>
+                          ) : (
+                            <span />
                           )}
                           <span className="draft-card__total">{currency(invoice.total)}</span>
                         </div>

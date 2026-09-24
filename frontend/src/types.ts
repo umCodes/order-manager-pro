@@ -68,6 +68,13 @@ export type DraftInvoice = {
   status: string;
   date: string;
   total: number;
+  customer_id?: string;
+  /**
+   * The customer's own custom fields (address, business type, preferred
+   * language, ...), attached by the drafts endpoint. Only present on the
+   * main drafts list, not other DraftInvoice-shaped lists.
+   */
+  customer_custom_fields?: ContactCustomField[];
 };
 
 export type InvoiceDetailLineItem = {
@@ -85,8 +92,12 @@ export type DraftItemBreakdownEntry = {
   invoice_id: string;
   invoice_number: string;
   customer_name: string;
+  /** The source draft's scheduled (invoice) date. */
+  date: string;
   quantity: number;
   unit: string;
+  /** Set client-side when the draft's date has passed and it's shown under today instead. */
+  isCarriedOver?: boolean;
 };
 
 export type DraftLineItemSummary = {

@@ -68,7 +68,7 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 All routes are mounted under `/api`.
 
 **Invoices** (`backend/src/routes/invoices.routes.ts`)
-- `GET /invoices/drafts` — list all draft invoices
+- `GET /invoices/drafts` — list all draft invoices, each with its customer's custom fields attached as `customer_custom_fields` (joined from the cached customer list — never one request per customer)
 - `GET /invoices/:id` — invoice detail
 - `POST /invoices` — create an invoice, or update an existing draft's line items/date if `invoice_id` is included in the body
 - `PATCH /invoices/:id/date` — update scheduled date
@@ -87,7 +87,7 @@ All routes are mounted under `/api`.
 
 **Items** (`backend/src/routes/items.routes.ts`)
 - `GET /items` — catalog items
-- `GET /draftitems` — line items aggregated across all drafts
+- `GET /draftitems` — line items aggregated across all drafts; each breakdown entry carries its source draft's `date` so the Items tab can group by day
 
 **Telegram** (`backend/src/routes/telegram.routes.ts`)
 - `POST /telegram/messages` — send a message

@@ -142,11 +142,17 @@ export async function setCustomerActive(customerId: string, active: boolean): Pr
   return data.customer;
 }
 
+/**
+ * Anything carrying a contact's custom fields — a full Contact, or just the
+ * `custom_fields` attached to a draft invoice (see DraftInvoice.customer_custom_fields).
+ */
+export type CustomFieldsHolder = Pick<Contact, "custom_fields">;
+
 /** customfield_id for the "preferred_language" custom field on contacts, in this Zoho org. */
 export const PREFERRED_LANGUAGE_CUSTOMFIELD_ID = "4645478000004349196";
 
 /** Reads a contact's raw preferred_language custom field, or undefined if unset/invalid — no fallback. */
-export function getRawContactPreferredLanguage(contact: Contact): PreferredLanguage | undefined {
+export function getRawContactPreferredLanguage(contact: CustomFieldsHolder): PreferredLanguage | undefined {
   const field = contact.custom_fields?.find(
     (cf) => (cf.customfield_id ?? cf.field_id) === PREFERRED_LANGUAGE_CUSTOMFIELD_ID,
   );
@@ -155,7 +161,7 @@ export function getRawContactPreferredLanguage(contact: Contact): PreferredLangu
 }
 
 /** Reads a contact's preferred_language custom field, falling back to Amharic if unset/invalid. */
-export function getContactPreferredLanguage(contact: Contact): PreferredLanguage {
+export function getContactPreferredLanguage(contact: CustomFieldsHolder): PreferredLanguage {
   return getRawContactPreferredLanguage(contact) ?? "am";
 }
 
@@ -163,7 +169,7 @@ export function getContactPreferredLanguage(contact: Contact): PreferredLanguage
 export const BUSINESS_TYPE_CUSTOMFIELD_ID = "4645478000004558014";
 
 /** Reads a contact's raw business_type custom field, or undefined if unset. */
-export function getRawContactBusinessType(contact: Contact): BusinessType | undefined {
+export function getRawContactBusinessType(contact: CustomFieldsHolder): BusinessType | undefined {
   if (!BUSINESS_TYPE_CUSTOMFIELD_ID) return undefined;
   const field = contact.custom_fields?.find(
     (cf) => (cf.customfield_id ?? cf.field_id) === BUSINESS_TYPE_CUSTOMFIELD_ID,
@@ -176,7 +182,7 @@ export function getRawContactBusinessType(contact: Contact): BusinessType | unde
 export const ADDRESS_CUSTOMFIELD_ID = "4645478000004558007";
 
 /** Reads a contact's raw "address" custom field value ("city, district, street"), or undefined if unset. */
-export function getRawContactAddress(contact: Contact): string | undefined {
+export function getRawContactAddress(contact: CustomFieldsHolder): string | undefined {
   if (!ADDRESS_CUSTOMFIELD_ID) return undefined;
   const field = contact.custom_fields?.find(
     (cf) => (cf.customfield_id ?? cf.field_id) === ADDRESS_CUSTOMFIELD_ID,

@@ -871,6 +871,72 @@
   flex-shrink: 0;
 }
 
+.draft-card__carried-over {
+  margin-inline-start: 6px;
+  vertical-align: middle;
+}
+
+.badge--carried-over {
+  background: #fef2f2;
+  color: var(--color-red-600);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Day-grouped lists (Drafts, Items) */
+
+.day-group + .day-group {
+  margin-top: 20px;
+}
+
+.day-group__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.day-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.day-group__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.day-group__date {
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.day-group__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.day-group__count {
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.day-group__line-items {
+  margin-top: 0;
+}
+
+.item-breakdown__source .draft-card__overdue-dot {
+  display: inline-block;
+  margin-inline-end: 5px;
+  vertical-align: middle;
+}
+
 .draft-card__total {
   font-size: 14.5px;
   font-weight: 600;

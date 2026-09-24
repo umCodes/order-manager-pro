@@ -1,18 +1,45 @@
 import type { Request, Response } from "express";
 import { ZohoGetDrafts, ZohoGetInvoiceById, ZohoGetRecentNonDraftInvoices } from "../../services/zoho/invoices/index.js";
-import { ZohoGetCustomerById, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
+import { ZohoGetCustomerById, ZohoGetCustomersCached, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { businessDayKey } from "../../utils/businessDate.js";
 import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyTotals.js";
 
-/** Lists every invoice currently in draft status. */
+/**
+ * Lists every invoice currently in draft status, each with its customer's
+ * custom fields (address, business type, preferred language, ...) attached
+ * as `customer_custom_fields`.
+ *
+ * Zoho's list-invoices rows only carry the invoice's own custom fields, not
+ * the contact's, so unless a row already has `customer_custom_fields` they're
+ * joined in from the cached customer list — at most one extra Zoho request
+ * (to warm that cache), never one per customer. A failure there only drops
+ * the fields; the drafts themselves still come back.
+ */
 export async function getDraftInvoices(req: Request, res: Response) {
   try {
     const access_token = requireAccessToken(req, "A problem occured getting draft invoices");
 
-    const drafts = await ZohoGetDrafts(access_token);
-    res.status(200).json({ drafts });
+    const [drafts, customers] = await Promise.all([
+      ZohoGetDrafts(access_token),
+      ZohoGetCustomersCached(access_token).catch((error: unknown) => {
+        console.error("Failed to load customers for draft custom fields:", error);
+        return [];
+      }),
+    ]);
+
+    const customFieldsByCustomerId = new Map<string, unknown[]>(
+      customers.map((c: any) => [String(c.contact_id), c.custom_fields ?? []]),
+    );
+
+    res.status(200).json({
+      drafts: drafts.map((draft: any) => ({
+        ...draft,
+        customer_custom_fields:
+          draft.customer_custom_fields ?? customFieldsByCustomerId.get(String(draft.customer_id)) ?? [],
+      })),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({

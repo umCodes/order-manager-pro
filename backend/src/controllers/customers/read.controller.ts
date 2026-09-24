@@ -1,25 +1,14 @@
 import type { Request, Response } from 'express';
-import { getCache, setTTLCache } from '../../utils/cache.js';
-import { ZohoGetCustomers, ZohoGetCustomerById } from '../../services/zoho/customers/index.js';
+import { ZohoGetCustomersCached, ZohoGetCustomerById } from '../../services/zoho/customers/index.js';
 import { ZohoGetInvoices } from '../../services/zoho/invoices/index.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
-
-/** Customer list cache lifetime: 12h, invalidated eagerly on every write (see the write/contacts controllers). */
-const CUSTOMERS_CACHE_TTL_SECONDS = 43200;
 
 /** Lists all customers, served from the in-memory cache when it's warm. */
 export async function getCustomers(req: Request, res: Response){
     try {
         const access_token = requireAccessToken(req, "A problem occured getting customers")
 
-        const customersCache = getCache("customers")
-        if (customersCache){
-            res.status(200).json({ customers: customersCache})
-            return
-        }
-
-        const customers = await ZohoGetCustomers(access_token)
-        setTTLCache("customers", customers, CUSTOMERS_CACHE_TTL_SECONDS)
+        const customers = await ZohoGetCustomersCached(access_token)
         res.status(200).json({customers})
         return
     } catch (error) {

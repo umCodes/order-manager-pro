@@ -1,4 +1,5 @@
 import type { DraftLineItemSummary, InvoiceDetailLineItem } from "../types";
+import { groupByScheduledDay } from "./scheduledDate";
 
 const BOX_MULTIPLIER = 10;
 
@@ -35,4 +36,48 @@ export function formatInvoicesForCopy(
   return invoices
     .map((invoice) => formatInvoiceForCopy(invoice.invoice_number, invoice.line_items))
     .join("\n\n");
+}
+
+export type ItemDayGroup = {
+  /** The effective day (YYYY-MM-DD), or null for items from undated drafts. */
+  date: string | null;
+  items: DraftLineItemSummary[];
+  /** How many distinct drafts in this day were carried over from an earlier date. */
+  carriedOverDraftCount: number;
+};
+
+/**
+ * Splits the all-drafts item rollup into one rollup per scheduled day, using
+ * each breakdown entry's source-draft date. Drafts whose date has passed are
+ * counted under today (see effectiveScheduledDate) with their breakdown
+ * entries flagged isCarriedOver, matching how the Drafts tab shows them.
+ */
+export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Date = new Date()): ItemDayGroup[] {
+  const entries = items.flatMap((item) => item.breakdown.map((entry) => ({ item, entry })));
+  const dayGroups = groupByScheduledDay(entries, ({ entry }) => entry.date, from);
+
+  return dayGroups.map((group) => {
+    const byName = new Map<string, DraftLineItemSummary>();
+    const carriedOverDrafts = new Set<string>();
+
+    for (const { value: { item, entry }, isCarriedOver } of group.entries) {
+      if (isCarriedOver) carriedOverDrafts.add(entry.invoice_id);
+      const breakdownEntry = { ...entry, isCarriedOver };
+      const existing = byName.get(item.name);
+      if (existing) {
+        existing.quantity += entry.quantity;
+        existing.breakdown.push(breakdownEntry);
+      } else {
+        byName.set(item.name, {
+          name: item.name,
+          description: item.description,
+          unit: item.unit,
+          quantity: entry.quantity,
+          breakdown: [breakdownEntry],
+        });
+      }
+    }
+
+    return { date: group.date, items: Array.from(byName.values()), carriedOverDraftCount: carriedOverDrafts.size };
+  });
 }

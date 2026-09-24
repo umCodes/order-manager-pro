@@ -220,12 +220,19 @@ export default function DraftsPage({
       {viewMode === "drafts" ? (
         <>
           {todayEstimate && (
-            <p className="estimate-line">
-              Estimated for today: <strong>{currency(todayEstimate.estimatedTotal)}</strong> from{" "}
-              {todayEstimate.draftCountToday} draft{todayEstimate.draftCountToday === 1 ? "" : "s"}
-              {" · "}
-              Collected so far: <strong>{currency(todayEstimate.collectedToday)}</strong>
-            </p>
+            // Today's total includes past-due drafts (they're shown under
+            // today), with that share called out in brackets.
+            <div className="estimate-line">
+              <div>
+                Today <strong>{currency(todayEstimate.estimatedTotal + (todayEstimate.pastDueTotal ?? 0))}</strong>
+                {!!todayEstimate.pastDueTotal && (
+                  <span className="estimate-line__past-due"> ({currency(todayEstimate.pastDueTotal)} past due)</span>
+                )}
+              </div>
+              <div>
+                Collected <strong>{currency(todayEstimate.collectedToday)}</strong>
+              </div>
+            </div>
           )}
 
           <p className="page-subtitle">

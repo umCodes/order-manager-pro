@@ -369,6 +369,9 @@ export type TodayEstimate = {
   estimatedTotal: number;
   collectedToday: number;
   draftCountToday: number;
+  /** Unsent drafts dated before today (shown under today) — computed live, never part of the cached estimate. */
+  pastDueTotal?: number;
+  pastDueCount?: number;
 };
 
 /**

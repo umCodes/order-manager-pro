@@ -86,10 +86,13 @@
 }
 
 .estimate-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 12px;
   font-weight: 400;
   color: var(--color-gray-400);
-  margin: 0 0 16px;
+  margin: 0 0 20px;
 }
 
 .estimate-line strong {

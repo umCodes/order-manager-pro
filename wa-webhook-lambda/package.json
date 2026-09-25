@@ -1,0 +1,11 @@
+{
+  "name": "wa-webhook-lambda",
+  "version": "1.0.0",
+  "scripts": {
+    "package": "rm -f function.zip && zip -r function.zip handler.mjs webhook language messages state services node_modules package.json -x '*.DS_Store'"
+  },
+  "dependencies": {
+    "ioredis": "^6.0.0",
+    "resend": "^6.26.0"
+  }
+}

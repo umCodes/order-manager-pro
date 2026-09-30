@@ -9,6 +9,7 @@ import { sendPaymentNotification } from '../../services/whatsapp/notifications.j
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday } from '../../services/dailyTotals.js';
+import { deleteCache } from '../../utils/cache.js';
 
 /**
  * Records a payment against the customer as a whole, spread across their open
@@ -28,6 +29,8 @@ export async function payCustomerBalance(req: Request, res: Response){
         if(!amount) throw new Error("Amount not provided")
 
         const payment = await recordCustomerPayment(access_token, id as string, amount, payment_mode)
+        // The cached customer list carries each customer's balance due.
+        deleteCache("customers")
         await addToCollectedToday(Number(amount))
 
         let notified = false

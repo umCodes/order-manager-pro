@@ -12,6 +12,7 @@ import { redisClient } from "../../config/redis.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { deleteCache } from "../../utils/cache.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
@@ -91,6 +92,8 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
       line_items: zohoLineItems,
       ...(reason ? { reason } : {}),
     });
+    // A sent invoice's total is part of the customer's balance due in the cached list.
+    if (invoice.status !== "draft") deleteCache("customers");
 
     res.status(200).json({ invoice });
   } catch (error) {
@@ -118,6 +121,8 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
 
     await ZohoUpdateInvoice(access_token, id, { customer_id, ...(reason ? { reason } : {}) });
     const invoice = await ZohoGetInvoiceById(access_token, id);
+    // Moving a sent invoice shifts balance due between two customers in the cached list.
+    if (invoice.status !== "draft") deleteCache("customers");
 
     res.status(200).json({ invoice });
   } catch (error) {

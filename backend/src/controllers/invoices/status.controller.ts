@@ -9,6 +9,7 @@ import { deleteInvoiceTelegramMessage } from "../../services/telegram/invoices/i
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { addToCollectedToday } from "../../services/dailyTotals.js";
+import { deleteCache } from "../../utils/cache.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -30,6 +31,8 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     const wasDraft = invoiceBeforePayment.status === "draft";
 
     const payment = await recordInvoicePayment(access_token, id, amount, payment_mode, discount);
+    // The cached customer list carries each customer's balance due.
+    deleteCache("customers");
     await addToCollectedToday(Number(amount));
 
     // A draft leaves "pending fulfillment" the moment any payment is recorded
@@ -73,6 +76,8 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     const { notify, notify_contact_ids } = req.body ?? {};
 
     await ZohoMarkInvoiceAsSent(access_token, id);
+    // A sent invoice now counts toward the customer's balance due in the cached list.
+    deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
 

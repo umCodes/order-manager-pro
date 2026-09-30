@@ -582,9 +582,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             <div className="invoice-details__customer-balance">
               <span>Balance due</span>
               <span className="invoice-details__customer-balance-amount">{currency(customerBalance)}</span>
-              {isDraft && (
-                <span className="invoice-details__customer-balance-note">Not including this draft</span>
-              )}
             </div>
           )}
 

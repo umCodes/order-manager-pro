@@ -1161,11 +1161,6 @@
   color: var(--color-gray-900);
 }
 
-.invoice-details__customer-balance-note {
-  flex-basis: 100%;
-  font-size: 12px;
-}
-
 .invoice-details__summary {
   display: flex;
   justify-content: space-between;

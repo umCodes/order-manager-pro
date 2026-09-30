@@ -24,7 +24,8 @@ const WA_LANGUAGE_CODES: Record<PreferredLanguage, string> = {
 
 /**
  * "Payment Confirmation" template: sent when a payment is made.
- * Body params: {{1}} current payment amount, {{2}} date, {{3}} remaining balance.
+ * Body params: {{1}} current payment amount, {{2}} date, {{3}} the customer's
+ * total remaining balance across all their invoices.
  * The same template exists per-language in Meta Business Manager; which one
  * is used depends on the customer's preferred_language.
  */

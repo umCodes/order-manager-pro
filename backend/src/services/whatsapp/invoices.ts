@@ -5,7 +5,11 @@ import type { ZohoInvoice } from "../zoho/types.js"
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the
- * payment notification, to one or more contacts. Failures are logged, never
+ * payment notification, to one or more contacts. The invoice itself was
+ * already delivered by the "sent" notice, so this one is about the customer's
+ * standing: the remaining balance is their total outstanding across all
+ * invoices (`contact.outstanding_receivable_amount`, read after the payment),
+ * not just what's left on this invoice. Failures are logged, never
  * thrown — a WhatsApp failure must not roll back or fail the payment that
  * already succeeded. `contactPersonIds`, when given, sends to the specific
  * contacts chosen by the caller (e.g. picked in the UI) instead of the
@@ -30,10 +34,11 @@ export async function notifyPaymentRecorded(
 
         const preferredLanguage = getContactPreferredLanguage(contact)
         console.log(`[WhatsApp] notifyPaymentRecorded: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
+        const remainingBalance = String(contact.outstanding_receivable_amount)
         let allSucceeded = true
         for (const phone of phones) {
             try {
-                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, String(invoice.balance))
+                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, remainingBalance)
             } catch (error) {
                 console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false

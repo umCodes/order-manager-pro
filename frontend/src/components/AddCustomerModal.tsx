@@ -13,6 +13,7 @@ import {
 } from "../lib/api";
 import { SAUDI_CITIES, buildDistrictOptions, parseAddress } from "../lib/address";
 import type { Contact } from "../types";
+import PhoneInput from "./PhoneInput";
 
 type Props = {
   open: boolean;
@@ -211,13 +212,7 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
             <label className="field-label" htmlFor="customer-phone">
               Phone
             </label>
-            <input
-              id="customer-phone"
-              type="tel"
-              className="input"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            <PhoneInput id="customer-phone" value={phone} onChange={setPhone} />
             <span className="field-hint">This becomes the customer's primary contact.</span>
           </div>
         )}

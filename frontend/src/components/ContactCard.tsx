@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Phone, MessageCircle, Pencil, Trash2, Check, X, Star } from "lucide-react";
 import type { ContactPerson } from "../types";
 import { LEGACY_CONTACT_ID } from "../lib/contacts";
+import PhoneInput from "./PhoneInput";
 
 type Props = {
   contact: ContactPerson;
@@ -81,14 +82,7 @@ export default function ContactCard({ contact, isSaving, onSave, onDelete, onMak
             disabled={isSaving}
             autoFocus
           />
-          <input
-            type="tel"
-            className="input"
-            placeholder="Phone"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={isSaving}
-          />
+          <PhoneInput value={phone} onChange={setPhone} disabled={isSaving} />
         </div>
         {error && <div className="form-error">{error}</div>}
         <div className="contact-card__actions">

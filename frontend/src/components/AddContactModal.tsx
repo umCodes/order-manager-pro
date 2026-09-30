@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PhoneInput from "./PhoneInput";
 
 type Props = {
   isSaving: boolean;
@@ -52,13 +53,7 @@ export default function AddContactModal({ isSaving, error, onCancel, onConfirm }
           <label className="field-label" htmlFor="new-contact-phone">
             Phone
           </label>
-          <input
-            id="new-contact-phone"
-            type="tel"
-            className="input"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+          <PhoneInput id="new-contact-phone" value={phone} onChange={setPhone} />
         </div>
         <label className="field" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input type="checkbox" checked={makePrimary} onChange={(e) => setMakePrimary(e.target.checked)} />

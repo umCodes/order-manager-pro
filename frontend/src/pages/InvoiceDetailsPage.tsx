@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, Printer, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Pencil, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -10,15 +10,14 @@ import {
   updateInvoiceDate,
   updateInvoiceLineItems,
   updateInvoiceCustomer,
-  invoicePdfUrl,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import { buildScheduleOptions } from "../lib/scheduledDate";
 import { formatInvoiceForCopy } from "../lib/itemSummary";
-import { printPdfUrl } from "../lib/printPdf";
 import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
+import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
 import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
@@ -438,15 +437,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
         {invoice && (
           <div className="page-header__actions">
             <CopyButton getText={() => formatInvoiceForCopy(invoice.invoice_number, displayLineItems)} />
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => printPdfUrl(invoicePdfUrl(invoice.invoice_id))}
-              aria-label="Print invoice"
-              title="Print invoice"
-            >
-              <Printer size={14} />
-            </button>
+            <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
             <ResendButton
               invoiceId={invoice.invoice_id}
               currentDate={invoice.date}

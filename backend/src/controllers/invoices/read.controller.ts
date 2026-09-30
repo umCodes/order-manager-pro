@@ -126,9 +126,10 @@ export async function getInvoiceById(req: Request, res: Response) {
 
 /**
  * Streams the invoice PDF (same classic template used for the WhatsApp
- * notification) inline, so the frontend can open it in a new tab and the
- * browser's native print dialog is right there. Falls back to "am" if the
- * invoice has no linked customer to resolve a preferred language from.
+ * notification) inline by default. Pass `?download=1` to get it as an
+ * attachment instead, so a plain navigation to this URL saves the file
+ * rather than displaying it. Falls back to "am" if the invoice has no linked
+ * customer to resolve a preferred language from.
  */
 export async function getInvoicePdf(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -146,7 +147,8 @@ export async function getInvoicePdf(req: Request, res: Response) {
     const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${invoice.invoice_number}.pdf"`);
+    const disposition = req.query.download === "1" ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disposition}; filename="${invoice.invoice_number}.pdf"`);
     res.status(200).send(pdf);
   } catch (error) {
     console.error(error);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -27,7 +27,9 @@ import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import ReasonModal from "../components/ReasonModal";
-import type { Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
+import AddItemModal from "../components/AddItemModal";
+import type { DraftForm } from "../components/AddItemRow";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -69,6 +71,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [scheduleOptions] = useState(() => buildScheduleOptions());
   const [editedLineItems, setEditedLineItems] = useState<InvoiceDetailLineItem[] | null>(null);
   const [editingItem, setEditingItem] = useState<InvoiceDetailLineItem | null>(null);
+  const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [isSavingLineItems, setIsSavingLineItems] = useState(false);
   const [lineItemsSaveError, setLineItemsSaveError] = useState<string | null>(null);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
@@ -161,6 +164,59 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     );
     setEditedLineItems(next);
     setEditingItem(null);
+  }
+
+  // The item picker works on a cart keyed by item_id, so present the current
+  // line items that way. If an item appears on several lines, the picker
+  // edits the first of them.
+  const pickerCart: Cart = {};
+  for (const li of displayLineItems) {
+    if (pickerCart[li.item_id]) continue;
+    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false };
+  }
+
+  /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
+  function handlePickerCommit(itemId: string, values: DraftForm, catalogItem: CatalogItem) {
+    if (!invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    const quantity = Number(values.quantity) || 0;
+    const rate = Number(values.rate) || 0;
+    const existingIndex = base.findIndex((li) => li.item_id === itemId);
+
+    if (existingIndex >= 0) {
+      setEditedLineItems(
+        base.map((li, i) =>
+          i === existingIndex ? { ...li, description: values.description, quantity, rate, item_total: quantity * rate } : li,
+        ),
+      );
+      return;
+    }
+
+    setEditedLineItems([
+      ...base,
+      {
+        // Placeholder id for rendering only; the backend assigns the real one on save.
+        line_item_id: `new-${itemId}-${Date.now()}`,
+        item_id: itemId,
+        name: catalogItem.name,
+        description: values.description,
+        quantity,
+        unit: catalogItem.unit,
+        rate,
+        item_total: quantity * rate,
+      },
+    ]);
+  }
+
+  function handlePickerRemove(itemId: string) {
+    if (!invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    setEditedLineItems(base.filter((li) => li.item_id !== itemId));
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      for (const li of base) if (li.item_id === itemId) next.delete(li.line_item_id);
+      return next;
+    });
   }
 
   /**
@@ -511,7 +567,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           )}
 
           <div className="line-items">
-            <div className="line-items__header">Items ({displayLineItems.length})</div>
+            <div className="line-items__header line-items__header--with-action">
+              <span>Items ({displayLineItems.length})</span>
+              <button type="button" className="link-btn line-items__add" onClick={() => setIsAddItemOpen(true)}>
+                <Plus size={14} />
+                Add items
+              </button>
+            </div>
             {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
               return (
@@ -675,6 +737,17 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           currencySymbol={invoice?.currency_symbol ?? ""}
           onCancel={() => setEditingItem(null)}
           onConfirm={handleEditItemConfirm}
+        />
+      )}
+
+      {invoice && (
+        <AddItemModal
+          open={isAddItemOpen}
+          cart={pickerCart}
+          onClose={() => setIsAddItemOpen(false)}
+          onCommitItem={handlePickerCommit}
+          onRemoveItem={handlePickerRemove}
+          showExcludeFromTelegram={false}
         />
       )}
 

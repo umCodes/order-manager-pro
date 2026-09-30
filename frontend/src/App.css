@@ -998,6 +998,18 @@
   border-bottom: 1px solid var(--color-gray-200);
 }
 
+.line-items__header--with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.line-items__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .line-item {
   display: flex;
   justify-content: space-between;

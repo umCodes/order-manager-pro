@@ -11,10 +11,12 @@ type Props = {
   /** Item to pre-expand and scroll to when the sheet opens, if any. */
   initialItemId?: string | null;
   onClose: () => void;
-  onCommitItem: (itemId: string, values: DraftForm) => void;
+  onCommitItem: (itemId: string, values: DraftForm, item: CatalogItem) => void;
   onRemoveItem: (itemId: string) => void;
   /** Called with the fresh catalog after the user refreshes the items list. */
   onItemsRefreshed?: (items: CatalogItem[]) => void;
+  /** Whether each item's editor offers the "Exclude from Telegram" toggle. Defaults to true. */
+  showExcludeFromTelegram?: boolean;
 };
 
 /**
@@ -30,6 +32,7 @@ export default function AddItemModal({
   onCommitItem,
   onRemoveItem,
   onItemsRefreshed,
+  showExcludeFromTelegram,
 }: Props) {
   return (
     <div className={`sheet-overlay${open ? " sheet-overlay--open" : ""}`}>
@@ -44,6 +47,7 @@ export default function AddItemModal({
             onCommitItem={onCommitItem}
             onRemoveItem={onRemoveItem}
             onItemsRefreshed={onItemsRefreshed}
+            showExcludeFromTelegram={showExcludeFromTelegram}
           />
         </div>
       </div>
@@ -67,6 +71,7 @@ function SheetContent({
   onCommitItem,
   onRemoveItem,
   onItemsRefreshed,
+  showExcludeFromTelegram = true,
 }: SheetContentProps) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialItemId ?? null);
@@ -124,7 +129,7 @@ function SheetContent({
   }
 
   function commit(item: CatalogItem) {
-    onCommitItem(item.item_id, form);
+    onCommitItem(item.item_id, form, item);
     setExpandedId(null);
   }
 
@@ -178,6 +183,7 @@ function SheetContent({
             onFormChange={setForm}
             onCommit={() => commit(item)}
             onRemove={() => remove(item)}
+            showExcludeFromTelegram={showExcludeFromTelegram}
           />
         ))}
       </div>

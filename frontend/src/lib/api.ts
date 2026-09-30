@@ -1,5 +1,5 @@
 import type { CatalogItem, Contact, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
-import { cachedFetch, invalidateCache } from "./requestCache";
+import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
  * Thin fetch wrappers over the backend REST API. Every function throws an
@@ -87,6 +87,19 @@ async function fetchCustomersUncached(): Promise<Contact[]> {
 export function fetchCustomers(options?: { force?: boolean }): Promise<Contact[]> {
   if (options?.force) invalidateCache("customers");
   return cachedFetch("customers", fetchCustomersUncached);
+}
+
+/**
+ * Fetches one customer fresh from the server and writes it back into the
+ * cached customers list, so anything reading balances from that list (e.g.
+ * the invoice details page) sees the update without reloading the whole list.
+ */
+export async function refreshCachedCustomer(customerId: string): Promise<Contact> {
+  const customer = await fetchCustomerById(customerId);
+  updateCachedValue<Contact[]>("customers", (customers) =>
+    customers.map((c) => (c.contact_id === customerId ? { ...c, ...customer } : c)),
+  );
+  return customer;
 }
 
 export type CustomerType = "business" | "individual";

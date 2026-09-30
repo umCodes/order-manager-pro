@@ -3,6 +3,8 @@ import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, TriangleAlert } from "luc
 import {
   fetchInvoiceById,
   fetchCustomerById,
+  fetchCustomers,
+  refreshCachedCustomer,
   markInvoiceAsSent,
   recordInvoicePayment,
   resendInvoiceNotification,
@@ -34,6 +36,8 @@ import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem }
 type Props = {
   invoiceId: string;
   onBack: () => void;
+  /** Opens the customer's details page (tapping the customer name). */
+  onSelectCustomer?: (customerId: string) => void;
 };
 
 type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
@@ -48,11 +52,13 @@ type PendingReasonAction =
  * Keyed by invoiceId internally so all local state resets cleanly on navigation
  * between invoices instead of being reset manually inside an effect.
  */
-export default function InvoiceDetailsPage({ invoiceId, onBack }: Props) {
-  return <InvoiceDetailsView key={invoiceId} invoiceId={invoiceId} onBack={onBack} />;
+export default function InvoiceDetailsPage({ invoiceId, onBack, onSelectCustomer }: Props) {
+  return (
+    <InvoiceDetailsView key={invoiceId} invoiceId={invoiceId} onBack={onBack} onSelectCustomer={onSelectCustomer} />
+  );
 }
 
-function InvoiceDetailsView({ invoiceId, onBack }: Props) {
+function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [customer, setCustomer] = useState<Contact | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
@@ -97,6 +103,11 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
+  // The customer's balance due, read from the cached customers list rather
+  // than fetched separately. Zoho's outstanding receivable only counts sent
+  // (unpaid / partially paid) invoices, so a draft's own total isn't in it.
+  const [customerBalance, setCustomerBalance] = useState<number | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -110,6 +121,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             return;
           }
           setCustomerError(null);
+          const customerId = inv.customer_id;
+          fetchCustomers()
+            .then((customers) => {
+              const listed = customers.find((c) => c.contact_id === customerId);
+              if (!cancelled) setCustomerBalance(listed ? listed.outstanding_receivable_amount : null);
+            })
+            .catch(() => {});
           fetchCustomerById(inv.customer_id)
             .then((c) => {
               if (!cancelled) setCustomer(c);
@@ -131,7 +149,29 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     };
   }, [invoiceId, customerRetryToken]);
 
-  function toggleItemSelected(lineItemId: string) {
+  /**
+   * Re-fetches the invoice plus its customer, after anything that can move
+   * the customer's balance due (payment, marking sent, editing a sent
+   * invoice's items).
+   */
+  function reloadInvoiceAndCustomer(): Promise<void> {
+    return fetchInvoiceById(invoiceId).then((inv) => {
+      setInvoice(inv);
+      if (inv.customer_id) refreshCustomerBalance(inv.customer_id);
+    });
+  }
+
+  /** Fetches the customer fresh and updates both this page and the cached customers list. */
+  function refreshCustomerBalance(customerId: string) {
+    refreshCachedCustomer(customerId)
+      .then((fresh) => {
+        setCustomer(fresh);
+        setCustomerBalance(fresh.outstanding_receivable_amount);
+      })
+      .catch(() => {});
+  }
+
+    function toggleItemSelected(lineItemId: string) {
     setSelectedItemIds((prev) => {
       const next = new Set(prev);
       if (next.has(lineItemId)) next.delete(lineItemId);
@@ -240,6 +280,10 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     ).then((updatedInvoice) => {
       setInvoice(updatedInvoice);
       setEditedLineItems(null);
+      // A sent invoice's total counts toward the customer's balance due.
+      if (updatedInvoice.status !== "draft" && updatedInvoice.customer_id) {
+        refreshCustomerBalance(updatedInvoice.customer_id);
+      }
     });
   }
 
@@ -373,7 +417,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
           }
         }
-        return fetchInvoiceById(invoiceId).then(setInvoice);
+        return reloadInvoiceAndCustomer();
       })
       .catch((e) => setPaymentError(e instanceof Error ? e.message : "Failed to record payment"))
       .finally(() => setIsRecordingPayment(false));
@@ -405,7 +449,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactIds));
           }
         }
-        return fetchInvoiceById(invoiceId).then(setInvoice);
+        return reloadInvoiceAndCustomer();
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Failed to mark invoice as sent"))
       .finally(() => setIsMarkingSent(false));
@@ -510,7 +554,18 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       {invoice && (
         <>
           <div className="invoice-details__customer">
-            {invoice.customer_name}
+            {invoice.customer_id && onSelectCustomer ? (
+              <button
+                type="button"
+                className="invoice-details__customer-link"
+                onClick={() => onSelectCustomer(invoice.customer_id)}
+                title="View customer"
+              >
+                {invoice.customer_name}
+              </button>
+            ) : (
+              invoice.customer_name
+            )}
             <button
               type="button"
               className="link-btn"
@@ -522,6 +577,16 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               Change customer
             </button>
           </div>
+
+          {customerBalance !== null && (
+            <div className="invoice-details__customer-balance">
+              <span>Customer balance due</span>
+              <span className="invoice-details__customer-balance-amount">{currency(customerBalance)}</span>
+              {isDraft && (
+                <span className="invoice-details__customer-balance-note">Not including this draft</span>
+              )}
+            </div>
+          )}
 
           <div className="invoice-details__summary">
             <div className="invoice-details__summary-left">

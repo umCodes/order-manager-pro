@@ -1410,6 +1410,11 @@
   width: 46px;
 }
 
+.sheet__spacer--action {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .sheet__search {
   position: relative;
   padding: 8px 16px 14px;

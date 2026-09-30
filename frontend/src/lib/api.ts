@@ -46,8 +46,29 @@ async function fetchItemsUncached(): Promise<CatalogItem[]> {
   return data.items;
 }
 
+/**
+ * Clears the PWA service worker's copy of the items list. `/api/items` is
+ * served CacheFirst from the "api-cache" cache (see vite.config.ts), so
+ * without this a forced refetch would still get the stale cached catalog.
+ */
+async function clearItemsServiceWorkerCache(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  try {
+    const cache = await caches.open("api-cache");
+    const keys = await cache.keys();
+    await Promise.all(
+      keys.filter((request) => new URL(request.url).pathname.startsWith("/api/items")).map((request) => cache.delete(request)),
+    );
+  } catch {
+    // Cache API unavailable (e.g. private mode) — nothing to clear.
+  }
+}
+
 export function fetchItems(options?: { force?: boolean }): Promise<CatalogItem[]> {
-  if (options?.force) invalidateCache("items");
+  if (options?.force) {
+    invalidateCache("items");
+    return cachedFetch("items", () => clearItemsServiceWorkerCache().then(fetchItemsUncached));
+  }
   return cachedFetch("items", fetchItemsUncached);
 }
 

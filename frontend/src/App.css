@@ -1806,6 +1806,9 @@
   flex: 0 0 auto;
   width: auto;
   padding-right: 6px;
+  background: var(--color-gray-100);
+  color: var(--color-gray-700);
+  font-weight: 500;
 }
 
 .phone-input__number {

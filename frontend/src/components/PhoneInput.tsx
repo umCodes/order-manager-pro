@@ -2,13 +2,13 @@ import { useState } from "react";
 
 /** Selectable dialing codes: Saudi Arabia first, then Ethiopia, then the other Gulf countries. */
 const COUNTRY_CODES = [
-  { code: "966", label: "🇸🇦 +966", name: "Saudi Arabia" },
-  { code: "251", label: "🇪🇹 +251", name: "Ethiopia" },
-  { code: "971", label: "🇦🇪 +971", name: "United Arab Emirates" },
-  { code: "965", label: "🇰🇼 +965", name: "Kuwait" },
-  { code: "974", label: "🇶🇦 +974", name: "Qatar" },
-  { code: "973", label: "🇧🇭 +973", name: "Bahrain" },
-  { code: "968", label: "🇴🇲 +968", name: "Oman" },
+  { code: "966", label: "SA +966", name: "Saudi Arabia" },
+  { code: "251", label: "ET +251", name: "Ethiopia" },
+  { code: "971", label: "AE +971", name: "United Arab Emirates" },
+  { code: "965", label: "KW +965", name: "Kuwait" },
+  { code: "974", label: "QA +974", name: "Qatar" },
+  { code: "973", label: "BH +973", name: "Bahrain" },
+  { code: "968", label: "OM +968", name: "Oman" },
 ] as const;
 
 const DEFAULT_CODE = COUNTRY_CODES[0].code;

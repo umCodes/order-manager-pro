@@ -1794,3 +1794,21 @@
   font-size: 13px;
   color: var(--color-gray-500);
 }
+/* Phone field with a country-code picker */
+
+.phone-input {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.phone-input__code {
+  flex: 0 0 auto;
+  width: auto;
+  padding-right: 6px;
+}
+
+.phone-input__number {
+  flex: 1 1 auto;
+  min-width: 0;
+}

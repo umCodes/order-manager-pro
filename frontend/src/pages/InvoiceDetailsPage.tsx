@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, Send, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
@@ -41,6 +41,7 @@ type Props = {
 };
 
 type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
+type SendOnWhatsAppStep = "closed" | "confirm" | "pickContact";
 
 /**
  * Order-insensitive fingerprint of the line items' saved fields, used to
@@ -83,6 +84,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSplitConfirmOpen, setIsSplitConfirmOpen] = useState(false);
   const [markSentNotifyStep, setMarkSentNotifyStep] = useState<MarkSentNotifyStep>("closed");
+  const [sendOnWhatsAppStep, setSendOnWhatsAppStep] = useState<SendOnWhatsAppStep>("closed");
+  const [isSendingOnWhatsApp, setIsSendingOnWhatsApp] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isUpdatingDate, setIsUpdatingDate] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
@@ -497,6 +500,45 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     runMarkAsSent(true, primaryId ? [primaryId] : undefined);
   }
 
+  /**
+   * Sends this invoice to the customer on WhatsApp on demand: the same
+   * template (with the PDF) that goes out when an invoice is marked as sent,
+   * built from the invoice's current state and the customer's total balance
+   * due. Only re-sends the message — nothing about the invoice changes.
+   */
+  function runSendOnWhatsApp(notifyContactIds?: string[]) {
+    if (!invoice) return;
+    const payload = { kind: "sent" } as const;
+    setIsSendingOnWhatsApp(true);
+    setNotifyBanner(null);
+    resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
+      .then((result) => {
+        setNotifyBanner(result.notified ? "success" : "failed");
+        if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
+      })
+      .catch(() => {
+        setNotifyBanner("failed");
+        setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
+      })
+      .finally(() => {
+        setIsSendingOnWhatsApp(false);
+        setSendOnWhatsAppStep("closed");
+      });
+  }
+
+  function handleConfirmSendOnWhatsApp() {
+    if (!customer) {
+      runSendOnWhatsApp();
+      return;
+    }
+    if (getContactList(customer).length > 1) {
+      setSendOnWhatsAppStep("pickContact");
+      return;
+    }
+    const primaryId = getPrimaryContact(customer)?.contact_person_id;
+    runSendOnWhatsApp(primaryId ? [primaryId] : undefined);
+  }
+
   function handleSplitConfirm(createNewDraft: boolean) {
     setIsMarkingSent(true);
     setActionError(null);
@@ -566,6 +608,21 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           <div className="page-header__actions">
             <CopyButton getText={() => formatInvoiceForCopy(invoice.invoice_number, displayLineItems)} />
             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
+            {/* Drafts go out through "Mark as sent", which offers the same message. */}
+            {invoice.status !== "draft" && invoice.status !== "void" && (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setSendOnWhatsAppStep("confirm")}
+                // The message is built from the saved invoice, so unsaved
+                // item edits would silently be left out of it.
+                disabled={isSendingOnWhatsApp || editedLineItems !== null}
+                aria-label={`Send invoice ${invoice.invoice_number} on WhatsApp`}
+                title={editedLineItems !== null ? "Save your item changes first" : "Send on WhatsApp"}
+              >
+                <Send size={14} />
+              </button>
+            )}
             <ResendButton
               invoiceId={invoice.invoice_id}
               currentDate={invoice.date}
@@ -907,6 +964,26 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {sendOnWhatsAppStep === "confirm" && invoice && (
+        <ConfirmModal
+          title="Send on WhatsApp?"
+          message={`Send invoice ${invoice.invoice_number} to ${invoice.customer_name} on WhatsApp, with their total balance due?`}
+          confirmLabel={isSendingOnWhatsApp ? "Sending..." : "Send"}
+          isConfirming={isSendingOnWhatsApp}
+          onConfirm={handleConfirmSendOnWhatsApp}
+          onCancel={() => setSendOnWhatsAppStep("closed")}
+        />
+      )}
+
+      {sendOnWhatsAppStep === "pickContact" && customer && (
+        <NotifyContactModal
+          customer={customer}
+          isSaving={isSendingOnWhatsApp}
+          onCancel={() => setSendOnWhatsAppStep("closed")}
+          onConfirm={(contactPersonIds) => runSendOnWhatsApp(contactPersonIds)}
+        />
       )}
 
       {markSentNotifyStep === "pickContact" && customer && (

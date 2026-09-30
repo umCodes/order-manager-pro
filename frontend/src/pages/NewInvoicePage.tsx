@@ -336,6 +336,7 @@ export default function NewInvoicePage({
         }}
         onCommitItem={commitItem}
         onRemoveItem={removeItem}
+        onItemsRefreshed={setCatalogItems}
       />
     </div>
   );

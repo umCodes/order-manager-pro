@@ -19,6 +19,7 @@ type Props = {
   onFormChange: (form: DraftForm) => void;
   onCommit: () => void;
   onRemove: () => void;
+  showExcludeFromTelegram?: boolean;
 };
 
 /** One catalog item in the add-item sheet: a header row that expands into a qty/rate/description editor. */
@@ -31,6 +32,7 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
   onFormChange,
   onCommit,
   onRemove,
+  showExcludeFromTelegram = true,
 }, ref) {
   const formTotal = (Number(form.rate) || 0) * (Number(form.quantity) || 0);
 
@@ -106,18 +108,20 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
             <span className="field-row__label">Total</span>
             <span className="field-row__total">{currency(formTotal)}</span>
           </div>
-          <div className="field-row">
-            <label className="field-row__label" htmlFor={`exclude-${item.item_id}`}>
-              Exclude from Telegram
-            </label>
-            <input
-              id={`exclude-${item.item_id}`}
-              type="checkbox"
-              className="field-row__checkbox"
-              checked={form.excludeFromTelegram}
-              onChange={(e) => onFormChange({ ...form, excludeFromTelegram: e.target.checked })}
-            />
-          </div>
+          {showExcludeFromTelegram && (
+            <div className="field-row">
+              <label className="field-row__label" htmlFor={`exclude-${item.item_id}`}>
+                Exclude from Telegram
+              </label>
+              <input
+                id={`exclude-${item.item_id}`}
+                type="checkbox"
+                className="field-row__checkbox"
+                checked={form.excludeFromTelegram}
+                onChange={(e) => onFormChange({ ...form, excludeFromTelegram: e.target.checked })}
+              />
+            </div>
+          )}
 
           <div className="item-row__actions">
             {inCart && (

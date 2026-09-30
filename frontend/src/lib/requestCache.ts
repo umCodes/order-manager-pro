@@ -27,3 +27,14 @@ export function invalidateCache(key?: string) {
   if (key) cache.delete(key);
   else cache.clear();
 }
+
+/**
+ * Patches an already-cached value in place (e.g. one customer's balance in
+ * the cached customers list) without refetching it. No-op if nothing is
+ * cached under `key` yet.
+ */
+export function updateCachedValue<T>(key: string, updater: (value: T) => T) {
+  const existing = cache.get(key) as Promise<T> | undefined;
+  if (!existing) return;
+  cache.set(key, existing.then(updater));
+}

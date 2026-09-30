@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { fetchItems } from "../lib/api";
 import AddItemRow, { type DraftForm } from "./AddItemRow";
+import RefreshButton from "./RefreshButton";
 import type { Cart, CatalogItem } from "../types";
 
 type Props = {
@@ -10,8 +11,12 @@ type Props = {
   /** Item to pre-expand and scroll to when the sheet opens, if any. */
   initialItemId?: string | null;
   onClose: () => void;
-  onCommitItem: (itemId: string, values: DraftForm) => void;
+  onCommitItem: (itemId: string, values: DraftForm, item: CatalogItem) => void;
   onRemoveItem: (itemId: string) => void;
+  /** Called with the fresh catalog after the user refreshes the items list. */
+  onItemsRefreshed?: (items: CatalogItem[]) => void;
+  /** Whether each item's editor offers the "Exclude from Telegram" toggle. Defaults to true. */
+  showExcludeFromTelegram?: boolean;
 };
 
 /**
@@ -19,7 +24,16 @@ type Props = {
  * Remounted (via `key`) each time it opens so its search/expand state
  * always starts fresh.
  */
-export default function AddItemModal({ open, cart, initialItemId, onClose, onCommitItem, onRemoveItem }: Props) {
+export default function AddItemModal({
+  open,
+  cart,
+  initialItemId,
+  onClose,
+  onCommitItem,
+  onRemoveItem,
+  onItemsRefreshed,
+  showExcludeFromTelegram,
+}: Props) {
   return (
     <div className={`sheet-overlay${open ? " sheet-overlay--open" : ""}`}>
       <div className="sheet-overlay__backdrop" onClick={onClose} />
@@ -32,6 +46,8 @@ export default function AddItemModal({ open, cart, initialItemId, onClose, onCom
             onClose={onClose}
             onCommitItem={onCommitItem}
             onRemoveItem={onRemoveItem}
+            onItemsRefreshed={onItemsRefreshed}
+            showExcludeFromTelegram={showExcludeFromTelegram}
           />
         </div>
       </div>
@@ -48,7 +64,15 @@ const EMPTY_FORM: DraftForm = {
 
 type SheetContentProps = Omit<Props, "open">;
 
-function SheetContent({ cart, initialItemId, onClose, onCommitItem, onRemoveItem }: SheetContentProps) {
+function SheetContent({
+  cart,
+  initialItemId,
+  onClose,
+  onCommitItem,
+  onRemoveItem,
+  onItemsRefreshed,
+  showExcludeFromTelegram = true,
+}: SheetContentProps) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialItemId ?? null);
   const [form, setForm] = useState<DraftForm>(EMPTY_FORM);
@@ -105,13 +129,21 @@ function SheetContent({ cart, initialItemId, onClose, onCommitItem, onRemoveItem
   }
 
   function commit(item: CatalogItem) {
-    onCommitItem(item.item_id, form);
+    onCommitItem(item.item_id, form, item);
     setExpandedId(null);
   }
 
   function remove(item: CatalogItem) {
     onRemoveItem(item.item_id);
     setExpandedId(null);
+  }
+
+  /** Items change rarely, so they're cached (in memory and by the PWA); this pulls the latest catalog. */
+  function handleRefreshItems() {
+    return fetchItems({ force: true }).then((fetchedItems) => {
+      setItems(fetchedItems);
+      onItemsRefreshed?.(fetchedItems);
+    });
   }
 
   return (
@@ -122,7 +154,9 @@ function SheetContent({ cart, initialItemId, onClose, onCommitItem, onRemoveItem
             Cancel
           </button>
           <div className="sheet__title">Items</div>
-          <span className="sheet__spacer" />
+          <span className="sheet__spacer sheet__spacer--action">
+            <RefreshButton onRefresh={handleRefreshItems} />
+          </span>
         </div>
         <div className="sheet__search">
           <Search className="sheet__search-icon" size={16} />
@@ -149,6 +183,7 @@ function SheetContent({ cart, initialItemId, onClose, onCommitItem, onRemoveItem
             onFormChange={setForm}
             onCommit={() => commit(item)}
             onRemove={() => remove(item)}
+            showExcludeFromTelegram={showExcludeFromTelegram}
           />
         ))}
       </div>

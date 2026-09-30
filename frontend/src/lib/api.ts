@@ -1,5 +1,5 @@
 import type { CatalogItem, Contact, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
-import { cachedFetch, invalidateCache } from "./requestCache";
+import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
  * Thin fetch wrappers over the backend REST API. Every function throws an
@@ -46,8 +46,29 @@ async function fetchItemsUncached(): Promise<CatalogItem[]> {
   return data.items;
 }
 
+/**
+ * Clears the PWA service worker's copy of the items list. `/api/items` is
+ * served CacheFirst from the "api-cache" cache (see vite.config.ts), so
+ * without this a forced refetch would still get the stale cached catalog.
+ */
+async function clearItemsServiceWorkerCache(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  try {
+    const cache = await caches.open("api-cache");
+    const keys = await cache.keys();
+    await Promise.all(
+      keys.filter((request) => new URL(request.url).pathname.startsWith("/api/items")).map((request) => cache.delete(request)),
+    );
+  } catch {
+    // Cache API unavailable (e.g. private mode) — nothing to clear.
+  }
+}
+
 export function fetchItems(options?: { force?: boolean }): Promise<CatalogItem[]> {
-  if (options?.force) invalidateCache("items");
+  if (options?.force) {
+    invalidateCache("items");
+    return cachedFetch("items", () => clearItemsServiceWorkerCache().then(fetchItemsUncached));
+  }
   return cachedFetch("items", fetchItemsUncached);
 }
 
@@ -66,6 +87,19 @@ async function fetchCustomersUncached(): Promise<Contact[]> {
 export function fetchCustomers(options?: { force?: boolean }): Promise<Contact[]> {
   if (options?.force) invalidateCache("customers");
   return cachedFetch("customers", fetchCustomersUncached);
+}
+
+/**
+ * Fetches one customer fresh from the server and writes it back into the
+ * cached customers list, so anything reading balances from that list (e.g.
+ * the invoice details page) sees the update without reloading the whole list.
+ */
+export async function refreshCachedCustomer(customerId: string): Promise<Contact> {
+  const customer = await fetchCustomerById(customerId);
+  updateCachedValue<Contact[]>("customers", (customers) =>
+    customers.map((c) => (c.contact_id === customerId ? { ...c, ...customer } : c)),
+  );
+  return customer;
 }
 
 export type CustomerType = "business" | "individual";

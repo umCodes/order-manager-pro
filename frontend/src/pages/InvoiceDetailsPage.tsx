@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, TriangleAlert } from "lucide-react";
 import {
   fetchInvoiceById,
   fetchCustomerById,
+  fetchCustomers,
+  refreshCachedCustomer,
   markInvoiceAsSent,
   recordInvoicePayment,
   resendInvoiceNotification,
@@ -27,11 +29,15 @@ import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import ReasonModal from "../components/ReasonModal";
-import type { Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
+import AddItemModal from "../components/AddItemModal";
+import type { DraftForm } from "../components/AddItemRow";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
 
 type Props = {
   invoiceId: string;
   onBack: () => void;
+  /** Opens the customer's details page (tapping the customer name). */
+  onSelectCustomer?: (customerId: string) => void;
 };
 
 type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
@@ -46,11 +52,13 @@ type PendingReasonAction =
  * Keyed by invoiceId internally so all local state resets cleanly on navigation
  * between invoices instead of being reset manually inside an effect.
  */
-export default function InvoiceDetailsPage({ invoiceId, onBack }: Props) {
-  return <InvoiceDetailsView key={invoiceId} invoiceId={invoiceId} onBack={onBack} />;
+export default function InvoiceDetailsPage({ invoiceId, onBack, onSelectCustomer }: Props) {
+  return (
+    <InvoiceDetailsView key={invoiceId} invoiceId={invoiceId} onBack={onBack} onSelectCustomer={onSelectCustomer} />
+  );
 }
 
-function InvoiceDetailsView({ invoiceId, onBack }: Props) {
+function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [customer, setCustomer] = useState<Contact | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
@@ -69,6 +77,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
   const [scheduleOptions] = useState(() => buildScheduleOptions());
   const [editedLineItems, setEditedLineItems] = useState<InvoiceDetailLineItem[] | null>(null);
   const [editingItem, setEditingItem] = useState<InvoiceDetailLineItem | null>(null);
+  const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [isSavingLineItems, setIsSavingLineItems] = useState(false);
   const [lineItemsSaveError, setLineItemsSaveError] = useState<string | null>(null);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
@@ -94,6 +103,11 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
 
   const [customerRetryToken, setCustomerRetryToken] = useState(0);
 
+  // The customer's balance due, read from the cached customers list rather
+  // than fetched separately. Zoho's outstanding receivable only counts sent
+  // (unpaid / partially paid) invoices, so a draft's own total isn't in it.
+  const [customerBalance, setCustomerBalance] = useState<number | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -107,6 +121,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             return;
           }
           setCustomerError(null);
+          const customerId = inv.customer_id;
+          fetchCustomers()
+            .then((customers) => {
+              const listed = customers.find((c) => c.contact_id === customerId);
+              if (!cancelled) setCustomerBalance(listed ? listed.outstanding_receivable_amount : null);
+            })
+            .catch(() => {});
           fetchCustomerById(inv.customer_id)
             .then((c) => {
               if (!cancelled) setCustomer(c);
@@ -128,7 +149,29 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     };
   }, [invoiceId, customerRetryToken]);
 
-  function toggleItemSelected(lineItemId: string) {
+  /**
+   * Re-fetches the invoice plus its customer, after anything that can move
+   * the customer's balance due (payment, marking sent, editing a sent
+   * invoice's items).
+   */
+  function reloadInvoiceAndCustomer(): Promise<void> {
+    return fetchInvoiceById(invoiceId).then((inv) => {
+      setInvoice(inv);
+      if (inv.customer_id) refreshCustomerBalance(inv.customer_id);
+    });
+  }
+
+  /** Fetches the customer fresh and updates both this page and the cached customers list. */
+  function refreshCustomerBalance(customerId: string) {
+    refreshCachedCustomer(customerId)
+      .then((fresh) => {
+        setCustomer(fresh);
+        setCustomerBalance(fresh.outstanding_receivable_amount);
+      })
+      .catch(() => {});
+  }
+
+    function toggleItemSelected(lineItemId: string) {
     setSelectedItemIds((prev) => {
       const next = new Set(prev);
       if (next.has(lineItemId)) next.delete(lineItemId);
@@ -163,6 +206,59 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     setEditingItem(null);
   }
 
+  // The item picker works on a cart keyed by item_id, so present the current
+  // line items that way. If an item appears on several lines, the picker
+  // edits the first of them.
+  const pickerCart: Cart = {};
+  for (const li of displayLineItems) {
+    if (pickerCart[li.item_id]) continue;
+    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false };
+  }
+
+  /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
+  function handlePickerCommit(itemId: string, values: DraftForm, catalogItem: CatalogItem) {
+    if (!invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    const quantity = Number(values.quantity) || 0;
+    const rate = Number(values.rate) || 0;
+    const existingIndex = base.findIndex((li) => li.item_id === itemId);
+
+    if (existingIndex >= 0) {
+      setEditedLineItems(
+        base.map((li, i) =>
+          i === existingIndex ? { ...li, description: values.description, quantity, rate, item_total: quantity * rate } : li,
+        ),
+      );
+      return;
+    }
+
+    setEditedLineItems([
+      ...base,
+      {
+        // Placeholder id for rendering only; the backend assigns the real one on save.
+        line_item_id: `new-${itemId}-${Date.now()}`,
+        item_id: itemId,
+        name: catalogItem.name,
+        description: values.description,
+        quantity,
+        unit: catalogItem.unit,
+        rate,
+        item_total: quantity * rate,
+      },
+    ]);
+  }
+
+  function handlePickerRemove(itemId: string) {
+    if (!invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    setEditedLineItems(base.filter((li) => li.item_id !== itemId));
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      for (const li of base) if (li.item_id === itemId) next.delete(li.line_item_id);
+      return next;
+    });
+  }
+
   /**
    * Persists unsaved line-item edits, if any. No-op (resolved promise) when
    * clean. `reason` is only needed (and required by the backend) once the
@@ -184,6 +280,10 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
     ).then((updatedInvoice) => {
       setInvoice(updatedInvoice);
       setEditedLineItems(null);
+      // A sent invoice's total counts toward the customer's balance due.
+      if (updatedInvoice.status !== "draft" && updatedInvoice.customer_id) {
+        refreshCustomerBalance(updatedInvoice.customer_id);
+      }
     });
   }
 
@@ -317,7 +417,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
           }
         }
-        return fetchInvoiceById(invoiceId).then(setInvoice);
+        return reloadInvoiceAndCustomer();
       })
       .catch((e) => setPaymentError(e instanceof Error ? e.message : "Failed to record payment"))
       .finally(() => setIsRecordingPayment(false));
@@ -349,7 +449,7 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
             setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactIds));
           }
         }
-        return fetchInvoiceById(invoiceId).then(setInvoice);
+        return reloadInvoiceAndCustomer();
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Failed to mark invoice as sent"))
       .finally(() => setIsMarkingSent(false));
@@ -454,7 +554,18 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
       {invoice && (
         <>
           <div className="invoice-details__customer">
-            {invoice.customer_name}
+            {invoice.customer_id && onSelectCustomer ? (
+              <button
+                type="button"
+                className="invoice-details__customer-link"
+                onClick={() => onSelectCustomer(invoice.customer_id)}
+                title="View customer"
+              >
+                {invoice.customer_name}
+              </button>
+            ) : (
+              invoice.customer_name
+            )}
             <button
               type="button"
               className="link-btn"
@@ -466,6 +577,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               Change customer
             </button>
           </div>
+
+          {customerBalance !== null && (
+            <div className="invoice-details__customer-balance">
+              <span>Balance due</span>
+              <span className="invoice-details__customer-balance-amount">{currency(customerBalance)}</span>
+            </div>
+          )}
 
           <div className="invoice-details__summary">
             <div className="invoice-details__summary-left">
@@ -483,7 +601,6 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
                   Change date
                 </button>
               </div>
-              <div className="invoice-details__summary-row">{currency(invoice.total)}</div>
             </div>
             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
           </div>
@@ -511,7 +628,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           )}
 
           <div className="line-items">
-            <div className="line-items__header">Items ({displayLineItems.length})</div>
+            <div className="line-items__header line-items__header--with-action">
+              <span>Items ({displayLineItems.length})</span>
+              <button type="button" className="link-btn line-items__add" onClick={() => setIsAddItemOpen(true)}>
+                <Plus size={14} />
+                Add items
+              </button>
+            </div>
             {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
               return (
@@ -578,10 +701,13 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
               <span>Total</span>
               <span>{currency(displayTotal)}</span>
             </div>
-            <div className="invoice-details__totals-row invoice-details__totals-row--balance">
-              <span>Balance due</span>
-              <span>{currency(displayBalance)}</span>
-            </div>
+            {/* A draft isn't billed yet, so it has no balance due of its own. */}
+            {!isDraft && (
+              <div className="invoice-details__totals-row invoice-details__totals-row--balance">
+                <span>Balance due</span>
+                <span>{currency(displayBalance)}</span>
+              </div>
+            )}
             {!isDraft && (
               <div className="invoice-details__totals-row">
                 <span>Amount paid</span>
@@ -675,6 +801,17 @@ function InvoiceDetailsView({ invoiceId, onBack }: Props) {
           currencySymbol={invoice?.currency_symbol ?? ""}
           onCancel={() => setEditingItem(null)}
           onConfirm={handleEditItemConfirm}
+        />
+      )}
+
+      {invoice && (
+        <AddItemModal
+          open={isAddItemOpen}
+          cart={pickerCart}
+          onClose={() => setIsAddItemOpen(false)}
+          onCommitItem={handlePickerCommit}
+          onRemoveItem={handlePickerRemove}
+          showExcludeFromTelegram={false}
         />
       )}
 

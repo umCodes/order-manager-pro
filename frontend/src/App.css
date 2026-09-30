@@ -70,6 +70,11 @@
   z-index: 41;
 }
 
+/* A customer opened from an invoice stacks above that invoice. */
+.detail-overlay--top {
+  z-index: 42;
+}
+
 /* Page */
 
 .page-title {
@@ -998,6 +1003,18 @@
   border-bottom: 1px solid var(--color-gray-200);
 }
 
+.line-items__header--with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.line-items__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .line-item {
   display: flex;
   justify-content: space-between;
@@ -1112,6 +1129,36 @@
   font-weight: 600;
   color: var(--color-gray-900);
   margin-bottom: 12px;
+}
+
+.invoice-details__customer-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.invoice-details__customer-link:hover {
+  text-decoration: underline;
+}
+
+.invoice-details__customer-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 2px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+  margin: -6px 0 12px;
+}
+
+.invoice-details__customer-balance-amount {
+  font-weight: 600;
+  color: var(--color-gray-900);
 }
 
 .invoice-details__summary {
@@ -1408,6 +1455,11 @@
 
 .sheet__spacer {
   width: 46px;
+}
+
+.sheet__spacer--action {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .sheet__search {

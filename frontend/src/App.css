@@ -408,6 +408,17 @@
   color: var(--color-gray-700);
 }
 
+.save-items-bar__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn--discard {
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+
 .btn--save {
   background: var(--color-green-700);
   color: var(--color-white);

@@ -17,6 +17,7 @@ import { describeScheduledDay, groupByScheduledDay } from "../lib/scheduledDate"
 import { formatInvoicesForCopy } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import ResendButton from "../components/ResendButton";
+import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
@@ -294,6 +295,7 @@ export default function DraftsPage({
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                            <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
                             <ResendButton
                               invoiceId={invoice.invoice_id}
                               currentDate={invoice.date}
@@ -377,7 +379,10 @@ export default function DraftsPage({
                 <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
                   <div className="draft-card__top">
                     <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
-                    <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                    <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
+                      <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                      <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
+                    </div>
                   </div>
                   <div className="draft-card__company">{invoice.company_name || invoice.customer_name}</div>
                   <div className="draft-card__bottom">

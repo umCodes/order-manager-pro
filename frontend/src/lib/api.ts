@@ -497,7 +497,7 @@ export async function deleteTelegramMessage(messageId: number) {
   return response.json();
 }
 
-/** URL for the invoice's PDF, meant to be opened directly (new tab) rather than fetched via JS. */
+/** URL for the invoice's PDF. Append `?download=1` to have it served as an attachment. */
 export function invoicePdfUrl(invoiceId: string): string {
   return `${API_BASE_URL}/api/invoices/${invoiceId}/pdf`;
 }

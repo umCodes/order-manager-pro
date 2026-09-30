@@ -19,6 +19,7 @@ import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import { getContactList, LEGACY_CONTACT_ID } from "../lib/contacts";
 import ClickableCard from "../components/ClickableCard";
+import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
 import AddCustomerModal from "../components/AddCustomerModal";
 import ContactCard from "../components/ContactCard";
@@ -360,7 +361,10 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                   <ClickableCard key={invoice.invoice_id} onClick={() => onSelectInvoice(invoice.invoice_id)}>
                     <div className="draft-card__top">
                       <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
-                      <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                      <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
+                        <span className="draft-card__status">{formatStatus(invoice.status)}</span>
+                        <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
+                      </div>
                     </div>
                     <div className="draft-card__bottom">
                       <span className="draft-card__scheduled">{invoice.date}</span>

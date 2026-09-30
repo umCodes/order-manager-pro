@@ -42,6 +42,18 @@ type Props = {
 
 type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
 
+/**
+ * Order-insensitive fingerprint of the line items' saved fields, used to
+ * tell whether local edits actually differ from the invoice as last loaded
+ * or saved (e.g. a qty changed and then changed back is not a change).
+ */
+function lineItemsSignature(lineItems: InvoiceDetailLineItem[]): string {
+  return lineItems
+    .map((li) => JSON.stringify([li.item_id, li.description ?? "", li.quantity, li.rate]))
+    .sort()
+    .join("|");
+}
+
 type PendingReasonAction =
   | { kind: "date"; date: string }
   | { kind: "customer"; contact: Contact }
@@ -186,6 +198,22 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const displayLineItems = editedLineItems ?? invoice?.line_items ?? [];
   const isLineItemsDirty = editedLineItems !== null;
 
+  /**
+   * Stores local line-item edits, or clears them when they match the
+   * invoice's current line items again. The invoice itself is the baseline,
+   * so its signature moves along whenever the invoice is reloaded or saved.
+   */
+  function applyLineItemEdits(next: InvoiceDetailLineItem[]) {
+    if (!invoice) return;
+    const matchesInvoice = lineItemsSignature(next) === lineItemsSignature(invoice.line_items);
+    setEditedLineItems(matchesInvoice ? null : next);
+  }
+
+  function discardLineItemEdits() {
+    setEditedLineItems(null);
+    setLineItemsSaveError(null);
+  }
+
   // Taxes/discounts aren't tracked client-side, so the edit's effect on
   // subtotal is assumed to flow straight through to total/balance — exact
   // when there's no tax/discount on the invoice.
@@ -202,7 +230,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     const next = base.map((li) =>
       li.line_item_id === editingItem.line_item_id ? { ...li, quantity, rate, item_total: quantity * rate } : li,
     );
-    setEditedLineItems(next);
+    applyLineItemEdits(next);
     setEditingItem(null);
   }
 
@@ -224,7 +252,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     const existingIndex = base.findIndex((li) => li.item_id === itemId);
 
     if (existingIndex >= 0) {
-      setEditedLineItems(
+      applyLineItemEdits(
         base.map((li, i) =>
           i === existingIndex ? { ...li, description: values.description, quantity, rate, item_total: quantity * rate } : li,
         ),
@@ -232,7 +260,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       return;
     }
 
-    setEditedLineItems([
+    applyLineItemEdits([
       ...base,
       {
         // Placeholder id for rendering only; the backend assigns the real one on save.
@@ -251,7 +279,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   function handlePickerRemove(itemId: string) {
     if (!invoice) return;
     const base = editedLineItems ?? invoice.line_items;
-    setEditedLineItems(base.filter((li) => li.item_id !== itemId));
+    applyLineItemEdits(base.filter((li) => li.item_id !== itemId));
     setSelectedItemIds((prev) => {
       const next = new Set(prev);
       for (const li of base) if (li.item_id === itemId) next.delete(li.line_item_id);
@@ -719,14 +747,24 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           {isLineItemsDirty && (
             <div className="save-items-bar">
               <span className="save-items-bar__message">You have unsaved item changes.</span>
-              <button
-                type="button"
-                className="btn btn--save"
-                onClick={handleSaveLineItemsClick}
-                disabled={isSavingLineItems}
-              >
-                {isSavingLineItems ? "Saving..." : "Save Changes"}
-              </button>
+              <div className="save-items-bar__actions">
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--discard"
+                  onClick={discardLineItemEdits}
+                  disabled={isSavingLineItems}
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--save"
+                  onClick={handleSaveLineItemsClick}
+                  disabled={isSavingLineItems}
+                >
+                  {isSavingLineItems ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
             </div>
           )}
 

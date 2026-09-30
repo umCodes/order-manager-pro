@@ -580,7 +580,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
           {customerBalance !== null && (
             <div className="invoice-details__customer-balance">
-              <span>Customer balance due</span>
+              <span>Balance due</span>
               <span className="invoice-details__customer-balance-amount">{currency(customerBalance)}</span>
               {isDraft && (
                 <span className="invoice-details__customer-balance-note">Not including this draft</span>
@@ -604,7 +604,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                   Change date
                 </button>
               </div>
-              <div className="invoice-details__summary-row">{currency(invoice.total)}</div>
             </div>
             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
           </div>
@@ -705,10 +704,13 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               <span>Total</span>
               <span>{currency(displayTotal)}</span>
             </div>
-            <div className="invoice-details__totals-row invoice-details__totals-row--balance">
-              <span>Balance due</span>
-              <span>{currency(displayBalance)}</span>
-            </div>
+            {/* A draft isn't billed yet, so it has no balance due of its own. */}
+            {!isDraft && (
+              <div className="invoice-details__totals-row invoice-details__totals-row--balance">
+                <span>Balance due</span>
+                <span>{currency(displayBalance)}</span>
+              </div>
+            )}
             {!isDraft && (
               <div className="invoice-details__totals-row">
                 <span>Amount paid</span>

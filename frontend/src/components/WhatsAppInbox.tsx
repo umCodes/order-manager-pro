@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, RotateCw, Search, SendHorizontal, TriangleAlert } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search, SendHorizontal } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -55,7 +55,7 @@ function formatDayDivider(timestamp: number) {
 function StatusTicks({ status }: { status?: string }) {
   if (status === "read") return <CheckCheck size={14} className="wa-bubble__ticks wa-bubble__ticks--read" />;
   if (status === "delivered") return <CheckCheck size={14} className="wa-bubble__ticks" />;
-  if (status === "failed") return null;
+  if (status === "failed") return <AlertCircle size={14} className="wa-bubble__ticks wa-bubble__ticks--failed" aria-label="Not delivered" />;
   return <Check size={14} className="wa-bubble__ticks" />;
 }
 
@@ -317,7 +317,11 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       {retryingMessage && (
         <ConfirmModal
           title="Send again?"
-          message={`Send this ${retryingMessage.status === "failed" ? "failed" : "undelivered"} message to ${chat.name} again?`}
+          message={
+            retryingMessage.status === "failed"
+              ? `This message wasn't delivered${retryingMessage.error ? ` (${retryingMessage.error})` : ""}. Send it to ${chat.name} again?`
+              : `This message hasn't been delivered yet. Send it to ${chat.name} again?`
+          }
           confirmLabel={isRetrying ? "Sending..." : "Send again"}
           error={retryError}
           isConfirming={isRetrying}
@@ -333,46 +337,41 @@ const STATUS_LABELS: Record<string, string> = {
   sent: "Sent",
   delivered: "Delivered",
   read: "Read",
-  failed: "Failed",
 };
 
 function MessageBubble({ message, onRetry }: { message: WhatsAppMessage; onRetry: () => void }) {
   const isOut = message.direction === "out";
   const isTemplate = message.type === "template";
   const isFailed = message.status === "failed";
+  const problem = isFailed
+    ? `Not delivered${message.error ? `: ${message.error}` : ""}`
+    : message.can_retry
+      ? "Not delivered yet"
+      : undefined;
   return (
     <div className={`wa-bubble-row${isOut ? " wa-bubble-row--out" : ""}`}>
-      <div className="wa-bubble-stack">
-        <div
-          className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}${isFailed ? " wa-bubble--failed" : ""}`}
+      {isOut && message.can_retry && (
+        <button
+          type="button"
+          className={`wa-retry${isFailed ? " wa-retry--failed" : ""}`}
+          onClick={onRetry}
+          aria-label={`${problem}. Try again`}
+          title={`${problem} — tap to try again`}
         >
-          {isTemplate && <div className="wa-bubble__label">Template message</div>}
-          <div className="wa-bubble__text">{message.text}</div>
-          <div className="wa-bubble__meta">
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            {isOut && isTemplate && message.status && (
-              <span className="wa-bubble__status">{STATUS_LABELS[message.status] ?? message.status}</span>
-            )}
-            {isOut && <StatusTicks status={message.status} />}
-          </div>
-          {message.reaction && <span className="wa-bubble__reaction">{message.reaction}</span>}
+          <RotateCw size={13} />
+        </button>
+      )}
+      <div className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}`}>
+        {isTemplate && <div className="wa-bubble__label">Template message</div>}
+        <div className="wa-bubble__text">{message.text}</div>
+        <div className="wa-bubble__meta" title={problem}>
+          {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          {isOut && isTemplate && message.status && !isFailed && (
+            <span className="wa-bubble__status">{STATUS_LABELS[message.status] ?? message.status}</span>
+          )}
+          {isOut && <StatusTicks status={message.status} />}
         </div>
-        {isOut && (isFailed || message.can_retry) && (
-          <div className={`wa-bubble__problem${isFailed ? "" : " wa-bubble__problem--pending"}`}>
-            {isFailed ? (
-              <span>
-                <TriangleAlert size={12} /> Not delivered{message.error ? `: ${message.error}` : ""}
-              </span>
-            ) : (
-              <span>Not delivered yet</span>
-            )}
-            {message.can_retry && (
-              <button type="button" className="link-btn" onClick={onRetry}>
-                <RotateCw size={12} /> Try again
-              </button>
-            )}
-          </div>
-        )}
+        {message.reaction && <span className="wa-bubble__reaction">{message.reaction}</span>}
       </div>
     </div>
   );

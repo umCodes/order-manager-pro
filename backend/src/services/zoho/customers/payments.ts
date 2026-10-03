@@ -41,7 +41,9 @@ export type CustomerPaymentSummary = {
 /**
  * The customer's most recent payments, newest first — both customer-level
  * payments and ones recorded against a single invoice, since Zoho stores
- * both as customer payments.
+ * both as customer payments. `customer_id` is sent as a filter, but the
+ * results are also filtered and sorted here so the list stays this
+ * customer's own even if Zoho ignores the filter or the sort params.
  */
 export async function ZohoGetRecentCustomerPayments(headers: string, customerId: string, limit = 3): Promise<CustomerPaymentSummary[]> {
 
@@ -50,11 +52,14 @@ export async function ZohoGetRecentCustomerPayments(headers: string, customerId:
             customer_id: customerId,
             sort_column: "date",
             sort_order: "D",
-            per_page: String(limit),
+            per_page: "200",
         }).toString()
         const response = await ZohoApi(`customerpayments?${query}`, headers)
         if (!Array.isArray(response.customerpayments)) throw new Error(response.message ?? "Failed to fetch customer payments")
-        return response.customerpayments.slice(0, limit)
+        return (response.customerpayments as CustomerPaymentSummary[])
+            .filter((p) => String(p.customer_id) === customerId)
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .slice(0, limit)
     } catch (error) {
         console.error(error);
         throw error;

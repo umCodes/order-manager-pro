@@ -380,71 +380,6 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             </button>
           </div>
 
-          {notifyBanner === "success" && (
-            <div className="notify-banner notify-banner--success">
-              <CheckCircle2 className="notify-banner__icon" size={14} />
-              Customer notified on WhatsApp.
-            </div>
-          )}
-
-          {notifyBanner === "failed" && (
-            <div className="notify-banner notify-banner--failed">
-              <TriangleAlert className="notify-banner__icon" size={14} />
-              <span>The WhatsApp notification couldn't be sent.</span>
-              <button
-                type="button"
-                className="link-btn"
-                disabled={isSendingPayment}
-                onClick={() => notifyRetry?.()}
-              >
-                {isSendingPayment ? "Retrying..." : "Try again"}
-              </button>
-            </div>
-          )}
-
-          <div className="line-items">
-            <div className="line-items__header">Recent Payments</div>
-            {paymentsError ? (
-              <div className="form-error">{paymentsError}</div>
-            ) : payments === null ? (
-              <div className="items-area__empty">Loading...</div>
-            ) : payments.length === 0 ? (
-              <div className="items-area__empty">No payments yet</div>
-            ) : (
-              <div className="draft-list">
-                {payments.map((payment) => (
-                  <div key={payment.payment_id} className="draft-card">
-                    <div className="draft-card__top">
-                      <span className="draft-card__invoice-number">{payment.payment_number || "Payment"}</span>
-                      <div className="draft-card__top-right">
-                        {payment.payment_mode && (
-                          <span className="draft-card__status">{formatPaymentMode(payment.payment_mode)}</span>
-                        )}
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => {
-                            setSendingPayment(payment);
-                            setSendPaymentStep("confirm");
-                          }}
-                          disabled={isSendingPayment}
-                          aria-label={`Send payment of ${currency(payment.amount)} on WhatsApp`}
-                          title="Send payment message on WhatsApp"
-                        >
-                          <Send size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="draft-card__bottom">
-                      <span className="draft-card__scheduled">{payment.date}</span>
-                      <span className="draft-card__total">{currency(payment.amount)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div className="line-items">
             <div
               className="line-items__header"
@@ -512,6 +447,71 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                       <span className="draft-card__total">{currency(invoice.total)}</span>
                     </div>
                   </ClickableCard>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {notifyBanner === "success" && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              Customer notified on WhatsApp.
+            </div>
+          )}
+
+          {notifyBanner === "failed" && (
+            <div className="notify-banner notify-banner--failed">
+              <TriangleAlert className="notify-banner__icon" size={14} />
+              <span>The WhatsApp notification couldn't be sent.</span>
+              <button
+                type="button"
+                className="link-btn"
+                disabled={isSendingPayment}
+                onClick={() => notifyRetry?.()}
+              >
+                {isSendingPayment ? "Retrying..." : "Try again"}
+              </button>
+            </div>
+          )}
+
+          <div className="line-items">
+            <div className="line-items__header">Recent Payments</div>
+            {paymentsError ? (
+              <div className="form-error">{paymentsError}</div>
+            ) : payments === null ? (
+              <div className="items-area__empty">Loading...</div>
+            ) : payments.length === 0 ? (
+              <div className="items-area__empty">No payments yet</div>
+            ) : (
+              <div className="draft-list">
+                {payments.map((payment) => (
+                  <div key={payment.payment_id} className="draft-card">
+                    <div className="draft-card__top">
+                      <span className="draft-card__invoice-number">{payment.payment_number || "Payment"}</span>
+                      <div className="draft-card__top-right">
+                        {payment.payment_mode && (
+                          <span className="draft-card__status">{formatPaymentMode(payment.payment_mode)}</span>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => {
+                            setSendingPayment(payment);
+                            setSendPaymentStep("confirm");
+                          }}
+                          disabled={isSendingPayment}
+                          aria-label={`Send payment of ${currency(payment.amount)} on WhatsApp`}
+                          title="Send payment message on WhatsApp"
+                        >
+                          <Send size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="draft-card__bottom">
+                      <span className="draft-card__scheduled">{payment.date}</span>
+                      <span className="draft-card__total">{currency(payment.amount)}</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

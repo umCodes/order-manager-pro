@@ -2072,14 +2072,14 @@
 .wa-composer {
   flex-shrink: 0;
   /* Breathing room between the reply box and the bottom edge of the screen. */
-  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(24px + env(safe-area-inset-bottom));
   background: var(--color-white);
   border-top: 1px solid var(--color-gray-200);
 }
 
 /* With the keyboard open the home-indicator inset sits behind the keyboard. */
 .wa-chat--keyboard .wa-composer {
-  padding-bottom: 12px;
+  padding-bottom: 20px;
 }
 
 .wa-composer__notice {

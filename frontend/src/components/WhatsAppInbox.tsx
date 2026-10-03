@@ -19,6 +19,18 @@ const KEYBOARD_THRESHOLD_PX = 120;
 /** How often an open conversation re-reads its history, to pick up new inbound messages. */
 const CONVERSATION_POLL_MS = 10_000;
 
+/**
+ * Right after sending, re-read this often for this long so the new
+ * message's ticks (sent → delivered → read, or failed) update promptly.
+ */
+const AFTER_SEND_POLL_MS = 3_000;
+const AFTER_SEND_POLL_WINDOW_MS = 60_000;
+
+/** Read and failed are final: a message's ticks won't change after either. */
+function isSettled(message: WhatsAppMessage) {
+  return message.status === "read" || message.status === "failed";
+}
+
 function initials(name: string) {
   const letters = name
     .replace(/\(.*\)/, "")
@@ -254,27 +266,62 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const messageCount = conversation?.messages.length ?? 0;
+  // Until when to poll at the faster after-send rate (0 = normal rate), and
+  // the just-sent message being watched.
+  const fastPollUntilRef = useRef(0);
+  const watchedMessageIdRef = useRef<string | null>(null);
+  // Restarts the poll timer so a just-sent message is checked on the fast schedule.
+  const restartPollRef = useRef<() => void>(() => {});
 
+  // Polling only runs while this chat is open: leaving it stops everything,
+  // and reopening it loads the latest state anyway.
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
+
+    function schedule() {
+      window.clearTimeout(timer);
+      const fast = Date.now() < fastPollUntilRef.current;
+      timer = window.setTimeout(load, fast ? AFTER_SEND_POLL_MS : CONVERSATION_POLL_MS);
+    }
+
     function load() {
       fetchWhatsAppConversation(chat.phone)
         .then((result) => {
           if (cancelled) return;
           setConversation(result);
           setLoadError(null);
+          // A poll that started before the send won't have the message yet:
+          // keep watching until a response actually shows it settled.
+          const watched = result.messages.find((m) => m.id === watchedMessageIdRef.current);
+          if (watched && isSettled(watched)) fastPollUntilRef.current = 0;
         })
         .catch((e) => {
           if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load conversation");
+        })
+        .finally(() => {
+          if (!cancelled) schedule();
         });
     }
+
+    restartPollRef.current = schedule;
     load();
-    const interval = window.setInterval(load, CONVERSATION_POLL_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearTimeout(timer);
+      restartPollRef.current = () => {};
     };
   }, [chat.phone]);
+
+  /** Shows a conversation returned by a send, then watches the new message's status for a while. */
+  function showSentConversation(result: WhatsAppConversation) {
+    setConversation(result);
+    const sent = result.messages.findLast((m) => m.direction === "out");
+    if (!sent || isSettled(sent)) return;
+    watchedMessageIdRef.current = sent.id;
+    fastPollUntilRef.current = Date.now() + AFTER_SEND_POLL_WINDOW_MS;
+    restartPollRef.current();
+  }
 
   // Keep the chat exactly the size of the visible area. A fixed full-height
   // panel doesn't shrink when the on-screen keyboard opens, so mobile browsers
@@ -320,7 +367,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
     setRetryError(null);
     retryWhatsAppMessage(chat.phone, retryingMessage.id)
       .then((result) => {
-        setConversation(result);
+        showSentConversation(result);
         setRetryingMessage(null);
       })
       .catch((e: Error & { conversation?: WhatsAppConversation }) => {
@@ -383,7 +430,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         closedNotice="WhatsApp only allows replies within 24 hours of the contact's last message."
         onSent={(result) => {
           setSendError(null);
-          setConversation(result);
+          showSentConversation(result);
         }}
       />
 

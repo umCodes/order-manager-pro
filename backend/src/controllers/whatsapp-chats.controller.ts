@@ -6,9 +6,11 @@ import {
     getLastChatMessage,
     listChatPhones,
     toWaId,
+    updateChatMessage,
+    describeSendError,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
-import { replyToWhatsAppMessage } from '../services/whatsapp/messages.js';
+import { replyToWhatsAppMessage, sendWhatsAppTemplate } from '../services/whatsapp/messages.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -16,6 +18,20 @@ import { getCache, setTTLCache } from '../utils/cache.js';
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
 const MAX_TEXT_LENGTH = 4096
 const UNKNOWN_SENDER_NAME_TTL_SECONDS = 12 * 60 * 60
+/** A template still only "sent" (never delivered) this long after sending can be retried. */
+const UNDELIVERED_RETRY_AFTER_MS = 60 * 60 * 1000
+
+/**
+ * Whether a stored template can be sent again from the chat: it failed, or
+ * it has sat at "sent" without being delivered for a while — and it hasn't
+ * already been retried. Needs the stored components to rebuild the send.
+ */
+function canRetry(message: StoredChatMessage) {
+    if (message.direction !== "out" || message.type !== "template" || message.retried_at) return false
+    if (!message.template?.name || !Array.isArray(message.template?.components)) return false
+    if (message.status === "failed") return true
+    return message.status === "sent" && Date.now() - message.timestamp > UNDELIVERED_RETRY_AFTER_MS
+}
 
 type ChatPreview = { text: string; timestamp: number; direction: "in" | "out" }
 
@@ -44,7 +60,9 @@ function toMessageView(message: StoredChatMessage) {
         type: message.type,
         text: describeChatMessage(message),
         ...(message.status && { status: message.status }),
+        ...(message.error && { error: message.error }),
         ...(message.reaction && { reaction: message.reaction }),
+        can_retry: canRetry(message),
     }
 }
 
@@ -190,9 +208,44 @@ export async function sendWhatsAppChatMessage(req: Request, res: Response) {
         res.status(201).json(await buildConversation(phone))
     } catch (error) {
         console.error('Error sending WhatsApp chat message:', error);
-        const message = error instanceof Error
-            ? error.message
-            : (error as any)?.error?.message ?? 'Failed to send message'
-        res.status(400).json({ error: message });
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/**
+ * Sends a stored template message again — the same template, language and
+ * parameters — when it failed or was never delivered. Template messages are
+ * allowed outside the 24-hour window, and this only ever repeats what was
+ * already sent to this same number. The new attempt is recorded as its own
+ * message (with its own status); the original is marked as retried.
+ */
+export async function retryWhatsAppChatMessage(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        const messageId = String(req.params.messageId ?? "")
+        const original = (await getChatMessages(phone)).find((m) => m.id === messageId)
+        if (!original) throw new Error("Message not found (history is kept for 7 days)")
+        if (!canRetry(original)) throw new Error("This message can't be sent again")
+
+        await updateChatMessage(phone, messageId, { retried_at: Date.now() })
+        try {
+            await sendWhatsAppTemplate(
+                phone,
+                original.template.name,
+                original.template.components,
+                original.template.language,
+                original.summary,
+            )
+        } catch (sendError) {
+            // Already recorded as a new failed message (with its own retry);
+            // report the reason, but the conversation below shows it too.
+            const conversation = await buildConversation(phone)
+            res.status(502).json({ error: describeSendError(sendError), ...conversation })
+            return
+        }
+        res.status(201).json(await buildConversation(phone))
+    } catch (error) {
+        console.error('Error retrying WhatsApp message:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to retry message' });
     }
 }

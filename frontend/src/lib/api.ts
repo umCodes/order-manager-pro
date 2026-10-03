@@ -839,7 +839,11 @@ export type WhatsAppMessage = {
   type: string;
   text: string;
   status?: string;
+  /** WhatsApp's reason, on a failed message. */
+  error?: string;
   reaction?: string;
+  /** A template that failed or was never delivered, and can be sent again. */
+  can_retry?: boolean;
 };
 
 /** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */
@@ -888,4 +892,27 @@ export async function sendWhatsAppChatMessage(phone: string, text: string): Prom
   }
 
   return response.json();
+}
+
+/**
+ * Sends a failed / undelivered template message again. Resolves to the
+ * updated conversation; if this attempt fails too, throws with WhatsApp's
+ * reason and the conversation (which shows the new failed attempt) attached.
+ */
+export async function retryWhatsAppMessage(phone: string, messageId: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/retry`,
+    { method: "POST" },
+  );
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error ?? `Failed to send again (${response.status})`) as Error & {
+      conversation?: WhatsAppConversation;
+    };
+    if (Array.isArray(body.messages)) error.conversation = body;
+    throw error;
+  }
+
+  return body;
 }

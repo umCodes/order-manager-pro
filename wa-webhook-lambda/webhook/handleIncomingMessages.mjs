@@ -71,7 +71,9 @@ export async function handleIncomingMessages(event) {
 
     for (const status of statuses) {
         try {
-            await applyChatStatus(status.recipient_id, status.id, status.status);
+            const error = status.errors?.[0];
+            const reason = error?.error_data?.details || error?.message || error?.title;
+            await applyChatStatus(status.recipient_id, status.id, status.status, reason);
         } catch (error) {
             console.error(`Error applying status update for message ${status?.id}:`, JSON.stringify(error));
         }

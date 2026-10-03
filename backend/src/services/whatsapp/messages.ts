@@ -1,5 +1,5 @@
 import { WhatsAppApi } from "./client.js"
-import { recordOutboundMessage } from "./chatStore.js"
+import { recordFailedOutboundMessage, recordOutboundMessage } from "./chatStore.js"
 
 export type TemplateParameter =
     | { type: "text"; text: string }
@@ -14,7 +14,8 @@ export type TemplateComponent = {
  * Sends one of the pre-approved WhatsApp templates, filling in its
  * header/body parameters. `chatSummary` is the readable text shown for this
  * message in the in-app WhatsApp chat history (the template's own wording
- * lives in Meta Business Manager, not here).
+ * lives in Meta Business Manager, not here). Every attempt is recorded in
+ * the chat history, including ones WhatsApp rejects outright (as failed).
  */
 export async function sendWhatsAppTemplate(
     to: string,
@@ -23,6 +24,13 @@ export async function sendWhatsAppTemplate(
     languageCode: string = "en",
     chatSummary?: string,
 ) {
+    // Stored in the chat history with everything needed to send it again
+    // from the chat view (see retryWhatsAppChatMessage).
+    const chatRecord = {
+        type: "template",
+        template: { name: templateName, language: languageCode, components },
+        ...(chatSummary && { summary: chatSummary }),
+    }
     try {
         console.log(
             `[WhatsApp template] sending "${templateName}" (language "${languageCode}") to ${to} — components:`,
@@ -40,14 +48,11 @@ export async function sendWhatsAppTemplate(
             },
         })
         console.log(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} succeeded`)
-        await recordOutboundMessage(result, to, {
-            type: "template",
-            template: { name: templateName, language: languageCode },
-            ...(chatSummary && { summary: chatSummary }),
-        })
+        await recordOutboundMessage(result, to, chatRecord)
         return result
     } catch (error) {
         console.error(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} FAILED:`, error)
+        await recordFailedOutboundMessage(to, chatRecord, error)
         throw error
     }
 }

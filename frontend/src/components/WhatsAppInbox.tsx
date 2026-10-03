@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, Search, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, RotateCw, Search, SendHorizontal, TriangleAlert } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
+  retryWhatsAppMessage,
   sendWhatsAppChatMessage,
   type WhatsAppChat,
   type WhatsAppConversation,
   type WhatsAppMessage,
 } from "../lib/api";
 import RefreshButton from "./RefreshButton";
+import ConfirmModal from "./ConfirmModal";
 
 /** How often an open conversation re-reads its history, to pick up new inbound messages. */
 const CONVERSATION_POLL_MS = 10_000;
@@ -53,7 +55,7 @@ function formatDayDivider(timestamp: number) {
 function StatusTicks({ status }: { status?: string }) {
   if (status === "read") return <CheckCheck size={14} className="wa-bubble__ticks wa-bubble__ticks--read" />;
   if (status === "delivered") return <CheckCheck size={14} className="wa-bubble__ticks" />;
-  if (status === "failed") return <span className="wa-bubble__failed">Failed</span>;
+  if (status === "failed") return null;
   return <Check size={14} className="wa-bubble__ticks" />;
 }
 
@@ -158,13 +160,21 @@ export default function WhatsAppInbox() {
   );
 }
 
+/**
+ * Full-screen conversation (covers the tab bar): header with the back button
+ * and contact name, the message history scrolling in between, and the reply
+ * box fixed at the bottom.
+ */
 function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) {
   const [conversation, setConversation] = useState<WhatsAppConversation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const [retryingMessage, setRetryingMessage] = useState<WhatsAppMessage | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const messageCount = conversation?.messages.length ?? 0;
 
   useEffect(() => {
@@ -188,16 +198,10 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
     };
   }, [chat.phone]);
 
-  // Jump to the newest message whenever one arrives. Scrolling to the very
-  // bottom of the page (rather than scrollIntoView on the last message)
-  // leaves the pinned composer and the tab bar below it, not on top of it.
-  // Depending on viewport, either the page body or the document scrolls.
+  // Jump to the newest message whenever one arrives.
   useEffect(() => {
-    if (messageCount === 0) return;
-    const scrollers = [endRef.current?.closest(".app-frame__body"), document.scrollingElement];
-    for (const scroller of scrollers) {
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    }
+    const list = messagesRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messageCount]);
 
   function handleSend() {
@@ -214,6 +218,28 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       .finally(() => setIsSending(false));
   }
 
+  function handleRetry() {
+    if (!retryingMessage) return;
+    setIsRetrying(true);
+    setRetryError(null);
+    retryWhatsAppMessage(chat.phone, retryingMessage.id)
+      .then((result) => {
+        setConversation(result);
+        setRetryingMessage(null);
+      })
+      .catch((e: Error & { conversation?: WhatsAppConversation }) => {
+        // The new attempt is in the conversation as its own failed message.
+        if (e.conversation) {
+          setConversation(e.conversation);
+          setRetryingMessage(null);
+          setSendError(`Sent again, but it failed: ${e.message}`);
+        } else {
+          setRetryError(e.message);
+        }
+      })
+      .finally(() => setIsRetrying(false));
+  }
+
   const messages = conversation?.messages ?? [];
   const canReply = conversation?.can_reply ?? false;
 
@@ -224,15 +250,11 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           <ArrowLeft size={18} />
         </button>
         <span className="wa-avatar wa-avatar--small">{initials(chat.name)}</span>
-        <div className="wa-chat__title">
-          <div className="wa-chat__name">{chat.name}</div>
-          <div className="wa-chat__phone">+{chat.phone}</div>
-        </div>
+        <div className="wa-chat__name">{chat.name}</div>
       </div>
 
-      {loadError && <div className="form-error">{loadError}</div>}
-
-      <div className="wa-chat__messages">
+      <div className="wa-chat__messages" ref={messagesRef}>
+        {loadError && <div className="form-error">{loadError}</div>}
         {conversation === null && !loadError ? (
           <div className="items-area__empty">Loading...</div>
         ) : messages.length === 0 ? (
@@ -244,12 +266,17 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
             return (
               <div key={message.id}>
                 {showDivider && <div className="wa-chat__day">{formatDayDivider(message.timestamp)}</div>}
-                <MessageBubble message={message} />
+                <MessageBubble
+                  message={message}
+                  onRetry={() => {
+                    setRetryError(null);
+                    setRetryingMessage(message);
+                  }}
+                />
               </div>
             );
           })
         )}
-        <div ref={endRef} />
       </div>
 
       <div className="wa-composer">
@@ -286,22 +313,66 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           </button>
         </div>
       </div>
+
+      {retryingMessage && (
+        <ConfirmModal
+          title="Send again?"
+          message={`Send this ${retryingMessage.status === "failed" ? "failed" : "undelivered"} message to ${chat.name} again?`}
+          confirmLabel={isRetrying ? "Sending..." : "Send again"}
+          error={retryError}
+          isConfirming={isRetrying}
+          onConfirm={handleRetry}
+          onCancel={() => setRetryingMessage(null)}
+        />
+      )}
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: WhatsAppMessage }) {
+const STATUS_LABELS: Record<string, string> = {
+  sent: "Sent",
+  delivered: "Delivered",
+  read: "Read",
+  failed: "Failed",
+};
+
+function MessageBubble({ message, onRetry }: { message: WhatsAppMessage; onRetry: () => void }) {
   const isOut = message.direction === "out";
+  const isTemplate = message.type === "template";
+  const isFailed = message.status === "failed";
   return (
     <div className={`wa-bubble-row${isOut ? " wa-bubble-row--out" : ""}`}>
-      <div className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${message.type === "template" ? " wa-bubble--template" : ""}`}>
-        {message.type === "template" && <div className="wa-bubble__label">Template message</div>}
-        <div className="wa-bubble__text">{message.text}</div>
-        <div className="wa-bubble__meta">
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-          {isOut && <StatusTicks status={message.status} />}
+      <div className="wa-bubble-stack">
+        <div
+          className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}${isFailed ? " wa-bubble--failed" : ""}`}
+        >
+          {isTemplate && <div className="wa-bubble__label">Template message</div>}
+          <div className="wa-bubble__text">{message.text}</div>
+          <div className="wa-bubble__meta">
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            {isOut && isTemplate && message.status && (
+              <span className="wa-bubble__status">{STATUS_LABELS[message.status] ?? message.status}</span>
+            )}
+            {isOut && <StatusTicks status={message.status} />}
+          </div>
+          {message.reaction && <span className="wa-bubble__reaction">{message.reaction}</span>}
         </div>
-        {message.reaction && <span className="wa-bubble__reaction">{message.reaction}</span>}
+        {isOut && (isFailed || message.can_retry) && (
+          <div className={`wa-bubble__problem${isFailed ? "" : " wa-bubble__problem--pending"}`}>
+            {isFailed ? (
+              <span>
+                <TriangleAlert size={12} /> Not delivered{message.error ? `: ${message.error}` : ""}
+              </span>
+            ) : (
+              <span>Not delivered yet</span>
+            )}
+            {message.can_retry && (
+              <button type="button" className="link-btn" onClick={onRetry}>
+                <RotateCw size={12} /> Try again
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

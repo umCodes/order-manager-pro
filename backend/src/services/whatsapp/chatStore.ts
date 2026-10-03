@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { redisClient } from "../../config/redis.js"
 
 /**
@@ -104,6 +105,44 @@ export async function recordOutboundMessage(sendResult: any, to: string, message
         console.error(`Failed to record outbound WhatsApp message to ${to} in chat history:`, error)
         return undefined
     }
+}
+
+/** Meta's error message off a failed Cloud API call, or the thrown Error's message. */
+export function describeSendError(error: unknown): string {
+    const metaError = (error as any)?.error
+    if (metaError) return metaError.error_data?.details || metaError.message || "WhatsApp rejected the message"
+    return error instanceof Error ? error.message : "Failed to send"
+}
+
+/**
+ * Records a send that WhatsApp rejected outright (so it never got a message
+ * id), as a failed message with a local id — so it still shows in the chat
+ * and can be retried. Never throws.
+ */
+export async function recordFailedOutboundMessage(to: string, message: Omit<StoredChatMessage, "id" | "direction" | "timestamp">, error: unknown) {
+    try {
+        return await appendOutboundChatMessage(toWaId(to), {
+            ...message,
+            id: `failed-${randomUUID()}`,
+            status: "failed",
+            error: describeSendError(error),
+        })
+    } catch (storeError) {
+        console.error(`Failed to record failed WhatsApp message to ${to} in chat history:`, storeError)
+        return undefined
+    }
+}
+
+/** Merges fields into one stored message, found via the msgday index. Returns the updated message, or undefined if it has expired. */
+export async function updateChatMessage(phone: string, messageId: string, patch: Partial<StoredChatMessage>) {
+    const day = await redisClient.hGet(`chats:${phone}:msgday`, messageId)
+    if (!day) return undefined
+    const key = `chats:${phone}:${day}`
+    const raw = await redisClient.hGet(key, messageId)
+    if (!raw) return undefined
+    const updated = { ...JSON.parse(raw), ...patch }
+    await redisClient.hSet(key, messageId, JSON.stringify(updated))
+    return updated as StoredChatMessage
 }
 
 /** A short plain-text rendering of a stored message, for previews and chat bubbles. */

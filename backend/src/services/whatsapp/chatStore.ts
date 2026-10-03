@@ -157,7 +157,11 @@ export function describeChatMessage(message: StoredChatMessage): string {
         case "audio":
         case "sticker":
         case "document": {
-            const label = message.type === "document" ? message.document?.filename || "Document" : message.type.charAt(0).toUpperCase() + message.type.slice(1)
+            const label = message.type === "document"
+                ? message.document?.filename || "Document"
+                : message.type === "audio" && message.audio?.voice
+                    ? "Voice message"
+                    : message.type.charAt(0).toUpperCase() + message.type.slice(1)
             const caption = message[message.type]?.caption
             return caption ? `[${label}] ${caption}` : `[${label}]`
         }

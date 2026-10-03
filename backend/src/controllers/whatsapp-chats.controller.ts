@@ -10,7 +10,8 @@ import {
     describeSendError,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
-import { replyToWhatsAppMessage, sendWhatsAppTemplate } from '../services/whatsapp/messages.js';
+import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
+import { downloadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -52,13 +53,29 @@ function toPreview(message: StoredChatMessage | undefined): ChatPreview | undefi
     return { text: describeChatMessage(message), timestamp: message.timestamp, direction: message.direction }
 }
 
+const MEDIA_TYPES = ["image", "audio", "video", "document", "sticker"]
+
+/** The media payload (id, mime_type, caption, filename, ...) on a media message, if any. */
+function getMedia(message: StoredChatMessage): { id?: string; mime_type?: string; caption?: string; filename?: string; voice?: boolean } | undefined {
+    return MEDIA_TYPES.includes(message.type) ? message[message.type] : undefined
+}
+
 function toMessageView(message: StoredChatMessage) {
+    const media = getMedia(message)
     return {
         id: message.id,
         direction: message.direction,
         timestamp: message.timestamp,
         type: message.type,
-        text: describeChatMessage(message),
+        // Media bubbles render the file itself, so their text is just the caption.
+        text: media ? media.caption ?? "" : describeChatMessage(message),
+        ...(media?.id && {
+            media: {
+                mime_type: media.mime_type,
+                ...(media.filename && { filename: media.filename }),
+                ...(media.voice && { voice: true }),
+            },
+        }),
         ...(message.status && { status: message.status }),
         ...(message.error && { error: message.error }),
         ...(message.reaction && { reaction: message.reaction }),
@@ -247,5 +264,77 @@ export async function retryWhatsAppChatMessage(req: Request, res: Response) {
     } catch (error) {
         console.error('Error retrying WhatsApp message:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to retry message' });
+    }
+}
+
+/** Largest upload accepted (WhatsApp's own limit for audio and video; images are capped lower below). */
+export const MAX_MEDIA_BYTES = 16 * 1024 * 1024
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const IMAGE_TYPES = ["image/jpeg", "image/png"]
+const AUDIO_TYPES = ["audio/ogg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/amr"]
+const VIDEO_TYPES = ["video/mp4", "video/3gpp"]
+
+/** Picks how WhatsApp should show a file; anything it can't show inline goes as a document. */
+function mediaKindFor(mimeType: string, size: number): WhatsAppMediaKind {
+    if (IMAGE_TYPES.includes(mimeType) && size <= MAX_IMAGE_BYTES) return "image"
+    if (AUDIO_TYPES.includes(mimeType)) return "audio"
+    if (VIDEO_TYPES.includes(mimeType)) return "video"
+    return "document"
+}
+
+/**
+ * Sends a file (image, video, voice note, or any other file as a document)
+ * as a reply. The body is the raw file bytes (sent as
+ * application/octet-stream); its type, name and optional caption come in the
+ * X-File-Type / X-File-Name headers and the `caption` query param. Same
+ * 24-hour rule as text replies.
+ */
+export async function sendWhatsAppChatMedia(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        const file = req.body
+        if (!Buffer.isBuffer(file) || file.length === 0) throw new Error("No file received")
+        if (file.length > MAX_MEDIA_BYTES) throw new Error("Files are limited to 16 MB")
+
+        const mimeType = String(req.get("X-File-Type") || "application/octet-stream").split(";")[0]!.trim().toLowerCase()
+        const filename = decodeURIComponent(String(req.get("X-File-Name") || "file")).slice(0, 200)
+        const caption = typeof req.query.caption === "string" ? req.query.caption.trim().slice(0, 1024) : ""
+        const voice = req.query.voice === "1" && mimeType === "audio/ogg"
+
+        const { can_reply } = await buildConversation(phone)
+        if (!can_reply)
+            throw new Error("WhatsApp only allows replies within 24 hours of the customer's last message")
+
+        const kind = mediaKindFor(mimeType, file.length)
+        await sendWhatsAppMedia(phone, kind, file, mimeType, { filename, ...(caption && { caption }), voice })
+        res.status(201).json(await buildConversation(phone))
+    } catch (error) {
+        console.error('Error sending WhatsApp media:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/**
+ * Streams a stored message's image/voice note/file, downloaded from WhatsApp.
+ * Only media referenced by this conversation's own history can be fetched.
+ */
+export async function getWhatsAppChatMedia(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        const messageId = String(req.params.messageId ?? "")
+        const message = (await getChatMessages(phone)).find((m) => m.id === messageId)
+        const mediaId = message ? getMedia(message)?.id : undefined
+        if (!mediaId) {
+            res.status(404).json({ error: "Media not found" })
+            return
+        }
+
+        const { buffer, mimeType } = await downloadWhatsAppMedia(mediaId)
+        res.set("Content-Type", mimeType || "application/octet-stream")
+        res.set("Cache-Control", "private, max-age=86400")
+        res.send(buffer)
+    } catch (error) {
+        console.error('Error downloading WhatsApp media:', error);
+        res.status(502).json({ error: describeSendError(error) });
     }
 }

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search, SendHorizontal } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
   retryWhatsAppMessage,
-  sendWhatsAppChatMessage,
   type WhatsAppChat,
   type WhatsAppConversation,
   type WhatsAppMessage,
 } from "../lib/api";
 import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
+import WhatsAppComposer from "./WhatsAppComposer";
+import WhatsAppMedia from "./WhatsAppMedia";
 
 /** How often an open conversation re-reads its history, to pick up new inbound messages. */
 const CONVERSATION_POLL_MS = 10_000;
@@ -168,8 +169,6 @@ export default function WhatsAppInbox() {
 function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) {
   const [conversation, setConversation] = useState<WhatsAppConversation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [text, setText] = useState("");
-  const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [retryingMessage, setRetryingMessage] = useState<WhatsAppMessage | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -203,20 +202,6 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
     const list = messagesRef.current;
     if (list) list.scrollTop = list.scrollHeight;
   }, [messageCount]);
-
-  function handleSend() {
-    const body = text.trim();
-    if (!body || isSending) return;
-    setIsSending(true);
-    setSendError(null);
-    sendWhatsAppChatMessage(chat.phone, body)
-      .then((result) => {
-        setConversation(result);
-        setText("");
-      })
-      .catch((e) => setSendError(e instanceof Error ? e.message : "Failed to send message"))
-      .finally(() => setIsSending(false));
-  }
 
   function handleRetry() {
     if (!retryingMessage) return;
@@ -267,6 +252,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
               <div key={message.id}>
                 {showDivider && <div className="wa-chat__day">{formatDayDivider(message.timestamp)}</div>}
                 <MessageBubble
+                  phone={chat.phone}
                   message={message}
                   onRetry={() => {
                     setRetryError(null);
@@ -279,40 +265,16 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         )}
       </div>
 
-      <div className="wa-composer">
-        {conversation && !canReply && (
-          <div className="wa-composer__notice">
-            WhatsApp only allows replies within 24 hours of the contact's last message.
-          </div>
-        )}
-        {sendError && <div className="form-error">{sendError}</div>}
-        <div className="wa-composer__row">
-          <textarea
-            className="textarea wa-composer__input"
-            rows={1}
-            placeholder={canReply ? "Type a message" : "Replies unavailable"}
-            value={text}
-            disabled={!canReply || isSending}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="wa-composer__send"
-            onClick={handleSend}
-            disabled={!canReply || isSending || !text.trim()}
-            aria-label="Send message"
-            title="Send"
-          >
-            <SendHorizontal size={18} />
-          </button>
-        </div>
-      </div>
+      {sendError && <div className="form-error wa-chat__error">{sendError}</div>}
+      <WhatsAppComposer
+        phone={chat.phone}
+        canReply={canReply || conversation === null}
+        closedNotice="WhatsApp only allows replies within 24 hours of the contact's last message."
+        onSent={(result) => {
+          setSendError(null);
+          setConversation(result);
+        }}
+      />
 
       {retryingMessage && (
         <ConfirmModal
@@ -339,7 +301,7 @@ const STATUS_LABELS: Record<string, string> = {
   read: "Read",
 };
 
-function MessageBubble({ message, onRetry }: { message: WhatsAppMessage; onRetry: () => void }) {
+function MessageBubble({ phone, message, onRetry }: { phone: string; message: WhatsAppMessage; onRetry: () => void }) {
   const isOut = message.direction === "out";
   const isTemplate = message.type === "template";
   const isFailed = message.status === "failed";
@@ -363,7 +325,8 @@ function MessageBubble({ message, onRetry }: { message: WhatsAppMessage; onRetry
       )}
       <div className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}`}>
         {isTemplate && <div className="wa-bubble__label">Template message</div>}
-        <div className="wa-bubble__text">{message.text}</div>
+        {message.media && <WhatsAppMedia phone={phone} message={message} />}
+        {message.text && <div className="wa-bubble__text">{message.text}</div>}
         <div className="wa-bubble__meta" title={problem}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           {isOut && isTemplate && message.status && !isFailed && (

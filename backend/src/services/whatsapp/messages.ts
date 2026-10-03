@@ -1,4 +1,4 @@
-import { WhatsAppApi } from "./client.js"
+import { WhatsAppApi, uploadWhatsAppMedia } from "./client.js"
 import { recordFailedOutboundMessage, recordOutboundMessage } from "./chatStore.js"
 
 export type TemplateParameter =
@@ -70,6 +70,49 @@ export async function replyToWhatsAppMessage(to: string, message: string) {
         return result
     } catch (error) {
         console.error("Error replying to WhatsApp message:", error)
+        throw error
+    }
+}
+
+export type WhatsAppMediaKind = "image" | "audio" | "video" | "document"
+
+/**
+ * Uploads a file and sends it as a media message — only valid inside an
+ * open 24h customer service window, like a text reply. `voice` marks an
+ * Ogg/Opus recording made in the app (sent as audio, shown as a voice note).
+ */
+export async function sendWhatsAppMedia(
+    to: string,
+    kind: WhatsAppMediaKind,
+    file: Buffer,
+    mimeType: string,
+    options: { filename: string; caption?: string; voice?: boolean },
+) {
+    try {
+        const mediaId = await uploadWhatsAppMedia(file, options.filename, mimeType)
+        const payload: Record<string, string> = { id: mediaId }
+        if (options.caption && kind !== "audio") payload.caption = options.caption
+        if (kind === "document") payload.filename = options.filename
+
+        const result = await WhatsAppApi("messages", "POST", {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to,
+            type: kind,
+            [kind]: payload,
+        })
+        await recordOutboundMessage(result, to, {
+            type: kind,
+            [kind]: {
+                ...payload,
+                mime_type: mimeType,
+                ...(kind !== "document" && { filename: options.filename }),
+                ...(options.voice && { voice: true }),
+            },
+        })
+        return result
+    } catch (error) {
+        console.error(`Error sending WhatsApp ${kind} message:`, error)
         throw error
     }
 }

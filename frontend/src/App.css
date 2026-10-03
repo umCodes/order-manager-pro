@@ -2109,3 +2109,198 @@
   background: var(--color-gray-300);
   cursor: not-allowed;
 }
+
+.wa-chat__error {
+  margin: 0 16px 6px;
+}
+
+.wa-composer__icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-gray-500);
+  cursor: pointer;
+}
+
+.wa-composer__icon-btn:disabled {
+  color: var(--color-gray-300);
+  cursor: not-allowed;
+}
+
+/* Attachment waiting to be sent, above the input. */
+.wa-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-gray-50);
+}
+
+.wa-attachment__thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.wa-attachment__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--color-gray-200);
+  color: var(--color-gray-600);
+}
+
+.wa-attachment__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wa-attachment__name {
+  font-size: 14px;
+  color: var(--color-gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-attachment__size {
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.wa-attachment__remove {
+  display: inline-flex;
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--color-gray-500);
+  cursor: pointer;
+}
+
+/* Voice-note recording bar, in place of the input. */
+.wa-recording {
+  align-items: center;
+}
+
+.wa-recording__indicator {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gray-700);
+}
+
+.wa-recording__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-red-600);
+  animation: wa-recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes wa-recording-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Media inside chat bubbles. */
+.wa-media__image-link {
+  display: block;
+  margin: -2px -4px 4px;
+}
+
+.wa-media__image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+}
+
+.wa-media__video {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-lg);
+}
+
+.wa-media__audio {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: 40px;
+  margin-bottom: 2px;
+}
+
+.wa-media__placeholder {
+  border-radius: var(--radius-lg);
+  background: rgba(127, 127, 127, 0.25);
+}
+
+.wa-media__placeholder--image {
+  width: 220px;
+  max-width: 100%;
+  height: 160px;
+  margin-bottom: 4px;
+}
+
+.wa-media__placeholder--audio {
+  width: 240px;
+  max-width: 100%;
+  height: 40px;
+  margin-bottom: 2px;
+}
+
+.wa-media__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(127, 127, 127, 0.18);
+  color: inherit;
+  text-decoration: none;
+}
+
+.wa-media__file--loading {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.wa-media__file-name {
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-media__unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  opacity: 0.75;
+}

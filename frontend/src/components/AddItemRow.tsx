@@ -20,6 +20,12 @@ type Props = {
   onCommit: () => void;
   onRemove: () => void;
   showExcludeFromTelegram?: boolean;
+  /**
+   * Return Invoice mode: the most of this item that can still be returned.
+   * The price and description are fixed (they come from the invoice), and
+   * the quantity must be more than 0 and at most this.
+   */
+  maxQuantity?: number;
 };
 
 /** One catalog item in the add-item sheet: a header row that expands into a qty/rate/description editor. */
@@ -33,8 +39,18 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
   onCommit,
   onRemove,
   showExcludeFromTelegram = true,
+  maxQuantity,
 }, ref) {
   const formTotal = (Number(form.rate) || 0) * (Number(form.quantity) || 0);
+  const isReturn = maxQuantity !== undefined;
+  const quantity = Number(form.quantity);
+  const quantityError = !isReturn
+    ? null
+    : !(quantity > 0)
+      ? "Enter a quantity above 0"
+      : quantity > maxQuantity + 1e-9
+        ? `At most ${maxQuantity} can be returned`
+        : null;
 
   return (
     <div className="item-row" ref={ref}>
@@ -42,7 +58,7 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
         <div className="item-row__main">
           <div className="item-row__name">
             {item.name}
-            {inCart && <span className="badge item-row__badge">added</span>}
+            {inCart && <span className="badge item-row__badge">{isReturn ? `returning ${inCart.quantity}` : "added"}</span>}
             {inCart?.excludeFromTelegram && (
               <span
                 className="item-row__mute-icon"
@@ -53,7 +69,9 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
               </span>
             )}
           </div>
-          <div className="item-row__description">{item.description}</div>
+          <div className="item-row__description">
+            {isReturn ? `${maxQuantity} returnable${item.description ? ` · ${item.description}` : ""}` : item.description}
+          </div>
         </div>
         <div className="item-row__side">
           <span className="item-row__rate">{currency(item.rate)}</span>
@@ -76,34 +94,46 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
               type="number"
               className="input field-row__input field-row__input--qty"
               value={form.quantity}
+              min={isReturn ? 0 : undefined}
+              max={isReturn ? maxQuantity : undefined}
               onChange={(e) => onFormChange({ ...form, quantity: e.target.value })}
             />
           </div>
-          <div className="field-row">
-            <label className="field-row__label" htmlFor={`rate-${item.item_id}`}>
-              Rate
-            </label>
-            <input
-              id={`rate-${item.item_id}`}
-              type="number"
-              step="0.01"
-              className="input field-row__input field-row__input--rate"
-              value={form.rate}
-              onChange={(e) => onFormChange({ ...form, rate: e.target.value })}
-            />
-          </div>
-          <div className="field-row">
-            <label className="field-row__label" htmlFor={`desc-${item.item_id}`}>
-              Description
-            </label>
-            <input
-              id={`desc-${item.item_id}`}
-              type="text"
-              className="input field-row__input field-row__input--description"
-              value={form.description}
-              onChange={(e) => onFormChange({ ...form, description: e.target.value })}
-            />
-          </div>
+          {quantityError && <div className="form-error item-row__error">{quantityError}</div>}
+          {isReturn ? (
+            <div className="field-row">
+              <span className="field-row__label">Rate</span>
+              <span className="field-row__total">{currency(item.rate)}</span>
+            </div>
+          ) : (
+            <>
+              <div className="field-row">
+                <label className="field-row__label" htmlFor={`rate-${item.item_id}`}>
+                  Rate
+                </label>
+                <input
+                  id={`rate-${item.item_id}`}
+                  type="number"
+                  step="0.01"
+                  className="input field-row__input field-row__input--rate"
+                  value={form.rate}
+                  onChange={(e) => onFormChange({ ...form, rate: e.target.value })}
+                />
+              </div>
+              <div className="field-row">
+                <label className="field-row__label" htmlFor={`desc-${item.item_id}`}>
+                  Description
+                </label>
+                <input
+                  id={`desc-${item.item_id}`}
+                  type="text"
+                  className="input field-row__input field-row__input--description"
+                  value={form.description}
+                  onChange={(e) => onFormChange({ ...form, description: e.target.value })}
+                />
+              </div>
+            </>
+          )}
           <div className="field-row">
             <span className="field-row__label">Total</span>
             <span className="field-row__total">{currency(formTotal)}</span>
@@ -129,8 +159,8 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
                 Remove
               </button>
             )}
-            <button type="button" className="btn btn--item-add" onClick={onCommit}>
-              {inCart ? "Update line item" : "Add to invoice"}
+            <button type="button" className="btn btn--item-add" onClick={onCommit} disabled={quantityError !== null}>
+              {isReturn ? (inCart ? "Update return" : "Return this item") : inCart ? "Update line item" : "Add to invoice"}
             </button>
           </div>
         </div>

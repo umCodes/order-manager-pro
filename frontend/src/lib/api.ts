@@ -989,3 +989,58 @@ export async function markWhatsAppChatRead(phone: string): Promise<void> {
   const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/read`, { method: "POST" });
   if (!response.ok) throw new Error(`Failed to mark chat as read (${response.status})`);
 }
+
+/** An invoice item as offered for return ("Return Invoice" = a Zoho credit note). */
+export type ReturnableItem = {
+  item_id: string;
+  name: string;
+  description: string;
+  unit: string;
+  /** Price credited per unit (after the invoice's discounts). */
+  rate: number;
+  invoiced: number;
+  returned: number;
+  returnable: number;
+};
+
+export type InvoiceReturnSummary = {
+  invoice_id: string;
+  invoice_number: string;
+  customer_name: string;
+  items: ReturnableItem[];
+  returns: { creditnote_id: string; creditnote_number: string; date: string; status: string; total: number }[];
+};
+
+export type CreatedInvoiceReturn = {
+  creditnote_id: string;
+  creditnote_number: string;
+  total: number;
+  applied_to_invoice: number;
+  warnings: string[];
+};
+
+export async function fetchInvoiceReturns(invoiceId: string): Promise<InvoiceReturnSummary> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/returns`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load returnable items (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function createInvoiceReturn(
+  invoiceId: string,
+  items: { item_id: string; quantity: number }[],
+  reason?: string,
+): Promise<CreatedInvoiceReturn> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/returns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, ...(reason?.trim() ? { reason: reason.trim() } : {}) }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to create the return (${response.status})`);
+  }
+  return response.json();
+}

@@ -28,7 +28,7 @@ import NotifyContactModal from "../components/NotifyContactModal";
 import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
-import ReasonModal from "../components/ReasonModal";
+import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
 import type { DraftForm } from "../components/AddItemRow";
 import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
@@ -54,11 +54,6 @@ function lineItemsSignature(lineItems: InvoiceDetailLineItem[]): string {
     .sort()
     .join("|");
 }
-
-type PendingReasonAction =
-  | { kind: "date"; date: string }
-  | { kind: "customer"; contact: Contact }
-  | { kind: "lineItems" };
 
 /**
  * Invoice profile: line items, totals, and actions (pay, mark sent, resend, reschedule).
@@ -100,13 +95,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isChangingCustomer, setIsChangingCustomer] = useState(false);
   const [changeCustomerError, setChangeCustomerError] = useState<string | null>(null);
 
-  // Editing a draft applies immediately; editing an already-sent invoice
-  // (date, customer, or line items) instead stashes the pending change here
-  // and prompts for a reason before it's actually sent to the backend, which
-  // requires one for any non-draft invoice.
-  const [pendingReasonAction, setPendingReasonAction] = useState<PendingReasonAction | null>(null);
-  const [isSavingReason, setIsSavingReason] = useState(false);
-  const [reasonError, setReasonError] = useState<string | null>(null);
 
   // Result of the most recent WhatsApp notification attempt (from recording
   // a payment or marking as sent), so the outcome is never just silent.
@@ -292,12 +280,13 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
   /**
    * Persists unsaved line-item edits, if any. No-op (resolved promise) when
-   * clean. `reason` is only needed (and required by the backend) once the
-   * invoice is no longer a draft.
+   * clean. Sends an automatic reason describing what changed (Zoho requires
+   * one once the invoice is no longer a draft).
    */
-  function saveLineItemsIfDirty(reason?: string): Promise<void> {
+  function saveLineItemsIfDirty(): Promise<void> {
     if (!invoice || !editedLineItems) return Promise.resolve();
     setLineItemsSaveError(null);
+    const reason = lineItemsChangeReason(invoice.line_items, editedLineItems);
     return updateInvoiceLineItems(
       invoice.invoice_id,
       editedLineItems.map((li) => ({
@@ -319,41 +308,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   }
 
   function handleSaveLineItemsClick() {
-    if (invoice && invoice.status !== "draft") {
-      setReasonError(null);
-      setPendingReasonAction({ kind: "lineItems" });
-      return;
-    }
     setIsSavingLineItems(true);
     saveLineItemsIfDirty()
       .catch((e) => setLineItemsSaveError(e instanceof Error ? e.message : "Failed to save line item changes"))
       .finally(() => setIsSavingLineItems(false));
-  }
-
-  /** Applies whichever edit is pending (date/customer/line items) once a reason has been supplied. */
-  function handleReasonConfirm(reason: string) {
-    if (!invoice || !pendingReasonAction) return;
-    setIsSavingReason(true);
-    setReasonError(null);
-
-    let action: Promise<void>;
-    if (pendingReasonAction.kind === "date") {
-      action = updateInvoiceDate(invoice.invoice_id, pendingReasonAction.date, reason).then(() =>
-        fetchInvoiceById(invoiceId).then(setInvoice),
-      );
-    } else if (pendingReasonAction.kind === "customer") {
-      action = updateInvoiceCustomer(invoice.invoice_id, pendingReasonAction.contact.contact_id, reason).then(() =>
-        setCustomerRetryToken((n) => n + 1),
-      );
-    } else {
-      setIsSavingLineItems(true);
-      action = saveLineItemsIfDirty(reason).finally(() => setIsSavingLineItems(false));
-    }
-
-    action
-      .then(() => setPendingReasonAction(null))
-      .catch((e) => setReasonError(e instanceof Error ? e.message : "Failed to save changes"))
-      .finally(() => setIsSavingReason(false));
   }
 
   function handleBackClick() {
@@ -364,9 +322,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     onBack();
   }
 
-  // A draft's date/customer/line items can be edited freely. A sent invoice's
-  // can too, but each edit is routed through a reason prompt first (see
-  // pendingReasonAction) — splitting is the one exception, still draft-only.
+  // A draft's or a sent invoice's date/customer/line items can be edited
+  // (sent ones with an automatic reason, see lib/invoiceChangeReason) —
+  // splitting is the one exception, still draft-only.
   const isDraft = invoice?.status === "draft";
 
   // A selection only matters if it's a draft (splitting a sent invoice's
@@ -556,15 +514,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
   function handleSelectDate(date: string) {
     if (!invoice) return;
-    if (invoice.status !== "draft") {
-      setIsDateModalOpen(false);
-      setReasonError(null);
-      setPendingReasonAction({ kind: "date", date });
-      return;
-    }
     setIsUpdatingDate(true);
     setDateError(null);
-    updateInvoiceDate(invoice.invoice_id, date)
+    updateInvoiceDate(invoice.invoice_id, date, dateChangeReason(invoice.date, date))
       .then(() => {
         setIsDateModalOpen(false);
         return fetchInvoiceById(invoiceId).then(setInvoice);
@@ -579,15 +531,13 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
   function handleChangeCustomer(contact: Contact) {
     if (!invoice) return;
-    if (invoice.status !== "draft") {
-      setIsChangeCustomerOpen(false);
-      setReasonError(null);
-      setPendingReasonAction({ kind: "customer", contact });
-      return;
-    }
     setIsChangingCustomer(true);
     setChangeCustomerError(null);
-    updateInvoiceCustomer(invoice.invoice_id, contact.contact_id)
+    updateInvoiceCustomer(
+      invoice.invoice_id,
+      contact.contact_id,
+      customerChangeReason(invoice.customer_name, contact.contact_name || contact.company_name),
+    )
       .then(() => {
         setIsChangeCustomerOpen(false);
         // Re-runs the main load effect, which re-fetches both the invoice
@@ -1018,22 +968,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         />
       )}
 
-      {pendingReasonAction && (
-        <ReasonModal
-          title={
-            pendingReasonAction.kind === "date"
-              ? "Reason for Date Change"
-              : pendingReasonAction.kind === "customer"
-                ? "Reason for Customer Change"
-                : "Reason for Item Changes"
-          }
-          description="This invoice has already been sent — a reason is required for the record."
-          isSaving={isSavingReason}
-          error={reasonError}
-          onCancel={() => setPendingReasonAction(null)}
-          onConfirm={handleReasonConfirm}
-        />
-      )}
     </div>
   );
 }

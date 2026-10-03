@@ -5,6 +5,7 @@ import { redisClient } from "../../config/redis.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 
 /**
  * Posts the invoice to the channel again as a brand-new message (rather than
@@ -19,7 +20,8 @@ export async function resendInvoiceTelegramMessage(req: Request, res: Response) 
     const access_token = requireAccessToken(req, "A problem occured resending the invoice");
     if (!id) throw new Error("id not provided");
 
-    await ZohoUpdateInvoice(access_token, id, { date: date || todayInBusinessTimezone() });
+    const newDate = date || todayInBusinessTimezone();
+    await ZohoUpdateInvoice(access_token, id, { date: newDate, reason: invoiceUpdateReason(undefined, `Rescheduled to ${newDate}`) });
 
     const invoice = await ZohoGetInvoiceById(access_token, id);
 

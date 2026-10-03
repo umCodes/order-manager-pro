@@ -13,6 +13,7 @@ import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
+import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
@@ -29,9 +30,10 @@ export async function updateInvoiceDate(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
 
+    const newDate = date || todayInBusinessTimezone();
     await ZohoUpdateInvoice(access_token, id, {
-      date: date || todayInBusinessTimezone(),
-      ...(reason ? { reason } : {}),
+      date: newDate,
+      reason: invoiceUpdateReason(reason, `Date changed to ${newDate}`),
     });
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
@@ -90,7 +92,7 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
 
     const invoice = await ZohoUpdateInvoice(access_token, id, {
       line_items: zohoLineItems,
-      ...(reason ? { reason } : {}),
+      reason: invoiceUpdateReason(reason, "Items updated"),
     });
     // A sent invoice's total is part of the customer's balance due in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
@@ -119,7 +121,7 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
     const { customer_id, reason } = req.body ?? {};
     if (!customer_id) throw new Error("customer_id not provided");
 
-    await ZohoUpdateInvoice(access_token, id, { customer_id, ...(reason ? { reason } : {}) });
+    await ZohoUpdateInvoice(access_token, id, { customer_id, reason: invoiceUpdateReason(reason, "Customer changed") });
     const invoice = await ZohoGetInvoiceById(access_token, id);
     // Moving a sent invoice shifts balance due between two customers in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");

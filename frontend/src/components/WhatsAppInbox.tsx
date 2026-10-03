@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, Phone, RotateCw, Search, Trash2 } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -88,19 +88,49 @@ function StatusTicks({ status }: { status?: string }) {
   return <Check size={14} className="wa-bubble__ticks" />;
 }
 
-/** Distinct values with how many contacts have each, most common first (as on the Customers page). */
-function rankedValues(chats: WhatsAppChat[], pick: (chat: WhatsAppChat) => string | undefined) {
-  const counts = new Map<string, number>();
+/**
+ * Distinct values with how many contacts have each and their unread
+ * messages. Places with unread messages come first (most unread first);
+ * the rest keep the usual order, most contacts first (as on the Customers page).
+ */
+function rankedValues(
+  chats: WhatsAppChat[],
+  pick: (chat: WhatsAppChat) => string | undefined,
+  unreadByPhone: Record<string, number>,
+) {
+  const groups = new Map<string, { count: number; unread: number }>();
   for (const chat of chats) {
     const value = pick(chat);
-    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+    if (!value) continue;
+    const group = groups.get(value) ?? { count: 0, unread: 0 };
+    group.count += 1;
+    group.unread += unreadByPhone[chat.phone] ?? 0;
+    groups.set(value, group);
   }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([value, count]) => ({ value, count }));
+  return Array.from(groups.entries())
+    .sort(([aValue, a], [bValue, b]) => b.unread - a.unread || b.count - a.count || aValue.localeCompare(bValue))
+    .map(([value, group]) => ({ value, ...group }));
 }
 
-function FilterChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) {
+/** Unread messages across these chats. */
+function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) {
+  return chats.reduce((sum, chat) => sum + (unreadByPhone[chat.phone] ?? 0), 0);
+}
+
+/** A city / district filter pill: shows its unread messages as a badge when there are any, otherwise how many contacts it has. */
+function FilterChip({
+  label,
+  count,
+  unread = 0,
+  active,
+  onClick,
+}: {
+  label: string;
+  count?: number;
+  unread?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -109,7 +139,13 @@ function FilterChip({ label, count, active, onClick }: { label: string; count?: 
       aria-pressed={active}
     >
       {label}
-      {count !== undefined && <span className="wa-chip__count">{count}</span>}
+      {unread > 0 ? (
+        <span className="unread-badge unread-badge--chip" aria-label={`${unread} unread`}>
+          {unread > 99 ? "99+" : unread}
+        </span>
+      ) : (
+        count !== undefined && <span className="wa-chip__count">{count}</span>
+      )}
     </button>
   );
 }
@@ -175,9 +211,9 @@ export default function WhatsAppInbox() {
   }
 
   const allChats = chats ?? [];
-  const cityOptions = rankedValues(allChats, (chat) => chat.city);
+  const cityOptions = rankedValues(allChats, (chat) => chat.city, unread.chats);
   const chatsInCity = cityFilter ? allChats.filter((chat) => chat.city === cityFilter) : allChats;
-  const districtOptions = rankedValues(chatsInCity, (chat) => chat.district);
+  const districtOptions = rankedValues(chatsInCity, (chat) => chat.district, unread.chats);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleChats = chatsInCity.filter(
@@ -209,17 +245,19 @@ export default function WhatsAppInbox() {
         <div className="wa-chips" role="group" aria-label="Filter by city">
           <FilterChip
             label="All cities"
+            unread={unreadIn(allChats, unread.chats)}
             active={cityFilter === null}
             onClick={() => {
               setCityFilter(null);
               setDistrictFilter(null);
             }}
           />
-          {cityOptions.map(({ value, count }) => (
+          {cityOptions.map(({ value, count, unread: placeUnread }) => (
             <FilterChip
               key={value}
               label={value}
               count={count}
+              unread={placeUnread}
               active={cityFilter === value}
               onClick={() => {
                 setCityFilter(value);
@@ -232,12 +270,19 @@ export default function WhatsAppInbox() {
 
       {districtOptions.length > 0 && (
         <div className="wa-chips" role="group" aria-label="Filter by district">
-          <FilterChip label="All" count={chatsInCity.length} active={districtFilter === null} onClick={() => setDistrictFilter(null)} />
-          {districtOptions.map(({ value, count }) => (
+          <FilterChip
+            label="All"
+            count={chatsInCity.length}
+            unread={unreadIn(chatsInCity, unread.chats)}
+            active={districtFilter === null}
+            onClick={() => setDistrictFilter(null)}
+          />
+          {districtOptions.map(({ value, count, unread: placeUnread }) => (
             <FilterChip
               key={value}
               label={value}
               count={count}
+              unread={placeUnread}
               active={districtFilter === value}
               onClick={() => setDistrictFilter(value)}
             />
@@ -304,6 +349,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [retryError, setRetryError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<WhatsAppMessage | null>(null);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isCallOpen, setIsCallOpen] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastMessageId = conversation?.messages.at(-1)?.id;
@@ -475,6 +521,15 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           >
             <Trash2 size={14} />
           </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setIsCallOpen(true)}
+            aria-label={`Call +${chat.phone}`}
+            title="Call"
+          >
+            <Phone size={14} />
+          </button>
         </div>
       </div>
 
@@ -537,6 +592,26 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
               <button type="button" className="btn btn--secondary" onClick={() => setActionMessage(null)}>
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCallOpen && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={() => setIsCallOpen(false)} />
+          <div className="modal">
+            <div className="modal__title">Call {chat.name}</div>
+            <div className="wa-call__number">+{chat.phone}</div>
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn--secondary" onClick={() => setIsCallOpen(false)}>
+                Cancel
+              </button>
+              {/* Opens the phone's dialer with the number filled in. */}
+              <a className="btn btn--primary wa-call__dial" href={`tel:+${chat.phone}`} onClick={() => setIsCallOpen(false)}>
+                <Phone size={16} />
+                Call
+              </a>
             </div>
           </div>
         </div>

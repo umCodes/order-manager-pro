@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, RotateCw, Search, Trash2 } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -8,6 +8,15 @@ import {
   type WhatsAppConversation,
   type WhatsAppMessage,
 } from "../lib/api";
+import {
+  chatPreview,
+  clearStoredConversation,
+  deleteStoredMessage,
+  loadStoredChats,
+  loadStoredConversation,
+  mergeServerConversation,
+  saveStoredChats,
+} from "../lib/whatsappStore";
 import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
@@ -16,12 +25,15 @@ import WhatsAppMedia from "./WhatsAppMedia";
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
 const KEYBOARD_THRESHOLD_PX = 120;
 
-/** How often an open conversation re-reads its history, to pick up new inbound messages. */
-const CONVERSATION_POLL_MS = 10_000;
+/** Holding a message this long opens its actions (copy / delete). */
+const LONG_PRESS_MS = 500;
 
 /**
- * Right after sending, re-read this often for this long so the new
- * message's ticks (sent → delivered → read, or failed) update promptly.
+ * An open conversation is loaded once when opened (and again on refresh or
+ * when the app comes back to the foreground) — there's no open-ended
+ * polling. The only repeated checking is right after sending: re-read this
+ * often, for at most this long, so the new message's ticks (sent →
+ * delivered → read, or failed) update promptly.
  */
 const AFTER_SEND_POLL_MS = 3_000;
 const AFTER_SEND_POLL_WINDOW_MS = 60_000;
@@ -109,7 +121,8 @@ function FilterChip({ label, count, active, onClick }: { label: string; count?: 
  * possible within 24 hours of the contact's last message.
  */
 export default function WhatsAppInbox() {
-  const [chats, setChats] = useState<WhatsAppChat[] | null>(null);
+  // Shown straight from this device's copy, then refreshed from the server.
+  const [chats, setChats] = useState<WhatsAppChat[] | null>(() => loadStoredChats());
   const [chatsError, setChatsError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [cityFilter, setCityFilter] = useState<string | null>(null);
@@ -121,6 +134,7 @@ export default function WhatsAppInbox() {
       fetchWhatsAppChats()
         .then((list) => {
           setChats(list);
+          saveStoredChats(list);
           setChatsError(null);
         })
         .catch((e) => setChatsError(e instanceof Error ? e.message : "Failed to load chats")),
@@ -131,12 +145,22 @@ export default function WhatsAppInbox() {
     loadChats();
   }, [loadChats]);
 
+  // Last-message previews, with local deletes applied. Re-read whenever the
+  // list changes identity — including on returning from a chat, below.
+  const previews = useMemo(
+    () => new Map((chats ?? []).map((chat) => [chat.phone, chatPreview(chat)] as const)),
+    [chats],
+  );
+
   if (openChat) {
     return (
       <ChatView
         chat={openChat}
         onBack={() => {
           setOpenChat(null);
+          // A new array so the previews pick up anything deleted in the chat
+          // right away, even before (or without) the server reload.
+          setChats((current) => (current ? [...current] : current));
           loadChats();
         }}
       />
@@ -222,29 +246,28 @@ export default function WhatsAppInbox() {
         <div className="items-area__empty">{normalizedQuery ? "No matching contacts" : "No contacts with a phone number"}</div>
       ) : (
         <div className="wa-list">
-          {visibleChats.map((chat) => (
-            <button
-              key={`${chat.phone}-${chat.customer_id ?? ""}`}
-              type="button"
-              className="wa-list__row"
-              onClick={() => setOpenChat(chat)}
-            >
-              <span className="wa-avatar">{initials(chat.name)}</span>
-              <span className="wa-list__main">
-                <span className="wa-list__top">
-                  <span className="wa-list__name">{chat.name}</span>
-                  {chat.last_message && (
-                    <span className="wa-list__time">{formatListTime(chat.last_message.timestamp)}</span>
-                  )}
+          {visibleChats.map((chat) => {
+            const preview = previews.get(chat.phone);
+            return (
+              <button
+                key={`${chat.phone}-${chat.customer_id ?? ""}`}
+                type="button"
+                className="wa-list__row"
+                onClick={() => setOpenChat(chat)}
+              >
+                <span className="wa-avatar">{initials(chat.name)}</span>
+                <span className="wa-list__main">
+                  <span className="wa-list__top">
+                    <span className="wa-list__name">{chat.name}</span>
+                    {preview && <span className="wa-list__time">{formatListTime(preview.timestamp)}</span>}
+                  </span>
+                  <span className="wa-list__preview">
+                    {preview ? `${preview.direction === "out" ? "You: " : ""}${preview.text}` : `+${chat.phone}`}
+                  </span>
                 </span>
-                <span className="wa-list__preview">
-                  {chat.last_message
-                    ? `${chat.last_message.direction === "out" ? "You: " : ""}${chat.last_message.text}`
-                    : `+${chat.phone}`}
-                </span>
-              </span>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -257,39 +280,44 @@ export default function WhatsAppInbox() {
  * box fixed at the bottom.
  */
 function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) {
-  const [conversation, setConversation] = useState<WhatsAppConversation | null>(null);
+  // This device's copy shows instantly; opening the chat then refreshes it.
+  const [conversation, setConversation] = useState<WhatsAppConversation | null>(() => loadStoredConversation(chat.phone));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [retryingMessage, setRetryingMessage] = useState<WhatsAppMessage | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<WhatsAppMessage | null>(null);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const messageCount = conversation?.messages.length ?? 0;
-  // Until when to poll at the faster after-send rate (0 = normal rate), and
-  // the just-sent message being watched.
+  const lastMessageId = conversation?.messages.at(-1)?.id;
+  // Until when to keep checking a just-sent message (0 = not checking), and
+  // which message that is.
   const fastPollUntilRef = useRef(0);
   const watchedMessageIdRef = useRef<string | null>(null);
-  // Restarts the poll timer so a just-sent message is checked on the fast schedule.
-  const restartPollRef = useRef<() => void>(() => {});
+  // Starts the after-send checks; loads the conversation now (refresh button).
+  const startAfterSendPollRef = useRef<() => void>(() => {});
+  const loadRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
-  // Polling only runs while this chat is open: leaving it stops everything,
-  // and reopening it loads the latest state anyway.
+  // Loads once on open, again when the app returns to the foreground, and
+  // repeatedly only during the after-send window. Leaving the chat stops
+  // everything; reopening it loads the latest state anyway.
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
 
-    function schedule() {
+    function scheduleAfterSendCheck() {
       window.clearTimeout(timer);
-      const fast = Date.now() < fastPollUntilRef.current;
-      timer = window.setTimeout(load, fast ? AFTER_SEND_POLL_MS : CONVERSATION_POLL_MS);
+      timer = undefined;
+      if (Date.now() < fastPollUntilRef.current) timer = window.setTimeout(load, AFTER_SEND_POLL_MS);
     }
 
     function load() {
-      fetchWhatsAppConversation(chat.phone)
+      return fetchWhatsAppConversation(chat.phone)
         .then((result) => {
           if (cancelled) return;
-          setConversation(result);
+          setConversation(mergeServerConversation(chat.phone, result));
           setLoadError(null);
           // A poll that started before the send won't have the message yet:
           // keep watching until a response actually shows it settled.
@@ -300,27 +328,51 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load conversation");
         })
         .finally(() => {
-          if (!cancelled) schedule();
+          if (!cancelled) scheduleAfterSendCheck();
         });
     }
 
-    restartPollRef.current = schedule;
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") load();
+    }
+
+    loadRef.current = load;
+    startAfterSendPollRef.current = scheduleAfterSendCheck;
     load();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      restartPollRef.current = () => {};
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      loadRef.current = () => Promise.resolve();
+      startAfterSendPollRef.current = () => {};
     };
   }, [chat.phone]);
 
   /** Shows a conversation returned by a send, then watches the new message's status for a while. */
   function showSentConversation(result: WhatsAppConversation) {
-    setConversation(result);
-    const sent = result.messages.findLast((m) => m.direction === "out");
+    const merged = mergeServerConversation(chat.phone, result);
+    setConversation(merged);
+    const sent = merged.messages.findLast((m) => m.direction === "out");
     if (!sent || isSettled(sent)) return;
     watchedMessageIdRef.current = sent.id;
     fastPollUntilRef.current = Date.now() + AFTER_SEND_POLL_WINDOW_MS;
-    restartPollRef.current();
+    startAfterSendPollRef.current();
+  }
+
+  function handleDeleteMessage(message: WhatsAppMessage) {
+    if (conversation) setConversation(deleteStoredMessage(chat.phone, message, conversation));
+    setActionMessage(null);
+  }
+
+  function handleClearChat() {
+    if (conversation) setConversation(clearStoredConversation(chat.phone, conversation));
+    setIsClearConfirmOpen(false);
+  }
+
+  function handleCopyMessage(message: WhatsAppMessage) {
+    navigator.clipboard?.writeText(message.text).catch(() => {});
+    setActionMessage(null);
   }
 
   // Keep the chat exactly the size of the visible area. A fixed full-height
@@ -355,11 +407,11 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
     };
   }, []);
 
-  // Jump to the newest message whenever one arrives.
+  // Jump to the newest message whenever one arrives (not when an older one is deleted).
   useEffect(() => {
     const list = messagesRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [messageCount]);
+  }, [lastMessageId]);
 
   function handleRetry() {
     if (!retryingMessage) return;
@@ -373,7 +425,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       .catch((e: Error & { conversation?: WhatsAppConversation }) => {
         // The new attempt is in the conversation as its own failed message.
         if (e.conversation) {
-          setConversation(e.conversation);
+          setConversation(mergeServerConversation(chat.phone, e.conversation));
           setRetryingMessage(null);
           setSendError(`Sent again, but it failed: ${e.message}`);
         } else {
@@ -394,6 +446,19 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         </button>
         <span className="wa-avatar wa-avatar--small">{initials(chat.name)}</span>
         <div className="wa-chat__name">{chat.name}</div>
+        <div className="wa-chat__header-actions">
+          <RefreshButton onRefresh={() => loadRef.current()} />
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setIsClearConfirmOpen(true)}
+            disabled={messages.length === 0}
+            aria-label="Clear chat"
+            title="Clear chat"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="wa-chat__messages" ref={messagesRef}>
@@ -401,7 +466,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         {conversation === null && !loadError ? (
           <div className="items-area__empty">Loading...</div>
         ) : messages.length === 0 ? (
-          <div className="items-area__empty">No messages in the last 7 days</div>
+          <div className="items-area__empty">No messages</div>
         ) : (
           messages.map((message, index) => {
             const previous = messages[index - 1];
@@ -416,6 +481,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
                     setRetryError(null);
                     setRetryingMessage(message);
                   }}
+                  onLongPress={() => setActionMessage(message)}
                 />
               </div>
             );
@@ -433,6 +499,41 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           showSentConversation(result);
         }}
       />
+
+      {actionMessage && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={() => setActionMessage(null)} />
+          <div className="modal">
+            <div className="modal__title">Message</div>
+            <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
+              Deleting removes it from this device only — {chat.name} still has it.
+            </div>
+            <div className="wa-message-actions">
+              {actionMessage.text && (
+                <button type="button" className="btn btn--secondary" onClick={() => handleCopyMessage(actionMessage)}>
+                  Copy text
+                </button>
+              )}
+              <button type="button" className="btn btn--primary" onClick={() => handleDeleteMessage(actionMessage)}>
+                Delete for me
+              </button>
+              <button type="button" className="btn btn--secondary" onClick={() => setActionMessage(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isClearConfirmOpen && (
+        <ConfirmModal
+          title="Clear chat?"
+          message={`Remove all messages with ${chat.name} from this device? They still have them, and new messages will still show up here.`}
+          confirmLabel="Clear chat"
+          onConfirm={handleClearChat}
+          onCancel={() => setIsClearConfirmOpen(false)}
+        />
+      )}
 
       {retryingMessage && (
         <ConfirmModal
@@ -459,7 +560,57 @@ const STATUS_LABELS: Record<string, string> = {
   read: "Read",
 };
 
-function MessageBubble({ phone, message, onRetry }: { phone: string; message: WhatsAppMessage; onRetry: () => void }) {
+/**
+ * Press-and-hold (touch) or right-click (mouse) handlers. Moving the finger
+ * (scrolling) cancels the hold.
+ */
+function useLongPress(onLongPress: () => void) {
+  const timerRef = useRef<number | undefined>(undefined);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+
+  function cancel() {
+    window.clearTimeout(timerRef.current);
+    timerRef.current = undefined;
+    startRef.current = null;
+  }
+
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse") return; // mice use right-click instead
+      cancel();
+      startRef.current = { x: e.clientX, y: e.clientY };
+      timerRef.current = window.setTimeout(() => {
+        cancel();
+        onLongPress();
+      }, LONG_PRESS_MS);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const start = startRef.current;
+      if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onPointerLeave: cancel,
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      cancel();
+      onLongPress();
+    },
+  };
+}
+
+function MessageBubble({
+  phone,
+  message,
+  onRetry,
+  onLongPress,
+}: {
+  phone: string;
+  message: WhatsAppMessage;
+  onRetry: () => void;
+  onLongPress: () => void;
+}) {
+  const longPressHandlers = useLongPress(onLongPress);
   const isOut = message.direction === "out";
   const isTemplate = message.type === "template";
   const isFailed = message.status === "failed";
@@ -481,7 +632,10 @@ function MessageBubble({ phone, message, onRetry }: { phone: string; message: Wh
           <RotateCw size={13} />
         </button>
       )}
-      <div className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}`}>
+      <div
+        className={`wa-bubble${isOut ? " wa-bubble--out" : ""}${isTemplate ? " wa-bubble--template" : ""}`}
+        {...longPressHandlers}
+      >
         {isTemplate && <div className="wa-bubble__label">Template message</div>}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
         {message.text && <div className="wa-bubble__text">{message.text}</div>}

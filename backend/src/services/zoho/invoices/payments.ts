@@ -1,6 +1,7 @@
 import { ZohoApi } from "../client.js"
 import { ZohoGetInvoiceById } from "./queries.js"
 import { ZohoUpdateInvoice } from "./mutations.js"
+import { invoiceUpdateReason } from "../../../utils/invoiceUpdateReason.js"
 
 type PaymentMode = "check" | "cash" | "creditcard" | "banktransfer" | "bankremittance" | "autotransaction" | "others"
 
@@ -16,6 +17,8 @@ export async function recordInvoicePayment(headers: string, invoiceId: string, a
             const discounted = await ZohoUpdateInvoice(headers, invoiceId, {
                 discount,
                 discount_type: "entity_level",
+                // Required once the invoice is no longer a draft.
+                reason: invoiceUpdateReason(undefined, `Discount of ${discount} applied with a payment of ${amount}`),
             })
             // Zoho can return 200 with the invoice unchanged instead of
             // rejecting the update outright (seen on non-draft invoices) — so

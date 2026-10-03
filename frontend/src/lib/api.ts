@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -269,6 +269,41 @@ export async function recordCustomerPayment(
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to record payment (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** The customer's payments, newest first. */
+export async function fetchCustomerPayments(customerId: string): Promise<CustomerPayment[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch payments (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.payments;
+}
+
+/** Sends the WhatsApp payment confirmation for one of the customer's existing payments. */
+export async function sendCustomerPaymentNotification(
+  customerId: string,
+  paymentId: string,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments/${paymentId}/notify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to send notification (${response.status})`);
   }
 
   return response.json();
@@ -786,4 +821,156 @@ export async function resendInvoiceTelegramMessage(invoiceId: string, date?: str
   }
 
   return response.json();
+}
+export type WhatsAppChatPreview = { text: string; timestamp: number; direction: "in" | "out" };
+
+/** One row of the WhatsApp contact list: a customer's phone, or any other number with stored history. */
+export type WhatsAppChat = {
+  phone: string;
+  name: string;
+  customer_id?: string;
+  /** From the customer's address, for filtering the list by city / district. */
+  city?: string;
+  district?: string;
+  last_message?: WhatsAppChatPreview;
+};
+
+export type WhatsAppMessage = {
+  id: string;
+  direction: "in" | "out";
+  timestamp: number;
+  type: string;
+  text: string;
+  status?: string;
+  /** WhatsApp's reason, on a failed message. */
+  error?: string;
+  reaction?: string;
+  /** A template that failed or was never delivered, and can be sent again. */
+  can_retry?: boolean;
+  /** Set on image / voice / video / document messages; load with fetchWhatsAppMedia. */
+  media?: { mime_type?: string; filename?: string; voice?: boolean };
+};
+
+/** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */
+export type WhatsAppConversation = {
+  messages: WhatsAppMessage[];
+  can_reply: boolean;
+  reply_window_expires_at?: number;
+};
+
+export async function fetchWhatsAppChats(): Promise<WhatsAppChat[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load chats (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.chats;
+}
+
+export async function fetchWhatsAppConversation(phone: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load conversation (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** Sends a free-text reply; resolves to the updated conversation. */
+export async function sendWhatsAppChatMessage(phone: string, text: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to send message (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Sends a failed / undelivered template message again. Resolves to the
+ * updated conversation; if this attempt fails too, throws with WhatsApp's
+ * reason and the conversation (which shows the new failed attempt) attached.
+ */
+export async function retryWhatsAppMessage(phone: string, messageId: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/retry`,
+    { method: "POST" },
+  );
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error ?? `Failed to send again (${response.status})`) as Error & {
+      conversation?: WhatsAppConversation;
+    };
+    if (Array.isArray(body.messages)) error.conversation = body;
+    throw error;
+  }
+
+  return body;
+}
+
+/** Largest file the backend accepts (WhatsApp's limit for audio and video). */
+export const MAX_WHATSAPP_UPLOAD_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Sends a file as a WhatsApp reply: images and video show inline, an
+ * Ogg/Opus recording with `voice` shows as a voice note, anything else goes
+ * as a document. Resolves to the updated conversation.
+ */
+export async function sendWhatsAppMedia(
+  phone: string,
+  file: Blob,
+  options: { filename: string; caption?: string; voice?: boolean },
+): Promise<WhatsAppConversation> {
+  const params = new URLSearchParams();
+  if (options.caption) params.set("caption", options.caption);
+  if (options.voice) params.set("voice", "1");
+  const query = params.toString();
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/media${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      headers: {
+        // Raw bytes, so the backend's JSON parser never touches the file.
+        "Content-Type": "application/octet-stream",
+        "X-File-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(options.filename),
+      },
+      body: file,
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? (response.status === 413 ? "File is too large" : `Failed to send file (${response.status})`));
+  }
+
+  return response.json();
+}
+
+/** Downloads a message's image / voice note / file (through the backend, which fetches it from WhatsApp). */
+export async function fetchWhatsAppMedia(phone: string, messageId: string): Promise<Blob> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/media`,
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load media (${response.status})`);
+  }
+
+  return response.blob();
 }

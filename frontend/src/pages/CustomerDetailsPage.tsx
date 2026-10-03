@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Coffee, ExternalLink, MapPin, Pencil, ShoppingBasket, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Coffee, ExternalLink, MapPin, Pencil, Send, ShoppingBasket, TriangleAlert, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
+  fetchCustomerPayments,
+  sendCustomerPaymentNotification,
   recordCustomerPayment,
   addCustomerContact,
   updateCustomerContact,
@@ -17,7 +19,7 @@ import {
 import { parseAddress } from "../lib/address";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
-import { getContactList, LEGACY_CONTACT_ID } from "../lib/contacts";
+import { getContactList, getPrimaryContact, LEGACY_CONTACT_ID } from "../lib/contacts";
 import ClickableCard from "../components/ClickableCard";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
@@ -25,7 +27,11 @@ import AddCustomerModal from "../components/AddCustomerModal";
 import ContactCard from "../components/ContactCard";
 import AddContactModal from "../components/AddContactModal";
 import DeleteContactModal from "../components/DeleteContactModal";
-import type { Contact, DraftInvoice } from "../types";
+import ConfirmModal from "../components/ConfirmModal";
+import NotifyContactModal from "../components/NotifyContactModal";
+import type { Contact, CustomerPayment, DraftInvoice } from "../types";
+
+type SendPaymentStep = "closed" | "confirm" | "pickContact";
 
 type Props = {
   customerId: string;
@@ -45,6 +51,19 @@ const LANGUAGE_LABELS: Record<string, string> = {
   ar: "Arabic",
   en: "English",
 };
+
+/** How many of the customer's latest payments the Recent Payments section shows. */
+const RECENT_PAYMENTS_SHOWN = 3;
+
+const PAYMENT_MODE_LABELS: Record<string, string> = {
+  cash: "Cash",
+  creditcard: "Card",
+  banktransfer: "Bank transfer",
+};
+
+function formatPaymentMode(mode: string) {
+  return PAYMENT_MODE_LABELS[mode.toLowerCase()] ?? mode;
+}
 
 /**
  * Customer profile: balance, contact info, and their outstanding invoices.
@@ -69,6 +88,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [payments, setPayments] = useState<CustomerPayment[] | null>(null);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
+  const [sendingPayment, setSendingPayment] = useState<CustomerPayment | null>(null);
+  const [sendPaymentStep, setSendPaymentStep] = useState<SendPaymentStep>("closed");
+  const [isSendingPayment, setIsSendingPayment] = useState(false);
+  const [notifyBanner, setNotifyBanner] = useState<"success" | "failed" | null>(null);
+  const [notifyRetry, setNotifyRetry] = useState<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +112,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       })
       .catch(() => {
         if (!cancelled) setInvoices([]);
+      });
+    fetchCustomerPayments(customerId)
+      .then((list) => {
+        if (!cancelled) setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
+      })
+      .catch((e) => {
+        if (!cancelled) setPaymentsError(e instanceof Error ? e.message : "Failed to load payments");
       });
 
     return () => {
@@ -105,10 +138,53 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     recordCustomerPayment(customer.contact_id, amount, notify, notifyContactIds)
       .then(() => {
         setIsPaymentModalOpen(false);
+        fetchCustomerPayments(customerId)
+          .then((list) => {
+            setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
+            setPaymentsError(null);
+          })
+          .catch(() => {});
         return fetchCustomerById(customerId).then(setCustomer);
       })
       .catch((e) => setPaymentError(e instanceof Error ? e.message : "Failed to record payment"))
       .finally(() => setIsRecordingPayment(false));
+  }
+
+  /**
+   * Sends the WhatsApp payment confirmation template for one of the
+   * customer's existing payments: its amount and date, with the customer's
+   * current total balance due. Only sends the message — the payment itself
+   * is untouched.
+   */
+  function runSendPayment(payment: CustomerPayment, notifyContactIds?: string[]) {
+    if (!customer) return;
+    const customerIdForSend = customer.contact_id;
+    const retry = () => runSendPayment(payment, notifyContactIds);
+    setIsSendingPayment(true);
+    setNotifyBanner(null);
+    sendCustomerPaymentNotification(customerIdForSend, payment.payment_id, notifyContactIds)
+      .then((result) => {
+        setNotifyBanner(result.notified ? "success" : "failed");
+        setNotifyRetry(result.notified ? null : () => retry);
+      })
+      .catch(() => {
+        setNotifyBanner("failed");
+        setNotifyRetry(() => retry);
+      })
+      .finally(() => {
+        setIsSendingPayment(false);
+        setSendPaymentStep("closed");
+      });
+  }
+
+  function handleConfirmSendPayment() {
+    if (!customer || !sendingPayment) return;
+    if (getContactList(customer).length > 1) {
+      setSendPaymentStep("pickContact");
+      return;
+    }
+    const primaryId = getPrimaryContact(customer)?.contact_person_id;
+    runSendPayment(sendingPayment, primaryId ? [primaryId] : undefined);
   }
 
   function handleAddContact(payload: { first_name: string; phone: string; is_primary_contact: boolean }) {
@@ -375,6 +451,71 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
               </div>
             )}
           </div>
+
+          {notifyBanner === "success" && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              Customer notified on WhatsApp.
+            </div>
+          )}
+
+          {notifyBanner === "failed" && (
+            <div className="notify-banner notify-banner--failed">
+              <TriangleAlert className="notify-banner__icon" size={14} />
+              <span>The WhatsApp notification couldn't be sent.</span>
+              <button
+                type="button"
+                className="link-btn"
+                disabled={isSendingPayment}
+                onClick={() => notifyRetry?.()}
+              >
+                {isSendingPayment ? "Retrying..." : "Try again"}
+              </button>
+            </div>
+          )}
+
+          <div className="line-items">
+            <div className="line-items__header">Recent Payments</div>
+            {paymentsError ? (
+              <div className="form-error">{paymentsError}</div>
+            ) : payments === null ? (
+              <div className="items-area__empty">Loading...</div>
+            ) : payments.length === 0 ? (
+              <div className="items-area__empty">No payments yet</div>
+            ) : (
+              <div className="draft-list">
+                {payments.map((payment) => (
+                  <div key={payment.payment_id} className="draft-card">
+                    <div className="draft-card__top">
+                      <span className="draft-card__invoice-number">{payment.payment_number || "Payment"}</span>
+                      <div className="draft-card__top-right">
+                        {payment.payment_mode && (
+                          <span className="draft-card__status">{formatPaymentMode(payment.payment_mode)}</span>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => {
+                            setSendingPayment(payment);
+                            setSendPaymentStep("confirm");
+                          }}
+                          disabled={isSendingPayment}
+                          aria-label={`Send payment of ${currency(payment.amount)} on WhatsApp`}
+                          title="Send payment message on WhatsApp"
+                        >
+                          <Send size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="draft-card__bottom">
+                      <span className="draft-card__scheduled">{payment.date}</span>
+                      <span className="draft-card__total">{currency(payment.amount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -388,6 +529,26 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
           customer={customer}
           onCancel={() => setIsPaymentModalOpen(false)}
           onSubmit={handleSubmitPayment}
+        />
+      )}
+
+      {sendPaymentStep === "confirm" && sendingPayment && customer && (
+        <ConfirmModal
+          title="Send payment message?"
+          message={`Send the payment of ${currency(sendingPayment.amount)} on ${sendingPayment.date} to ${customer.contact_name || customer.company_name} on WhatsApp, with their current balance due?`}
+          confirmLabel={isSendingPayment ? "Sending..." : "Send"}
+          isConfirming={isSendingPayment}
+          onConfirm={handleConfirmSendPayment}
+          onCancel={() => setSendPaymentStep("closed")}
+        />
+      )}
+
+      {sendPaymentStep === "pickContact" && sendingPayment && customer && (
+        <NotifyContactModal
+          customer={customer}
+          isSaving={isSendingPayment}
+          onCancel={() => setSendPaymentStep("closed")}
+          onConfirm={(contactPersonIds) => runSendPayment(sendingPayment, contactPersonIds)}
         />
       )}
 

@@ -29,12 +29,16 @@ export async function appendChatMessage(phoneNumber, message) {
     await client.expire(`chats:${phoneNumber}:index`, TTL_SECONDS);
 }
 
+/** Order of the normal status progression; webhooks can arrive out of order, so a status never moves backwards. */
+const STATUS_RANK = { sent: 1, delivered: 2, read: 3 };
+
 /**
- * Merges a delivery/read status update into the original message it refers
- * to, looking up which day-hash it lives in via the msgday index. No-ops if
- * the original message has already expired out of Redis.
+ * Merges a delivery/read/failed status update into the original message it
+ * refers to, looking up which day-hash it lives in via the msgday index.
+ * `error` is WhatsApp's reason, stored on a failed status. No-ops if the
+ * original message has already expired out of Redis.
  */
-export async function applyChatStatus(phoneNumber, messageId, status) {
+export async function applyChatStatus(phoneNumber, messageId, status, error) {
     const client = getRedisClient();
     const date = await client.hget(msgDayIndexKey(phoneNumber), messageId);
     if (!date) return;
@@ -44,7 +48,10 @@ export async function applyChatStatus(phoneNumber, messageId, status) {
     if (!raw) return;
 
     const message = JSON.parse(raw);
+    if ((STATUS_RANK[status] ?? 0) > 0 && (STATUS_RANK[message.status] ?? 0) >= STATUS_RANK[status]) return;
+    if (message.status === "failed" && status === "sent") return;
     message.status = status;
+    if (status === "failed" && error) message.error = error;
     await client.hset(key, messageId, JSON.stringify(message));
 }
 

@@ -60,6 +60,15 @@ export type TabKey = "invoices" | "messages" | "drafts" | "items" | "customers";
 /** "new" always creates a fresh invoice; "update" edits a specific existing draft, chosen by invoice number. */
 export type InvoiceMode = "new" | "update";
 
+/** One of a customer's recorded payments, as listed on their details page. */
+export type CustomerPayment = {
+  payment_id: string;
+  payment_number?: string;
+  date: string;
+  amount: number;
+  payment_mode?: string;
+};
+
 export type DraftInvoice = {
   invoice_id: string;
   invoice_number: string;

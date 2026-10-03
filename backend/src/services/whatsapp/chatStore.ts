@@ -177,3 +177,65 @@ export function describeChatMessage(message: StoredChatMessage): string {
             return `[${message.type ?? "Message"}]`
     }
 }
+
+/**
+ * Read state for the app's own inbox (not WhatsApp's blue ticks, which are
+ * about the customer reading our messages): when each chat was last opened
+ * in the app, shared by every device. An inbound message newer than that is
+ * unread.
+ *   chats:read        hash  wa_id -> last opened (ms)
+ *   chats:read:since  string   messages before this (ms) count as read —
+ *                              set the first time unread counts are asked for,
+ *                              so existing history doesn't all show up as unread
+ */
+const READ_KEY = "chats:read"
+const READ_SINCE_KEY = "chats:read:since"
+const DAY_MS = 24 * 60 * 60 * 1000
+
+async function readSince(): Promise<number> {
+    await redisClient.set(READ_SINCE_KEY, String(Date.now()), { NX: true })
+    return Number(await redisClient.get(READ_SINCE_KEY)) || 0
+}
+
+/** Marks a chat as read up to now. */
+export async function markChatRead(phone: string) {
+    await redisClient.hSet(READ_KEY, phone, String(Date.now()))
+}
+
+/** Inbound messages newer than `readAt`, counting only the day hashes that could hold them. */
+async function countInboundSince(phone: string, readAt: number): Promise<number> {
+    // Day hashes are scored at UTC midnight of the day the message was stored.
+    const days = await redisClient.zRangeByScore(`chats:${phone}:index`, readAt - DAY_MS, "+inf")
+    let count = 0
+    for (const day of days) {
+        const hash = await redisClient.hGetAll(`chats:${phone}:${day}`)
+        for (const raw of Object.values(hash)) {
+            try {
+                const message: StoredChatMessage = JSON.parse(raw)
+                if (message.direction === "in" && message.timestamp > readAt) count++
+            } catch {
+                // ignore malformed entry
+            }
+        }
+    }
+    return count
+}
+
+/**
+ * Unread inbound messages per chat (only chats with any), for the app's
+ * badges. Chats with no activity since they were last read are skipped
+ * without reading their messages.
+ */
+export async function getUnreadCounts(): Promise<Record<string, number>> {
+    const [phones, markers, since] = await Promise.all([listChatPhones(), redisClient.hGetAll(READ_KEY), readSince()])
+    const counts: Record<string, number> = {}
+    await Promise.all(
+        phones.map(async ({ phone, lastActivity }) => {
+            const readAt = Math.max(Number(markers[phone]) || 0, since)
+            if (lastActivity <= readAt) return
+            const count = await countInboundSince(phone, readAt)
+            if (count > 0) counts[phone] = count
+        }),
+    )
+    return counts
+}

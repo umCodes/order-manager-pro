@@ -17,6 +17,7 @@ import {
   mergeServerConversation,
   saveStoredChats,
 } from "../lib/whatsappStore";
+import { markChatRead, refreshUnread, useUnread } from "../lib/unread";
 import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
@@ -129,15 +130,21 @@ export default function WhatsAppInbox() {
   const [districtFilter, setDistrictFilter] = useState<string | null>(null);
   const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
 
+  const unread = useUnread();
+
   const loadChats = useCallback(
     () =>
-      fetchWhatsAppChats()
-        .then((list) => {
-          setChats(list);
-          saveStoredChats(list);
-          setChatsError(null);
-        })
-        .catch((e) => setChatsError(e instanceof Error ? e.message : "Failed to load chats")),
+      // The unread badges refresh along with the list (and its refresh button).
+      Promise.all([
+        refreshUnread(),
+        fetchWhatsAppChats()
+          .then((list) => {
+            setChats(list);
+            saveStoredChats(list);
+            setChatsError(null);
+          })
+          .catch((e) => setChatsError(e instanceof Error ? e.message : "Failed to load chats")),
+      ]),
     [],
   );
 
@@ -248,11 +255,12 @@ export default function WhatsAppInbox() {
         <div className="wa-list">
           {visibleChats.map((chat) => {
             const preview = previews.get(chat.phone);
+            const unreadCount = unread.chats[chat.phone] ?? 0;
             return (
               <button
                 key={`${chat.phone}-${chat.customer_id ?? ""}`}
                 type="button"
-                className="wa-list__row"
+                className={`wa-list__row${unreadCount > 0 ? " wa-list__row--unread" : ""}`}
                 onClick={() => setOpenChat(chat)}
               >
                 <span className="wa-avatar">{initials(chat.name)}</span>
@@ -261,8 +269,15 @@ export default function WhatsAppInbox() {
                     <span className="wa-list__name">{chat.name}</span>
                     {preview && <span className="wa-list__time">{formatListTime(preview.timestamp)}</span>}
                   </span>
-                  <span className="wa-list__preview">
-                    {preview ? `${preview.direction === "out" ? "You: " : ""}${preview.text}` : `+${chat.phone}`}
+                  <span className="wa-list__bottom">
+                    <span className="wa-list__preview">
+                      {preview ? `${preview.direction === "out" ? "You: " : ""}${preview.text}` : `+${chat.phone}`}
+                    </span>
+                    {unreadCount > 0 && (
+                      <span className="unread-badge" aria-label={`${unreadCount} unread`}>
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
                   </span>
                 </span>
               </button>
@@ -319,6 +334,8 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           if (cancelled) return;
           setConversation(mergeServerConversation(chat.phone, result));
           setLoadError(null);
+          // Everything up to now has been shown: clear this chat's unread badge.
+          markChatRead(chat.phone);
           // A poll that started before the send won't have the message yet:
           // keep watching until a response actually shows it settled.
           const watched = result.messages.find((m) => m.id === watchedMessageIdRef.current);

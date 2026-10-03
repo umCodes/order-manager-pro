@@ -8,6 +8,8 @@ import {
     toWaId,
     updateChatMessage,
     describeSendError,
+    getUnreadCounts,
+    markChatRead,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
@@ -352,5 +354,29 @@ export async function getWhatsAppChatMedia(req: Request, res: Response) {
     } catch (error) {
         console.error('Error downloading WhatsApp media:', error);
         res.status(502).json({ error: describeSendError(error) });
+    }
+}
+
+/** Unread inbound message counts for the app's badges: the total, and per chat (only chats with any). */
+export async function getWhatsAppUnread(req: Request, res: Response) {
+    try {
+        const chats = await getUnreadCounts()
+        const total = Object.values(chats).reduce((sum, count) => sum + count, 0)
+        res.status(200).json({ total, chats })
+    } catch (error) {
+        console.error('Error loading WhatsApp unread counts:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load unread counts' });
+    }
+}
+
+/** Marks a chat as read (it was just opened, or new messages were shown in it). */
+export async function markWhatsAppChatRead(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        await markChatRead(phone)
+        res.status(200).json({ ok: true })
+    } catch (error) {
+        console.error('Error marking WhatsApp chat read:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to mark chat as read' });
     }
 }

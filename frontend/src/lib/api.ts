@@ -974,3 +974,18 @@ export async function fetchWhatsAppMedia(phone: string, messageId: string): Prom
 
   return response.blob();
 }
+
+/** Unread inbound WhatsApp messages (since each chat was last opened in the app): the total, and per chat phone. */
+export type WhatsAppUnread = { total: number; chats: Record<string, number> };
+
+export async function fetchWhatsAppUnread(): Promise<WhatsAppUnread> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/unread`);
+  if (!response.ok) throw new Error(`Failed to load unread messages (${response.status})`);
+  return response.json();
+}
+
+/** Marks a chat as read in the app (on every device). */
+export async function markWhatsAppChatRead(phone: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/read`, { method: "POST" });
+  if (!response.ok) throw new Error(`Failed to mark chat as read (${response.status})`);
+}

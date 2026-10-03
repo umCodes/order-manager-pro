@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import TabBar from "./components/TabBar";
+import { startUnreadWatcher } from "./lib/unread";
 import NewInvoicePage from "./pages/NewInvoicePage";
 import MessagesPage from "./pages/MessagesPage";
 import DraftsPage from "./pages/DraftsPage";
@@ -31,6 +32,8 @@ function App() {
   const [invoiceScheduledDate, setInvoiceScheduledDate] = useState<ScheduledDate>(null);
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
+
+  useEffect(() => startUnreadWatcher(), []);
 
   function openCustomerFromList(customerId: string) {
     setIsCustomerOnTop(false);

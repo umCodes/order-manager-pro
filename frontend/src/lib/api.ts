@@ -829,6 +829,9 @@ export type WhatsAppChat = {
   phone: string;
   name: string;
   customer_id?: string;
+  /** From the customer's address, for filtering the list by city / district. */
+  city?: string;
+  district?: string;
   last_message?: WhatsAppChatPreview;
 };
 

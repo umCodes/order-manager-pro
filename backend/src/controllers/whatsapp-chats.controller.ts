@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { ZohoGetCustomersCached, findCustomerByPhone } from '../services/zoho/customers/index.js';
+import { ZohoGetCustomersCached, findCustomerByPhone, getContactAddress } from '../services/zoho/customers/index.js';
 import {
     describeChatMessage,
     getChatMessages,
@@ -40,7 +40,19 @@ type ChatListEntry = {
     phone: string
     name: string
     customer_id?: string
+    /** From the customer's address, for grouping the list by city / district. */
+    city?: string
+    district?: string
     last_message?: ChatPreview
+}
+
+/** City and district off a Zoho contact's address custom field, omitting blanks. */
+function locationOf(contact: any): { city?: string; district?: string } {
+    const address = getContactAddress(contact)
+    return {
+        ...(address?.city && { city: address.city }),
+        ...(address?.district && { district: address.district }),
+    }
 }
 
 /** Last 9 digits — tolerates country-code / leading-zero differences, same as findCustomerByPhone. */
@@ -91,12 +103,14 @@ function readPhoneParam(req: Request) {
 }
 
 /** Names a chat whose number isn't any customer's main phone (e.g. a secondary contact person), cached per number. */
-async function resolveUnknownSender(accessToken: string, phone: string): Promise<{ name: string; customer_id?: string }> {
+type ResolvedSender = { name: string; customer_id?: string; city?: string; district?: string }
+
+async function resolveUnknownSender(accessToken: string, phone: string): Promise<ResolvedSender> {
     const cacheKey = `wa-chat-sender:${phone}`
     const cached = getCache(cacheKey)
     if (cached) return cached
 
-    let resolved: { name: string; customer_id?: string } = { name: `+${phone}` }
+    let resolved: ResolvedSender = { name: `+${phone}` }
     try {
         const match = await findCustomerByPhone(accessToken, phone)
         if (match) {
@@ -104,6 +118,7 @@ async function resolveUnknownSender(accessToken: string, phone: string): Promise
             resolved = {
                 name: match.contactPerson?.first_name ? `${customerName} (${match.contactPerson.first_name})` : customerName,
                 customer_id: String(match.contact?.contact_id),
+                ...locationOf(match.contact),
             }
         }
     } catch (error) {
@@ -147,6 +162,7 @@ export async function getWhatsAppChats(req: Request, res: Response) {
                 phone: chatPhone ?? toWaId(rawPhone),
                 name: customer.contact_name || customer.company_name || rawPhone,
                 customer_id: String(customer.contact_id),
+                ...locationOf(customer),
             })
         }
 

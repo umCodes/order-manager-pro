@@ -60,6 +60,32 @@ function StatusTicks({ status }: { status?: string }) {
   return <Check size={14} className="wa-bubble__ticks" />;
 }
 
+/** Distinct values with how many contacts have each, most common first (as on the Customers page). */
+function rankedValues(chats: WhatsAppChat[], pick: (chat: WhatsAppChat) => string | undefined) {
+  const counts = new Map<string, number>();
+  for (const chat of chats) {
+    const value = pick(chat);
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([value, count]) => ({ value, count }));
+}
+
+function FilterChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`wa-chip${active ? " wa-chip--active" : ""}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      {label}
+      {count !== undefined && <span className="wa-chip__count">{count}</span>}
+    </button>
+  );
+}
+
 /**
  * The WhatsApp tab of the Messages page: every customer with a phone on file
  * (plus any other number that has written in), listed like a messaging app's
@@ -71,6 +97,8 @@ export default function WhatsAppInbox() {
   const [chats, setChats] = useState<WhatsAppChat[] | null>(null);
   const [chatsError, setChatsError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [cityFilter, setCityFilter] = useState<string | null>(null);
+  const [districtFilter, setDistrictFilter] = useState<string | null>(null);
   const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
 
   const loadChats = useCallback(
@@ -100,12 +128,18 @@ export default function WhatsAppInbox() {
     );
   }
 
+  const allChats = chats ?? [];
+  const cityOptions = rankedValues(allChats, (chat) => chat.city);
+  const chatsInCity = cityFilter ? allChats.filter((chat) => chat.city === cityFilter) : allChats;
+  const districtOptions = rankedValues(chatsInCity, (chat) => chat.district);
+
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleChats = (chats ?? []).filter(
+  const visibleChats = chatsInCity.filter(
     (chat) =>
-      !normalizedQuery ||
-      chat.name.toLowerCase().includes(normalizedQuery) ||
-      chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery),
+      (!districtFilter || chat.district === districtFilter) &&
+      (!normalizedQuery ||
+        chat.name.toLowerCase().includes(normalizedQuery) ||
+        chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery)),
   );
 
   return (
@@ -123,6 +157,47 @@ export default function WhatsAppInbox() {
         </div>
         <RefreshButton onRefresh={loadChats} />
       </div>
+
+      {/* Only worth a row when customers are spread over more than one city. */}
+      {cityOptions.length > 1 && (
+        <div className="wa-chips" role="group" aria-label="Filter by city">
+          <FilterChip
+            label="All cities"
+            active={cityFilter === null}
+            onClick={() => {
+              setCityFilter(null);
+              setDistrictFilter(null);
+            }}
+          />
+          {cityOptions.map(({ value, count }) => (
+            <FilterChip
+              key={value}
+              label={value}
+              count={count}
+              active={cityFilter === value}
+              onClick={() => {
+                setCityFilter(value);
+                setDistrictFilter(null);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {districtOptions.length > 0 && (
+        <div className="wa-chips" role="group" aria-label="Filter by district">
+          <FilterChip label="All" count={chatsInCity.length} active={districtFilter === null} onClick={() => setDistrictFilter(null)} />
+          {districtOptions.map(({ value, count }) => (
+            <FilterChip
+              key={value}
+              label={value}
+              count={count}
+              active={districtFilter === value}
+              onClick={() => setDistrictFilter(value)}
+            />
+          ))}
+        </div>
+      )}
 
       {chatsError && <div className="form-error">{chatsError}</div>}
 

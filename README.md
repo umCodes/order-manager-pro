@@ -89,7 +89,7 @@ All routes are mounted under `/api`.
 - `POST /customers/:id/payments/:paymentId/notify` — send the WhatsApp payment confirmation for an existing payment (`{ notify_contact_ids? }`)
 
 **WhatsApp** (`backend/src/routes/whatsapp.routes.ts`)
-- `GET /whatsapp/chats` — contact list: customers with a phone, plus other numbers with history, most recent conversation first
+- `GET /whatsapp/chats` — contact list: customers with a phone, plus other numbers with history, most recent conversation first; each with `city` / `district` from the customer's address, which the WhatsApp tab filters by (city chips when there's more than one city, then All + district chips, most common first)
 - `GET /whatsapp/chats/:phone/messages` — a conversation's stored history and whether a reply is currently allowed (`can_reply`)
 - `POST /whatsapp/chats/:phone/messages` — send a free-text reply (`{ text }`); refused outside the 24-hour window
 - `POST /whatsapp/chats/:phone/messages/:messageId/retry` — send a failed or undelivered template message again

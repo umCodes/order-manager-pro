@@ -17,7 +17,10 @@ import {
   mergeServerConversation,
   saveStoredChats,
 } from "../lib/whatsappStore";
+import { onServiceWorkerMessage } from "../lib/push";
+import type { ChatOpenRequest } from "../lib/serviceWorkerMessages";
 import RefreshButton from "./RefreshButton";
+import NotificationToggle from "./NotificationToggle";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
@@ -120,7 +123,15 @@ function FilterChip({ label, count, active, onClick }: { label: string; count?: 
  * webhook and this app have stored (kept for 7 days); replying is only
  * possible within 24 hours of the contact's last message.
  */
-export default function WhatsAppInbox() {
+export default function WhatsAppInbox({
+  chatRequest,
+  onChatRequestHandled,
+}: {
+  /** A chat to open as soon as possible (a tapped notification). */
+  chatRequest?: ChatOpenRequest | null;
+  /** Called once that chat is open, so the request isn't replayed on a later visit. */
+  onChatRequestHandled?: () => void;
+}) {
   // Shown straight from this device's copy, then refreshed from the server.
   const [chats, setChats] = useState<WhatsAppChat[] | null>(() => loadStoredChats());
   const [chatsError, setChatsError] = useState<string | null>(null);
@@ -145,6 +156,28 @@ export default function WhatsAppInbox() {
     loadChats();
   }, [loadChats]);
 
+  // A message just arrived (pushed to this device): refresh the list's previews.
+  useEffect(
+    () =>
+      onServiceWorkerMessage((message) => {
+        if (message.type === "wa-message") loadChats();
+      }),
+    [loadChats],
+  );
+
+  // Open the chat a tapped notification points at, once the list is known
+  // (from this device's copy or the server). A number not on the list (e.g.
+  // a new contact) still opens, under its phone number.
+  const [handledRequestId, setHandledRequestId] = useState<number | null>(null);
+  if (chatRequest && chatRequest.id !== handledRequestId && (chats !== null || chatsError)) {
+    setHandledRequestId(chatRequest.id);
+    const match = chats?.find((chat) => chat.phone === chatRequest.phone);
+    setOpenChat(match ?? { phone: chatRequest.phone, name: `+${chatRequest.phone}` });
+  }
+  useEffect(() => {
+    if (chatRequest && chatRequest.id === handledRequestId) onChatRequestHandled?.();
+  }, [chatRequest, handledRequestId, onChatRequestHandled]);
+
   // Last-message previews, with local deletes applied. Re-read whenever the
   // list changes identity — including on returning from a chat, below.
   const previews = useMemo(
@@ -155,6 +188,8 @@ export default function WhatsAppInbox() {
   if (openChat) {
     return (
       <ChatView
+        // A notification can switch straight from one chat to another: start fresh.
+        key={openChat.phone}
         chat={openChat}
         onBack={() => {
           setOpenChat(null);
@@ -194,6 +229,7 @@ export default function WhatsAppInbox() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        <NotificationToggle />
         <RefreshButton onRefresh={loadChats} />
       </div>
 
@@ -336,6 +372,11 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       if (document.visibilityState === "visible") load();
     }
 
+    // A message from this contact was just pushed to this device: show it now.
+    const stopListening = onServiceWorkerMessage((message) => {
+      if (message.type === "wa-message" && message.phone === chat.phone) load();
+    });
+
     loadRef.current = load;
     startAfterSendPollRef.current = scheduleAfterSendCheck;
     load();
@@ -344,6 +385,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       cancelled = true;
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopListening();
       loadRef.current = () => Promise.resolve();
       startAfterSendPollRef.current = () => {};
     };

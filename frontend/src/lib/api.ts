@@ -974,3 +974,37 @@ export async function fetchWhatsAppMedia(phone: string, messageId: string): Prom
 
   return response.blob();
 }
+
+/** The server's VAPID public key for push notifications, or null when push isn't configured there. */
+export async function fetchPushPublicKey(): Promise<string | null> {
+  const response = await apiFetch(`${API_BASE_URL}/api/push/public-key`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to load notification settings (${response.status})`);
+  const data = await response.json();
+  return data.public_key ?? null;
+}
+
+/** Registers this device's push subscription for inbound WhatsApp message notifications. */
+export async function savePushSubscription(subscription: PushSubscriptionJSON): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/push/subscriptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to enable notifications (${response.status})`);
+  }
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/push/subscriptions`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to turn off notifications (${response.status})`);
+  }
+}

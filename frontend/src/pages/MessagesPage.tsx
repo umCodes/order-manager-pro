@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import ConfirmModal from "../components/ConfirmModal";
 import WhatsAppInbox from "../components/WhatsAppInbox";
+import type { ChatOpenRequest } from "../lib/serviceWorkerMessages";
 import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
 
@@ -24,8 +25,21 @@ type Channel = "telegram" | "whatsapp";
  * itself sent (invoice notices included) — not ones posted by anyone else.
  * The WhatsApp tab lists contacts and their conversations (see WhatsAppInbox).
  */
-export default function MessagesPage() {
-  const [channel, setChannel] = useState<Channel>("telegram");
+export default function MessagesPage({
+  chatRequest,
+  onChatRequestHandled,
+}: {
+  /** A WhatsApp chat to open (from a tapped notification); switches to the WhatsApp tab. */
+  chatRequest?: ChatOpenRequest | null;
+  onChatRequestHandled?: () => void;
+} = {}) {
+  const [channel, setChannel] = useState<Channel>(chatRequest ? "whatsapp" : "telegram");
+  // A notification tapped while this page is already showing Telegram.
+  const [lastChatRequest, setLastChatRequest] = useState(chatRequest);
+  if (chatRequest !== lastChatRequest) {
+    setLastChatRequest(chatRequest);
+    if (chatRequest) setChannel("whatsapp");
+  }
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
   const [text, setText] = useState("");
@@ -142,7 +156,7 @@ export default function MessagesPage() {
       </div>
 
       {channel === "whatsapp" ? (
-        <WhatsAppInbox />
+        <WhatsAppInbox chatRequest={chatRequest} onChatRequestHandled={onChatRequestHandled} />
       ) : (
         <>
           <p className="page-subtitle">Send to the team's Telegram channel</p>

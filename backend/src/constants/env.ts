@@ -44,6 +44,9 @@ export const ENV = {
 
   REDIS_URL: process.env.REDIS_URL,
 
+  /** VAPID public key for push notifications of inbound WhatsApp messages (the private key lives only in the webhook Lambda). Optional: without it the app hides the option. */
+  WEB_PUSH_PUBLIC_KEY: process.env.WEB_PUSH_PUBLIC_KEY,
+
 };
 
 // Not part of ENV/validateEnv: NODE_ENV is optional (absence means dev), and

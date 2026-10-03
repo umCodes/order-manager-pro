@@ -1951,6 +1951,13 @@
   white-space: nowrap;
 }
 
+/* Bell in the WhatsApp contact list toolbar: filled in when notifications are on. */
+.notification-toggle--on {
+  color: var(--color-white);
+  background: var(--color-gray-900);
+  border-color: var(--color-gray-900);
+}
+
 .wa-chat__header-actions {
   display: flex;
   align-items: center;

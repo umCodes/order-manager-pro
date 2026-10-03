@@ -52,6 +52,17 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 | `WA_BALANCE_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the invoice-sent/balance message, per customer `preferred_language` |
 | `REDIS_URL` | Redis connection string |
 | `PORT` | Backend port (default `3000`) |
+| `WEB_PUSH_PUBLIC_KEY` | Optional. VAPID public key for push notifications of inbound WhatsApp messages; without it the app hides the bell |
+
+Webhook Lambda (`wa-webhook-lambda`), for push notifications — all three are needed, or pushes are skipped:
+
+| Variable | Purpose |
+|---|---|
+| `WEB_PUSH_PUBLIC_KEY` | Same VAPID public key as the backend's |
+| `WEB_PUSH_PRIVATE_KEY` | VAPID private key (only the Lambda has it) |
+| `WEB_PUSH_SUBJECT` | Contact for the push services, e.g. `mailto:you@example.com` |
+
+Generate the key pair once with `npx web-push generate-vapid-keys` (from `wa-webhook-lambda`). Changing the keys later means every device has to tap the bell again.
 
 ## Architecture notes
 
@@ -62,6 +73,7 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 - **WhatsApp customer notifications are opt-in per action, decided server-side**: `POST /invoices/:id/payments` and `POST /invoices/:id/status/sent` (and `POST /customers/:id/payments`) accept an optional `notify: boolean` in the body. When `true`, the backend sends a WhatsApp template message to the invoice/customer's phone number (resolved server-side from the Zoho contact — never taken from the request) after the underlying Zoho action succeeds. Template notifications are always a side effect of an action the caller could already perform (or an on-demand resend of one, to the customer's own contacts), so a leaked URL can't be used to spam arbitrary numbers. The only free-text send is the WhatsApp chat reply (below), which is refused unless that number has messaged in within the last 24 hours. A WhatsApp send failure is logged and reported back via a `notified` flag in the response — it never fails or rolls back the Zoho action it rode in on. Recording a payment on a still-draft invoice implicitly transitions it to "sent" (Zoho's own behavior); when that happens and `notify` is true, both the balance notification (with the invoice PDF attached) and the payment notification are sent. Templates are chosen per customer via their Zoho `preferred_language` custom field (`am`/`ar`/`en`); Amharic templates are registered under Meta's `en` language code (see `services/whatsapp/notifications.ts`).
 - **WhatsApp webhook**: `GET /api/wa-webhook` handles Meta's subscription verification handshake (`hub.mode`/`hub.verify_token`/`hub.challenge`).
 - **WhatsApp chats**: the Messages page's WhatsApp tab lists customers (plus any other number that has written in) and shows each conversation. History lives in Redis under `chats:*` keys with a 7-day TTL: the webhook Lambda (`wa-webhook-lambda/state/chatStore.mjs`) writes inbound messages and delivery/read statuses, and the backend (`services/whatsapp/chatStore.ts`) writes everything it sends — template notifications (with a readable summary) and text replies — in the same layout. Replies (text, files, photos and voice notes) are free-form, so they're only allowed within WhatsApp's 24-hour window after the contact's last message; the backend enforces that before sending. Voice notes are recorded in the browser straight to Ogg/Opus with `opus-recorder` — the format WhatsApp plays as a voice note, which browsers' own MediaRecorder mostly can't produce — so the backend needs no audio conversion. Images, voice notes and files in the history are shown inline, fetched through the backend. Template sends are recorded with their parameters, including ones WhatsApp rejects outright (stored as failed with its reason); the Lambda stores the failure reason from failed status webhooks and never moves a status backwards. A failed template, or one still only "sent" an hour later, can be sent again from the chat (`POST /whatsapp/chats/:phone/messages/:messageId/retry`) — same template and parameters, same number, once per message.
+- **Push notifications (inbound WhatsApp messages)**: standard Web Push, so it works with the app closed — on Android (Chrome, installed or not) and on iPhone from the Home Screen app (iOS 16.4+; not in a Safari tab). Each device opts in with the bell on the WhatsApp contact list: the browser subscribes with its own push service (Google's / Apple's / Mozilla's) using the VAPID public key, and the backend stores the subscription in the Redis hash `push:subscriptions` (only those browser push hosts are accepted, at most 50 devices). For every inbound message the Lambda (`webhook/notifyByPush.mjs`) stores the message first, then sends an encrypted push (sender's Zoho name or WhatsApp profile name, the text or a media label, the phone) to every subscription, and deletes ones the push service reports as gone. The service worker (`frontend/src/sw/sw.ts`, built with the PWA plugin's `injectManifest`) shows the notification — one per chat, a newer message replacing the older — tells any open window to refresh that chat, and on tap opens the chat (focusing an open window, or launching the app at `/?chat=<phone>`).
 - **Frontend request cache**: `frontend/src/lib/requestCache.ts` is a simple in-memory, module-level cache keyed by string, shared across components for the life of the page. Used for items, customers, draft invoice lists, and individual invoice details — callers pass `{ force: true }` (wired to refresh buttons) to bypass it.
 
 ## API overview
@@ -106,6 +118,11 @@ All routes are mounted under `/api`.
 
 **WhatsApp** (`backend/src/routes/wa-webhook.routes.ts`)
 - `GET /wa-webhook` — Meta webhook subscription verification (no message-send endpoint is exposed; notifications only ever ride along with the invoice/customer actions above)
+
+**Push notifications** (`backend/src/routes/push.routes.ts`)
+- `GET /push/public-key` — VAPID public key (404 when push isn't configured)
+- `POST /push/subscriptions` — register a device's push subscription
+- `DELETE /push/subscriptions` — remove one (body: `{ endpoint }`)
 
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

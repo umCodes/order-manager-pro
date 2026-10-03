@@ -29,3 +29,17 @@ export function extractStatuses(body) {
     }
     return statuses;
 }
+
+/** WhatsApp profile names of the senders in this payload (entry[].changes[].value.contacts[]), by wa_id. */
+export function extractSenderNames(body) {
+    const names = new Map();
+    for (const entry of body?.entry ?? []) {
+        for (const change of entry?.changes ?? []) {
+            if (change?.field !== "messages") continue;
+            for (const contact of change?.value?.contacts ?? []) {
+                if (contact?.wa_id && contact?.profile?.name) names.set(contact.wa_id, contact.profile.name);
+            }
+        }
+    }
+    return names;
+}

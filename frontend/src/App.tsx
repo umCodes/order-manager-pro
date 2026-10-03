@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import TabBar from "./components/TabBar";
 import NewInvoicePage from "./pages/NewInvoicePage";
@@ -9,6 +9,8 @@ import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
 import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
+import { onServiceWorkerMessage, takeChatFromUrl } from "./lib/push";
+import type { ChatOpenRequest } from "./lib/serviceWorkerMessages";
 
 /**
  * Root component and router. There's no URL-based routing — navigation is
@@ -22,7 +24,13 @@ import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
  * it, so going back from the customer returns to that invoice.
  */
 function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>("invoices");
+  // A WhatsApp chat to open: from a tapped notification, either launching the
+  // app (?chat=) or bringing an already-open app to the front.
+  const [chatRequest, setChatRequest] = useState<ChatOpenRequest | null>(() => {
+    const phone = takeChatFromUrl();
+    return phone ? { phone, id: Date.now() } : null;
+  });
+  const [activeTab, setActiveTab] = useState<TabKey>(chatRequest ? "messages" : "invoices");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [isCustomerOnTop, setIsCustomerOnTop] = useState(false);
@@ -31,6 +39,20 @@ function App() {
   const [invoiceScheduledDate, setInvoiceScheduledDate] = useState<ScheduledDate>(null);
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      onServiceWorkerMessage((message) => {
+        if (message.type !== "open-chat") return;
+        // Close any invoice / customer overlay so the chat is what shows.
+        setSelectedInvoiceId(null);
+        setSelectedCustomerId(null);
+        setActiveTab("messages");
+        setChatRequest({ phone: message.phone, id: Date.now() });
+      }),
+    [],
+  );
+  const clearChatRequest = useCallback(() => setChatRequest(null), []);
 
   function openCustomerFromList(customerId: string) {
     setIsCustomerOnTop(false);
@@ -69,7 +91,9 @@ function App() {
             onDraftIdChange={setInvoiceDraftId}
           />
         )}
-        {activeTab === "messages" && <MessagesPage />}
+        {activeTab === "messages" && (
+          <MessagesPage chatRequest={chatRequest} onChatRequestHandled={clearChatRequest} />
+        )}
         {activeTab === "drafts" && <DraftsPage onSelectInvoice={setSelectedInvoiceId} />}
         {activeTab === "items" && <ItemsPage />}
         {activeTab === "customers" && <CustomersPage onSelectCustomer={openCustomerFromList} />}

@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "ioredis": "^6.0.0",
-    "resend": "^6.26.0"
+    "resend": "^6.26.0",
+    "web-push": "^3.6.7"
   }
 }

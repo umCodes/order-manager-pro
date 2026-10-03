@@ -1,6 +1,6 @@
 import { describeMessage } from "./messageContent.mjs";
 import { getWhatsAppMedia } from "../services/whatsapp/client.mjs";
-import { findCustomerByPhone, summarizeCustomer } from "../services/zoho/customers.mjs";
+import { summarizeCustomer } from "../services/zoho/customers.mjs";
 import { sendEmail } from "../services/email/client.mjs";
 
 function escapeHtml(value) {
@@ -51,8 +51,12 @@ async function buildAttachment(content) {
     }
 }
 
-/** Emails a notification for every inbound WhatsApp message, including sender info, Zoho contact match, and content/attachment. */
-export async function notifyByEmail(message) {
+/**
+ * Emails a notification for every inbound WhatsApp message, including sender
+ * info, Zoho contact match (`customerMatch`, looked up once by the caller;
+ * undefined when there's no match or the lookup failed), and content/attachment.
+ */
+export async function notifyByEmail(message, customerMatch) {
     const to = process.env.WA_NOTIFY_EMAIL_TO;
     if (!to) {
         console.log("WA_NOTIFY_EMAIL_TO not set, skipping email notification");
@@ -61,12 +65,7 @@ export async function notifyByEmail(message) {
 
     const content = describeMessage(message);
 
-    let customer;
-    try {
-        customer = summarizeCustomer(await findCustomerByPhone(message.from));
-    } catch (error) {
-        console.error(`Error looking up Zoho contact for ${message.from}:`, JSON.stringify(error));
-    }
+    const customer = summarizeCustomer(customerMatch);
 
     const attachment = await buildAttachment(content);
 

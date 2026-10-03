@@ -16,6 +16,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Our own service worker (src/sw/sw.ts), which adds push notifications
+      // for inbound WhatsApp messages on top of the usual precaching.
+      strategies: 'injectManifest',
+      srcDir: 'src/sw',
+      filename: 'sw.ts',
       includeAssets: ['app-icon.png', 'app-icon-192.png'],
       devOptions: {
         enabled: true,
@@ -46,22 +51,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }: { url: URL }) => {
-              return url.pathname.startsWith('/api/items')
-            },
-            handler: 'CacheFirst' as const,
-            options: {
-              cacheName: 'api-cache',
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
           },
         ],
       },

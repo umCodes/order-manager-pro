@@ -1,15 +1,16 @@
 import type { Request, Response } from 'express';
 import {
-    ZohoGetCustomerById,
-    getContactPhonesByIds,
-    getContactPreferredLanguage,
     recordCustomerPayment,
+    ZohoGetRecentCustomerPayments,
+    ZohoGetCustomerPaymentById,
 } from '../../services/zoho/customers/index.js';
-import { sendPaymentNotification } from '../../services/whatsapp/notifications.js';
+import { notifyCustomerPayment } from '../../services/whatsapp/customers.js';
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
+
+const RECENT_PAYMENTS_LIMIT = 3
 
 /**
  * Records a payment against the customer as a whole, spread across their open
@@ -33,38 +34,9 @@ export async function payCustomerBalance(req: Request, res: Response){
         deleteCache("customers")
         await addToCollectedToday(Number(amount))
 
-        let notified = false
-        if (notify) {
-            try {
-                const contact = await ZohoGetCustomerById(access_token, id as string)
-                // Chosen contacts must resolve to phones on this customer's own
-                // contact list — never trust raw phone numbers from the client.
-                const phones = getContactPhonesByIds(contact, notify_contact_ids)
-                console.log(`[WhatsApp] payCustomerBalance: customer=${id} phones=${JSON.stringify(phones)}`)
-                if (phones.length === 0) throw new Error(`No phone number on file for customer ${id}`)
-
-                const preferredLanguage = getContactPreferredLanguage(contact)
-                console.log(`[WhatsApp] payCustomerBalance: resolved preferred_language="${preferredLanguage}" for customer=${id}`)
-                let allSucceeded = true
-                for (const phone of phones) {
-                    try {
-                        await sendPaymentNotification(
-                            phone,
-                            preferredLanguage,
-                            String(amount),
-                            payment.date ?? todayInBusinessTimezone(),
-                            String(contact.outstanding_receivable_amount),
-                        )
-                    } catch (sendError) {
-                        console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, sendError)
-                        allSucceeded = false
-                    }
-                }
-                notified = allSucceeded
-            } catch (notifyError) {
-                console.error("Failed to send WhatsApp payment notification:", notifyError)
-            }
-        }
+        const notified = notify
+            ? await notifyCustomerPayment(access_token, id as string, Number(amount), payment.date ?? todayInBusinessTimezone(), notify_contact_ids)
+            : false
 
         res.status(201).json({payment, notified})
         return
@@ -75,5 +47,55 @@ export async function payCustomerBalance(req: Request, res: Response){
             res.status(500).json({ error: 'Failed to record payment' });
         console.error('Error recording customer payment:', error);
         return
+    }
+};
+
+/** The customer's last few payments, newest first. */
+export async function getCustomerRecentPayments(req: Request, res: Response){
+    const id = req.params.id as string
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured fetching payments")
+        if (!id) throw new Error("Customer id is required")
+
+        const payments = await ZohoGetRecentCustomerPayments(access_token, id, RECENT_PAYMENTS_LIMIT)
+        res.status(200).json({
+            payments: payments.map((p) => ({
+                payment_id: p.payment_id,
+                payment_number: p.payment_number,
+                date: p.date,
+                amount: p.amount,
+                payment_mode: p.payment_mode,
+            })),
+        })
+    } catch (error) {
+        console.error('Error fetching customer payments:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to fetch payments' });
+    }
+};
+
+/**
+ * Sends the payment confirmation template for one of this customer's
+ * existing payments, on demand — nothing about the payment changes. The
+ * amount and date come from the payment itself (never the client), and the
+ * payment must belong to this customer.
+ */
+export async function sendCustomerPaymentNotification(req: Request, res: Response){
+    const id = req.params.id as string
+    const paymentId = req.params.paymentId as string
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured sending the notification")
+        if (!id || !paymentId) throw new Error("Customer id and payment id are required")
+        const { notify_contact_ids } = req.body ?? {}
+
+        const payment = await ZohoGetCustomerPaymentById(access_token, paymentId)
+        if (String(payment.customer_id) !== id) throw new Error("Payment does not belong to this customer")
+
+        const notified = await notifyCustomerPayment(access_token, id, Number(payment.amount), payment.date, notify_contact_ids)
+        res.status(200).json({ notified })
+    } catch (error) {
+        console.error('Error sending customer payment notification:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send notification' });
     }
 };

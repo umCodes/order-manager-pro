@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -269,6 +269,41 @@ export async function recordCustomerPayment(
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to record payment (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** The customer's last few payments, newest first. */
+export async function fetchCustomerRecentPayments(customerId: string): Promise<CustomerPayment[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch payments (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.payments;
+}
+
+/** Sends the WhatsApp payment confirmation for one of the customer's existing payments. */
+export async function sendCustomerPaymentNotification(
+  customerId: string,
+  paymentId: string,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments/${paymentId}/notify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to send notification (${response.status})`);
   }
 
   return response.json();

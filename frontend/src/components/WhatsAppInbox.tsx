@@ -13,6 +13,9 @@ import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
 
+/** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
+const KEYBOARD_THRESHOLD_PX = 120;
+
 /** How often an open conversation re-reads its history, to pick up new inbound messages. */
 const CONVERSATION_POLL_MS = 10_000;
 
@@ -248,6 +251,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [retryingMessage, setRetryingMessage] = useState<WhatsAppMessage | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const messageCount = conversation?.messages.length ?? 0;
 
@@ -271,6 +275,38 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       window.clearInterval(interval);
     };
   }, [chat.phone]);
+
+  // Keep the chat exactly the size of the visible area. A fixed full-height
+  // panel doesn't shrink when the on-screen keyboard opens, so mobile browsers
+  // scroll the page to reveal the reply box and the header slides out of view.
+  // Tracking the visual viewport keeps the header pinned at the top and the
+  // reply box just above the keyboard, with the messages scrolling in between.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const panel = chatRef.current;
+    if (!viewport || !panel) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function fit() {
+      if (!viewport || !panel) return;
+      const list = messagesRef.current;
+      const wasAtBottom = list ? list.scrollHeight - list.scrollTop - list.clientHeight < 24 : false;
+      panel.style.top = `${viewport.offsetTop}px`;
+      panel.style.height = `${viewport.height}px`;
+      panel.classList.toggle("wa-chat--keyboard", window.innerHeight - viewport.height > KEYBOARD_THRESHOLD_PX);
+      if (list && wasAtBottom) list.scrollTop = list.scrollHeight;
+    }
+
+    fit();
+    viewport.addEventListener("resize", fit);
+    viewport.addEventListener("scroll", fit);
+    return () => {
+      viewport.removeEventListener("resize", fit);
+      viewport.removeEventListener("scroll", fit);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   // Jump to the newest message whenever one arrives.
   useEffect(() => {
@@ -304,7 +340,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const canReply = conversation?.can_reply ?? false;
 
   return (
-    <div className="wa-chat">
+    <div className="wa-chat" ref={chatRef}>
       <div className="wa-chat__header">
         <button type="button" className="icon-btn" onClick={onBack} aria-label="Back to contacts">
           <ArrowLeft size={18} />

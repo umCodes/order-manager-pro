@@ -1912,7 +1912,11 @@
   white-space: nowrap;
 }
 
-/* Full screen, above the tab bar — positioned like .detail-overlay. */
+/*
+ * Full screen, above the tab bar — positioned like .detail-overlay. ChatView
+ * overrides top/height with the visual viewport so the keyboard never pushes
+ * the header off screen; bottom: 0 is the fallback without that API.
+ */
 .wa-chat {
   position: fixed;
   top: 0;
@@ -1949,6 +1953,7 @@
 .wa-chat__messages {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2066,9 +2071,15 @@
 
 .wa-composer {
   flex-shrink: 0;
-  padding: 8px 16px max(10px, env(safe-area-inset-bottom));
+  /* Breathing room between the reply box and the bottom edge of the screen. */
+  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
   background: var(--color-white);
   border-top: 1px solid var(--color-gray-200);
+}
+
+/* With the keyboard open the home-indicator inset sits behind the keyboard. */
+.wa-chat--keyboard .wa-composer {
+  padding-bottom: 12px;
 }
 
 .wa-composer__notice {

@@ -1,8 +1,10 @@
 import { redisClient } from "../../config/redis.js";
 
+/**
+ * Every message sent to the channel through this app, newest first. Kept
+ * permanently: entries only leave when the message is deleted from the channel.
+ */
 const LOG_KEY = "telegram:messages:log";
-const LOG_MAX_ENTRIES = 500;
-const WINDOW_MS = 72 * 60 * 60 * 1000;
 
 export type TelegramMessageLogEntry = {
     message_id: number;
@@ -31,21 +33,12 @@ async function writeLog(entries: TelegramMessageLogEntry[]) {
  * to the channel by anyone else.
  */
 export async function recordTelegramMessage(entry: Omit<TelegramMessageLogEntry, "created_at">) {
-    const created_at = Date.now();
-    const cutoff = created_at - WINDOW_MS;
-    const existing = await readLog();
-    const pruned = existing.filter((e) => e.created_at >= cutoff);
-    const next = [{ ...entry, created_at }, ...pruned].slice(0, LOG_MAX_ENTRIES);
-    await writeLog(next);
+    await redisClient.lPush(LOG_KEY, JSON.stringify({ ...entry, created_at: Date.now() }));
 }
 
-/** Messages sent through the app in the last 72 hours, newest first. */
-export async function listRecentTelegramMessages(): Promise<TelegramMessageLogEntry[]> {
-    const cutoff = Date.now() - WINDOW_MS;
-    const existing = await readLog();
-    const pruned = existing.filter((e) => e.created_at >= cutoff);
-    if (pruned.length !== existing.length) await writeLog(pruned);
-    return pruned;
+/** Every message sent through the app, newest first. */
+export async function listTelegramMessages(): Promise<TelegramMessageLogEntry[]> {
+    return readLog();
 }
 
 /** Records that a logged message was edited, so the tab shows the new text. */

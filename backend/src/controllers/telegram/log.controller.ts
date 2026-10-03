@@ -2,18 +2,18 @@ import type { Request, Response } from 'express';
 import {
     TelegramEditMessage,
     TelegramDeleteMessage,
-    listRecentTelegramMessages,
+    listTelegramMessages,
 } from '../../services/telegram/index.js';
 
 /**
- * Lists messages sent to the Telegram channel through this app in the last
- * 72 hours. The Bot API has no way to retrieve a channel's full history, so
+ * Lists every message sent to the Telegram channel through this app (kept
+ * permanently, newest first). The Bot API has no way to retrieve a channel's full history, so
  * this can only ever cover messages the app itself sent, edited, or deleted
  * — not messages posted by anyone else.
  */
 export async function listMessages(req: Request, res: Response) {
     try {
-        const messages = await listRecentTelegramMessages();
+        const messages = await listTelegramMessages();
         res.status(200).json({ messages });
     } catch (error) {
         console.error('Error listing messages:', error);

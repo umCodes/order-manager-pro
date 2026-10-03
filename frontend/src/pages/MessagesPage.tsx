@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import ConfirmModal from "../components/ConfirmModal";
 import WhatsAppInbox from "../components/WhatsAppInbox";
+import { getUnread, useUnread } from "../lib/unread";
 import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
 
@@ -25,7 +26,9 @@ type Channel = "telegram" | "whatsapp";
  * The WhatsApp tab lists contacts and their conversations (see WhatsAppInbox).
  */
 export default function MessagesPage() {
-  const [channel, setChannel] = useState<Channel>("telegram");
+  // Straight to WhatsApp when there's something unread there.
+  const [channel, setChannel] = useState<Channel>(() => (getUnread().total > 0 ? "whatsapp" : "telegram"));
+  const unread = useUnread();
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
   const [text, setText] = useState("");
@@ -138,6 +141,7 @@ export default function MessagesPage() {
           onClick={() => setChannel("whatsapp")}
         >
           WhatsApp
+          {unread.total > 0 && <span className="unread-badge unread-badge--inline">{unread.total > 99 ? "99+" : unread.total}</span>}
         </button>
       </div>
 

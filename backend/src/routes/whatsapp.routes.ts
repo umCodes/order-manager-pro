@@ -6,12 +6,16 @@ import {
     retryWhatsAppChatMessage,
     sendWhatsAppChatMedia,
     getWhatsAppChatMedia,
+    getWhatsAppUnread,
+    markWhatsAppChatRead,
     MAX_MEDIA_BYTES,
 } from "../controllers/whatsapp-chats.controller.js";
 
 export const whatsappRouter = Router();
 
 whatsappRouter.get('/whatsapp/chats', getWhatsAppChats);
+whatsappRouter.get('/whatsapp/unread', getWhatsAppUnread);
+whatsappRouter.post('/whatsapp/chats/:phone/read', markWhatsAppChatRead);
 whatsappRouter.get('/whatsapp/chats/:phone/messages', getWhatsAppChatMessages);
 whatsappRouter.post('/whatsapp/chats/:phone/messages', sendWhatsAppChatMessage);
 whatsappRouter.post('/whatsapp/chats/:phone/messages/:messageId/retry', retryWhatsAppChatMessage);

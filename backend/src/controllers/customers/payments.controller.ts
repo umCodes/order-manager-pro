@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 import {
     recordCustomerPayment,
-    ZohoGetRecentCustomerPayments,
+    ZohoGetCustomerById,
+    ZohoGetCustomerPayments,
     ZohoGetCustomerPaymentById,
 } from '../../services/zoho/customers/index.js';
 import { notifyCustomerPayment } from '../../services/whatsapp/customers.js';
@@ -9,8 +10,6 @@ import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
-
-const RECENT_PAYMENTS_LIMIT = 3
 
 /**
  * Records a payment against the customer as a whole, spread across their open
@@ -50,15 +49,16 @@ export async function payCustomerBalance(req: Request, res: Response){
     }
 };
 
-/** The customer's last few payments, newest first. */
-export async function getCustomerRecentPayments(req: Request, res: Response){
+/** The customer's payments, newest first. */
+export async function getCustomerPayments(req: Request, res: Response){
     const id = req.params.id as string
 
     try {
         const access_token = requireAccessToken(req, "A problem occured fetching payments")
         if (!id) throw new Error("Customer id is required")
 
-        const payments = await ZohoGetRecentCustomerPayments(access_token, id, RECENT_PAYMENTS_LIMIT)
+        const customer = await ZohoGetCustomerById(access_token, id)
+        const payments = await ZohoGetCustomerPayments(access_token, id, customer.contact_name)
         res.status(200).json({
             payments: payments.map((p) => ({
                 payment_id: p.payment_id,

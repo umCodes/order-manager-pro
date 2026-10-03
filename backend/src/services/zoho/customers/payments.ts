@@ -39,19 +39,18 @@ export type CustomerPaymentSummary = {
 }
 
 /**
- * The customer's most recent payments, newest first — both customer-level
- * payments and ones recorded against a single invoice, since Zoho stores
- * both as customer payments. `customer_id` is sent as a filter, but the
- * results are also filtered and sorted here so the list stays this
- * customer's own even if Zoho ignores the filter or the sort params.
+ * The customer's payments, newest first — both customer-level payments and
+ * ones recorded against a single invoice, since Zoho stores both as
+ * customer payments. Filtered by `customer_name` (a documented filter;
+ * customer names are unique), then kept to rows whose `customer_id` matches
+ * in case Zoho's name filter is a partial match, and sorted here.
  */
-export async function ZohoGetRecentCustomerPayments(headers: string, customerId: string, limit = 3): Promise<CustomerPaymentSummary[]> {
+export async function ZohoGetCustomerPayments(headers: string, customerId: string, customerName: string): Promise<CustomerPaymentSummary[]> {
 
     try {
         const query = new URLSearchParams({
-            customer_id: customerId,
+            customer_name: customerName,
             sort_column: "date",
-            sort_order: "D",
             per_page: "200",
         }).toString()
         const response = await ZohoApi(`customerpayments?${query}`, headers)
@@ -59,7 +58,6 @@ export async function ZohoGetRecentCustomerPayments(headers: string, customerId:
         return (response.customerpayments as CustomerPaymentSummary[])
             .filter((p) => String(p.customer_id) === customerId)
             .sort((a, b) => b.date.localeCompare(a.date))
-            .slice(0, limit)
     } catch (error) {
         console.error(error);
         throw error;

@@ -274,8 +274,8 @@ export async function recordCustomerPayment(
   return response.json();
 }
 
-/** The customer's last few payments, newest first. */
-export async function fetchCustomerRecentPayments(customerId: string): Promise<CustomerPayment[]> {
+/** The customer's payments, newest first. */
+export async function fetchCustomerPayments(customerId: string): Promise<CustomerPayment[]> {
   const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`);
 
   if (!response.ok) {

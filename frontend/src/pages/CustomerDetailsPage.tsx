@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Coffee, ExternalLink, MapPin, Pencil, Send, Sh
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
-  fetchCustomerRecentPayments,
+  fetchCustomerPayments,
   sendCustomerPaymentNotification,
   recordCustomerPayment,
   addCustomerContact,
@@ -51,6 +51,9 @@ const LANGUAGE_LABELS: Record<string, string> = {
   ar: "Arabic",
   en: "English",
 };
+
+/** How many of the customer's latest payments the Recent Payments section shows. */
+const RECENT_PAYMENTS_SHOWN = 3;
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -110,9 +113,9 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       .catch(() => {
         if (!cancelled) setInvoices([]);
       });
-    fetchCustomerRecentPayments(customerId)
+    fetchCustomerPayments(customerId)
       .then((list) => {
-        if (!cancelled) setPayments(list);
+        if (!cancelled) setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
       })
       .catch((e) => {
         if (!cancelled) setPaymentsError(e instanceof Error ? e.message : "Failed to load payments");
@@ -135,9 +138,9 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     recordCustomerPayment(customer.contact_id, amount, notify, notifyContactIds)
       .then(() => {
         setIsPaymentModalOpen(false);
-        fetchCustomerRecentPayments(customerId)
+        fetchCustomerPayments(customerId)
           .then((list) => {
-            setPayments(list);
+            setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
             setPaymentsError(null);
           })
           .catch(() => {});

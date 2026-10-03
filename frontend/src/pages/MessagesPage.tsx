@@ -9,6 +9,7 @@ import {
   sendTelegramMessage,
 } from "../lib/api";
 import ConfirmModal from "../components/ConfirmModal";
+import WhatsAppInbox from "../components/WhatsAppInbox";
 import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
 
@@ -21,7 +22,7 @@ type Channel = "telegram" | "whatsapp";
  * the channel in the last 72 hours. The Bot API has no way to fetch a
  * channel's full history, so the log only ever covers messages this app
  * itself sent (invoice notices included) — not ones posted by anyone else.
- * The WhatsApp tab is empty for now.
+ * The WhatsApp tab lists contacts and their conversations (see WhatsAppInbox).
  */
 export default function MessagesPage() {
   const [channel, setChannel] = useState<Channel>("telegram");
@@ -141,7 +142,7 @@ export default function MessagesPage() {
       </div>
 
       {channel === "whatsapp" ? (
-        <div className="items-area__empty">No WhatsApp messages yet</div>
+        <WhatsAppInbox />
       ) : (
         <>
           <p className="page-subtitle">Send to the team's Telegram channel</p>

@@ -822,3 +822,70 @@ export async function resendInvoiceTelegramMessage(invoiceId: string, date?: str
 
   return response.json();
 }
+export type WhatsAppChatPreview = { text: string; timestamp: number; direction: "in" | "out" };
+
+/** One row of the WhatsApp contact list: a customer's phone, or any other number with stored history. */
+export type WhatsAppChat = {
+  phone: string;
+  name: string;
+  customer_id?: string;
+  last_message?: WhatsAppChatPreview;
+};
+
+export type WhatsAppMessage = {
+  id: string;
+  direction: "in" | "out";
+  timestamp: number;
+  type: string;
+  text: string;
+  status?: string;
+  reaction?: string;
+};
+
+/** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */
+export type WhatsAppConversation = {
+  messages: WhatsAppMessage[];
+  can_reply: boolean;
+  reply_window_expires_at?: number;
+};
+
+export async function fetchWhatsAppChats(): Promise<WhatsAppChat[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load chats (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.chats;
+}
+
+export async function fetchWhatsAppConversation(phone: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load conversation (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** Sends a free-text reply; resolves to the updated conversation. */
+export async function sendWhatsAppChatMessage(phone: string, text: string): Promise<WhatsAppConversation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to send message (${response.status})`);
+  }
+
+  return response.json();
+}

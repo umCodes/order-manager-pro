@@ -1,4 +1,5 @@
 import { WhatsAppApi } from "./client.js"
+import { recordOutboundMessage } from "./chatStore.js"
 
 export type TemplateParameter =
     | { type: "text"; text: string }
@@ -9,12 +10,18 @@ export type TemplateComponent = {
     parameters: TemplateParameter[]
 }
 
-/** Sends one of the pre-approved WhatsApp templates, filling in its header/body parameters. */
+/**
+ * Sends one of the pre-approved WhatsApp templates, filling in its
+ * header/body parameters. `chatSummary` is the readable text shown for this
+ * message in the in-app WhatsApp chat history (the template's own wording
+ * lives in Meta Business Manager, not here).
+ */
 export async function sendWhatsAppTemplate(
     to: string,
     templateName: string,
     components: TemplateComponent[],
     languageCode: string = "en",
+    chatSummary?: string,
 ) {
     try {
         console.log(
@@ -33,6 +40,11 @@ export async function sendWhatsAppTemplate(
             },
         })
         console.log(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} succeeded`)
+        await recordOutboundMessage(result, to, {
+            type: "template",
+            template: { name: templateName, language: languageCode },
+            ...(chatSummary && { summary: chatSummary }),
+        })
         return result
     } catch (error) {
         console.error(`[WhatsApp template] "${templateName}" (language "${languageCode}") to ${to} FAILED:`, error)
@@ -43,12 +55,14 @@ export async function sendWhatsAppTemplate(
 /** Sends a plain text message — only valid inside an open 24h customer service window. */
 export async function replyToWhatsAppMessage(to: string, message: string) {
     try {
-        return await WhatsAppApi("messages", "POST", {
+        const result = await WhatsAppApi("messages", "POST", {
             messaging_product: "whatsapp",
             to,
             type: "text",
             text: { body: message },
         })
+        await recordOutboundMessage(result, to, { type: "text", text: { body: message } })
+        return result
     } catch (error) {
         console.error("Error replying to WhatsApp message:", error)
         throw error

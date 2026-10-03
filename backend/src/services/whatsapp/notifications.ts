@@ -57,6 +57,7 @@ export async function sendPaymentNotification(
                 },
             ],
             WA_LANGUAGE_CODES[preferredLanguage],
+            `Payment confirmation: ${paymentAmount} received on ${date}. Remaining balance: ${remainingBalance}`,
         )
     } catch (error) {
         console.error("Error sending payment notification:", error)
@@ -113,6 +114,7 @@ export async function sendBalanceNotification(
                 },
             ],
             WA_LANGUAGE_CODES[preferredLanguage],
+            `Invoice ${invoiceNumber} (${pdfFilename}): amount ${invoiceAmount}, paid ${paidAmountFromInvoice}. Balance ${balanceBeforeInvoice} → ${balanceAfterInvoice}`,
         )
     } catch (error) {
         console.error("Error sending balance notification:", error)

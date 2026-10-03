@@ -14,6 +14,8 @@ import {
   payInvoiceBalance,
   markInvoiceAsSent,
   splitInvoice,
+  getInvoiceReturns,
+  createInvoiceReturnHandler,
 } from "../controllers/invoices/index.js";
 
 export const invoicesRouter = Router();
@@ -32,3 +34,5 @@ invoicesRouter.post("/invoices/:id/split", splitInvoice);
 invoicesRouter.post("/invoices/:id/payments", payInvoiceBalance);
 invoicesRouter.post("/invoices/:id/status/sent", markInvoiceAsSent);
 invoicesRouter.post("/invoices/:id/notify", resendInvoiceNotification);
+invoicesRouter.get("/invoices/:id/returns", getInvoiceReturns);
+invoicesRouter.post("/invoices/:id/returns", createInvoiceReturnHandler);

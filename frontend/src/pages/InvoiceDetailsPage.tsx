@@ -21,6 +21,8 @@ import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
+import ReturnInvoiceFlow from "../components/ReturnInvoiceFlow";
+import type { CreatedInvoiceReturn } from "../lib/api";
 import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
 import CopyButton from "../components/CopyButton";
@@ -92,6 +94,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [lineItemsSaveError, setLineItemsSaveError] = useState<string | null>(null);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
   const [isChangeCustomerOpen, setIsChangeCustomerOpen] = useState(false);
+  const [isReturnOpen, setIsReturnOpen] = useState(false);
+  const [createdReturn, setCreatedReturn] = useState<CreatedInvoiceReturn | null>(null);
   const [isChangingCustomer, setIsChangingCustomer] = useState(false);
   const [changeCustomerError, setChangeCustomerError] = useState<string | null>(null);
 
@@ -640,6 +644,21 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
           </div>
 
+          {createdReturn && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              <span>
+                Return Invoice {createdReturn.creditnote_number} created · {currency(createdReturn.total)}
+                {createdReturn.applied_to_invoice > 0
+                  ? createdReturn.applied_to_invoice < createdReturn.total
+                    ? `, ${currency(createdReturn.applied_to_invoice)} taken off this invoice, the rest kept as customer credit.`
+                    : ", taken off this invoice's balance."
+                  : " kept as customer credit."}
+                {createdReturn.warnings.map((warning) => ` ${warning}`)}
+              </span>
+            </div>
+          )}
+
           {notifyBanner === "success" && (
             <div className="notify-banner notify-banner--success">
               <CheckCircle2 className="notify-banner__icon" size={14} />
@@ -823,6 +842,22 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               {isMarkingSent ? "Marking..." : "Mark as Sent"}
             </button>
           </div>
+
+          {/* Returns are for invoices the customer actually received; a draft's items are just edited. */}
+          {invoice.status !== "draft" && invoice.status !== "void" && (
+            <button
+              type="button"
+              className="btn btn--secondary btn--full invoice-details__return"
+              onClick={() => {
+                setCreatedReturn(null);
+                setIsReturnOpen(true);
+              }}
+              disabled={isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
+            >
+              Return Invoice
+            </button>
+          )}
         </>
       )}
 
@@ -968,6 +1003,18 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         />
       )}
 
+      {isReturnOpen && invoice && (
+        <ReturnInvoiceFlow
+          invoiceId={invoice.invoice_id}
+          invoiceBalance={invoice.balance}
+          onClose={() => setIsReturnOpen(false)}
+          onCreated={(created) => {
+            setIsReturnOpen(false);
+            setCreatedReturn(created);
+            reloadInvoiceAndCustomer().catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

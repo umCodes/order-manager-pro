@@ -19,8 +19,8 @@ type Channel = "telegram" | "whatsapp";
 /**
  * Messages, split by channel via the toggle at the top. The Telegram tab is
  * a free-text message composer, optionally scoped as a reply to a
- * specific draft invoice, plus a log of messages sent through this app to
- * the channel in the last 72 hours. The Bot API has no way to fetch a
+ * specific draft invoice, plus a log of every message sent through this app
+ * to the channel (kept permanently). The Bot API has no way to fetch a
  * channel's full history, so the log only ever covers messages this app
  * itself sent (invoice notices included) — not ones posted by anyone else.
  * The WhatsApp tab lists contacts and their conversations (see WhatsAppInbox).
@@ -199,14 +199,14 @@ export default function MessagesPage() {
               Recent Messages
             </h2>
           </div>
-          <p className="page-subtitle">Sent through this app in the last 72 hours</p>
+          <p className="page-subtitle">Everything sent through this app</p>
 
           {logError && <div className="form-error">{logError}</div>}
 
           {isLoadingLog ? (
             <div className="items-area__empty">Loading…</div>
           ) : logMessages.length === 0 ? (
-            <div className="items-area__empty">No messages in the last 72 hours</div>
+            <div className="items-area__empty">No messages yet</div>
           ) : (
             <div className="telegram-log">
               {logMessages.map((message) => (

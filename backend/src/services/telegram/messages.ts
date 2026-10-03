@@ -2,7 +2,7 @@ import { ENV } from "../../constants/env.js"
 import { TelegramApi } from "./client.js"
 import { recordTelegramMessage, updateTelegramMessageLogText, removeTelegramMessageFromLog } from "./log.js"
 
-/** Posts a message to the channel and records it in the 72h log. */
+/** Posts a message to the channel and records it in the log. */
 export async function TelegramSendMessage(text: string, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("sendMessage", "POST", {

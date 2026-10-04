@@ -10,6 +10,7 @@ import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { addToCollectedToday } from "../../services/dailyTotals.js";
 import { deleteCache } from "../../utils/cache.js";
+import { recordPayment, recordPurchase } from "../../services/visits/customerVisits.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -38,6 +39,10 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     // A draft leaves "pending fulfillment" the moment any payment is recorded
     // against it, so its channel message no longer applies.
     if (wasDraft) await deleteInvoiceTelegramMessage(id);
+
+    // Paying a draft sends it: a purchase as well as a visit.
+    if (wasDraft) await recordPurchase(invoiceBeforePayment.customer_id);
+    await recordPayment(invoiceBeforePayment.customer_id);
 
     let notified = { balance: false, payment: false };
     if (notify) {
@@ -80,6 +85,7 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
+    await recordPurchase(invoice.customer_id);
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
 

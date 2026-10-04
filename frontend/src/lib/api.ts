@@ -1044,3 +1044,67 @@ export async function createInvoiceReturn(
   }
   return response.json();
 }
+
+/** "To visit" list: how each customer is doing on visits (recorded by the app, not read from Zoho). */
+export type VisitCustomerType = "new" | "regular" | "occasional" | "rare" | "potential";
+
+export type CustomerVisit = {
+  customer_id: string;
+  name: string;
+  phone?: string;
+  balance: number;
+  city?: string;
+  district?: string;
+  location_link?: string;
+  type: VisitCustomerType;
+  typical_gap_days?: number;
+  interval_days?: number;
+  days_since?: number;
+  due: boolean;
+  overdue_days: number;
+  visited_recently: boolean;
+  purchase_count: number;
+  last_purchase?: string;
+  last_visit?: string;
+  last_visit_kind?: "purchase" | "payment" | "manual";
+  last_visit_note?: string;
+  created_at?: string;
+};
+
+export type CustomerVisits = {
+  imported_at: string | null;
+  today: string;
+  due: number;
+  counts: Record<VisitCustomerType, number>;
+  customers: CustomerVisit[];
+};
+
+export async function fetchCustomerVisits(): Promise<CustomerVisits> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/visits`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load visits (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function markCustomerVisited(customerId: string, note?: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/visits`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to record the visit (${response.status})`);
+  }
+}
+
+export async function importCustomerVisits(): Promise<{ customers: number; purchases: number; payments: number; zoho_requests: number }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/visits/import`, { method: "POST" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to import visit history (${response.status})`);
+  }
+  return response.json();
+}

@@ -1,6 +1,7 @@
 import { FileText, MessageSquare, FileClock, Package, Users } from "lucide-react";
 import type { TabKey } from "../types";
 import { useUnread } from "../lib/unread";
+import { useVisits } from "../lib/visits";
 
 const TABS: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "invoices", label: "Invoice", icon: FileText },
@@ -18,6 +19,7 @@ type Props = {
 /** Bottom navigation bar for switching between the app's top-level pages. */
 export default function TabBar({ active, onChange }: Props) {
   const unread = useUnread();
+  const dueVisits = useVisits().state?.due ?? 0;
   return (
     <nav className="tab-bar">
       {TABS.map(({ key, label, icon: Icon }) => {
@@ -34,6 +36,11 @@ export default function TabBar({ active, onChange }: Props) {
               {key === "messages" && unread.total > 0 && (
                 <span className="unread-badge unread-badge--tab" aria-label={`${unread.total} unread WhatsApp messages`}>
                   {unread.total > 99 ? "99+" : unread.total}
+                </span>
+              )}
+              {key === "customers" && dueVisits > 0 && (
+                <span className="unread-badge unread-badge--tab" aria-label={`${dueVisits} customers to visit`}>
+                  {dueVisits > 99 ? "99+" : dueVisits}
                 </span>
               )}
             </span>

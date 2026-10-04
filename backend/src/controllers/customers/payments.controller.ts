@@ -10,6 +10,7 @@ import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
+import { recordPayment } from '../../services/visits/customerVisits.js';
 
 /**
  * Records a payment against the customer as a whole, spread across their open
@@ -32,6 +33,7 @@ export async function payCustomerBalance(req: Request, res: Response){
         // The cached customer list carries each customer's balance due.
         deleteCache("customers")
         await addToCollectedToday(Number(amount))
+        await recordPayment(id as string)
 
         const notified = notify
             ? await notifyCustomerPayment(access_token, id as string, Number(amount), payment.date ?? todayInBusinessTimezone(), notify_contact_ids)

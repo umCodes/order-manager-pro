@@ -3,6 +3,7 @@ import { deleteCache } from '../../utils/cache.js';
 import { ZohoCreateCustomer, ZohoUpdateCustomer } from '../../services/zoho/customers/index.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { parseCreateCustomerPayload, parseUpdateCustomerPayload } from './payloads.js';
+import { recordCustomerCreated } from '../../services/visits/customerVisits.js';
 
 /** Creates a customer. The phone captured on the form becomes their primary contact person. */
 export async function createCustomer(req: Request, res: Response){
@@ -13,6 +14,8 @@ export async function createCustomer(req: Request, res: Response){
         // The phone provided at creation is the customer's sole contact, so it is the primary/default contact.
         payload.contact_persons = payload.contact_persons.map((cp, i) => (i === 0 ? { ...cp, is_primary_contact: true } : cp))
         const customer = await ZohoCreateCustomer(access_token, payload)
+        // A new customer is due a visit from today.
+        await recordCustomerCreated(customer?.contact_id)
 
         deleteCache("customers")
         res.status(201).json({ customer })

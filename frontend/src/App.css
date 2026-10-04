@@ -2507,3 +2507,166 @@
   gap: 6px;
   text-decoration: none;
 }
+
+/* ---------- Customer visits ("To visit") ---------- */
+
+.visits-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.visits__due-badge {
+  background: #dc2626;
+}
+
+.visits__title {
+  flex: 1;
+  margin-left: 10px;
+}
+
+.visits__import {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  background: var(--color-gray-50);
+  font-size: 13px;
+  color: var(--color-gray-700);
+}
+
+.visits__import-result {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--color-gray-700);
+}
+
+.visits__pills {
+  margin-top: 4px;
+}
+
+.visits__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.visit-card {
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  overflow: hidden;
+}
+
+.visit-card--due {
+  border-left: 3px solid #dc2626;
+}
+
+.visit-card--visited {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.visit-card__main {
+  display: block;
+  width: 100%;
+  padding: 10px 12px 6px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.visit-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.visit-card__name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visit-type {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-gray-100);
+  color: var(--color-gray-700);
+}
+
+.visit-type--new { background: #dbeafe; color: #1d4ed8; }
+.visit-type--regular { background: #dcfce7; color: #15803d; }
+.visit-type--occasional { background: #fef3c7; color: #b45309; }
+.visit-type--rare { background: #fee2e2; color: #b91c1c; }
+.visit-type--potential { background: var(--color-gray-100); color: var(--color-gray-500); }
+
+.visit-card__place,
+.visit-card__meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.visit-card__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--color-gray-900);
+}
+
+.visit-card--visited .visit-card__status {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.visit-card__check {
+  color: #16a34a;
+}
+
+.visit-card__overdue {
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.visit-card__note {
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--color-gray-700);
+}
+
+.visit-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.visit-card__mark {
+  padding: 6px 12px;
+  font-size: 13px;
+}

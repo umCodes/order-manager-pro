@@ -19,6 +19,8 @@ import { getPrimaryContactPhone } from "../lib/contacts";
 import { currency } from "../lib/currency";
 import { useSortState } from "../hooks/useSortState";
 import ClickableCard from "../components/ClickableCard";
+import CustomerVisits from "../components/CustomerVisits";
+import { refreshVisits, useVisits } from "../lib/visits";
 import RefreshButton from "../components/RefreshButton";
 import AddCustomerModal from "../components/AddCustomerModal";
 import CustomerTags from "../components/CustomerTags";
@@ -68,6 +70,12 @@ export default function CustomersPage({
   onSelectCustomer: (customerId: string) => void;
 }) {
   const [customers, setCustomers] = useState<Contact[]>([]);
+  const [isVisitsOpen, setIsVisitsOpen] = useState(false);
+  const visits = useVisits();
+  // Opening the tab is when the "To visit" count matters most: make it fresh.
+  useEffect(() => {
+    refreshVisits();
+  }, []);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
@@ -189,11 +197,26 @@ export default function CustomersPage({
     sortDirection,
   ]);
 
+  if (isVisitsOpen) {
+    return <CustomerVisits onBack={() => setIsVisitsOpen(false)} onSelectCustomer={onSelectCustomer} />;
+  }
+
+  const dueCount = visits.state?.due ?? 0;
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Customers</h1>
         <div className="page-header__actions">
+          <button
+            type="button"
+            className="btn btn--secondary visits-button"
+            onClick={() => setIsVisitsOpen(true)}
+            title="Customers to visit"
+          >
+            To visit
+            {dueCount > 0 && <span className="unread-badge unread-badge--chip visits__due-badge">{dueCount > 99 ? "99+" : dueCount}</span>}
+          </button>
           <button
             type="button"
             className="icon-btn"

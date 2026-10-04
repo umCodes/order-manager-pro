@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import TabBar from "./components/TabBar";
 import { startUnreadWatcher } from "./lib/unread";
+import { startVisitsWatcher } from "./lib/visits";
 import NewInvoicePage from "./pages/NewInvoicePage";
 import MessagesPage from "./pages/MessagesPage";
 import DraftsPage from "./pages/DraftsPage";
@@ -34,6 +35,7 @@ function App() {
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
 
   useEffect(() => startUnreadWatcher(), []);
+  useEffect(() => startVisitsWatcher(), []);
 
   function openCustomerFromList(customerId: string) {
     setIsCustomerOnTop(false);

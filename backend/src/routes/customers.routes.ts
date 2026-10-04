@@ -13,11 +13,18 @@ import {
     updateCustomerContact,
     deleteCustomerContact,
     markCustomerContactPrimary,
+    getCustomerVisits,
+    markCustomerVisited,
+    importCustomerVisits,
 } from "../controllers/customers/index.js";
 
 export const customersRouter = Router();
 
 customersRouter.get('/customers', getCustomers);
+// Before /customers/:id, so "visits" isn't taken for an id.
+customersRouter.get('/customers/visits', getCustomerVisits);
+customersRouter.post('/customers/visits/import', importCustomerVisits);
+customersRouter.post('/customers/:id/visits', markCustomerVisited);
 customersRouter.post('/customers', createCustomer);
 customersRouter.get('/customers/:id', getCustomerById);
 customersRouter.put('/customers/:id', updateCustomer);

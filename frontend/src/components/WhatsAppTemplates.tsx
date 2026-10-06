@@ -54,6 +54,41 @@ function languageLabel(code: string) {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
 }
 
+/** Language names for the prefix our template names start with (am_…, ar_…, en_…). */
+const NAME_LANGUAGES: Record<string, string> = { am: "Amharic", ar: "Arabic", en: "English", fr: "French", om: "Oromo", ti: "Tigrinya", so: "Somali" };
+
+/** Words shown in capitals in a template's title ("invoice_pdf" → "Invoice PDF"). */
+const ACRONYMS = new Set(["pdf", "id", "sms", "url", "vat", "etb", "otp"]);
+
+/**
+ * A template's name for reading: by our naming convention the first part
+ * is the language the text is written in (which can differ from the
+ * language it's registered under), shown as a badge; the rest becomes the
+ * title, words capitalised: "am_payment_confirmation" → "Payment
+ * Confirmation" with an "Amharic" badge. Names without a language prefix
+ * just get the title treatment.
+ */
+function displayName(name: string): { title: string; language?: string } {
+  const words = name.split("_").filter(Boolean);
+  const prefix = words[0]?.toLowerCase();
+  const hasLanguage = words.length > 1 && !!prefix && (prefix in NAME_LANGUAGES || /^[a-z]{2}$/.test(prefix));
+  const titleWords = hasLanguage ? words.slice(1) : words;
+  return {
+    title: titleWords.map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1))).join(" ") || name,
+    ...(hasLanguage && { language: NAME_LANGUAGES[prefix] ?? prefix.toUpperCase() }),
+  };
+}
+
+function TemplateName({ name }: { name: string }) {
+  const { title, language } = displayName(name);
+  return (
+    <>
+      <span className="wa-template__title">{title}</span>
+      {language && <span className="badge wa-template__language">{language}</span>}
+    </>
+  );
+}
+
 function part(template: WhatsAppTemplate, type: "HEADER" | "BODY" | "FOOTER" | "BUTTONS") {
   return template.components.find((c) => c.type === type);
 }
@@ -270,16 +305,22 @@ export default function WhatsAppTemplates({
                 >
                   <ChevronRight size={16} className="wa-template__chevron" />
                   <span className="wa-template__heading">
-                    <span className="wa-template__name">{template.name}</span>
+                    <span className="wa-template__name">{displayName(template.name).title}</span>
                     <span className="wa-template__meta">
-                      {languageLabel(template.language)} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
+                      {template.name} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
                     </span>
                   </span>
-                  <StatusBadge status={template.status} />
+                  <span className="wa-template__badges">
+                    {displayName(template.name).language && (
+                      <span className="badge wa-template__language">{displayName(template.name).language}</span>
+                    )}
+                    <StatusBadge status={template.status} />
+                  </span>
                 </button>
                 {isExpanded && (
                   <div className="wa-template__details">
                     <TemplatePreview template={template} />
+                    <div className="wa-template__hint">Registered with WhatsApp as {languageLabel(template.language)} ({template.language})</div>
                     {template.status === "REJECTED" && template.rejected_reason && template.rejected_reason !== "NONE" && (
                       <div className="form-error" style={{ marginTop: 8, marginBottom: 0 }}>
                         Rejected: {template.rejected_reason.replace(/_/g, " ").toLowerCase()}
@@ -335,10 +376,10 @@ export default function WhatsAppTemplates({
                         setCreating({ source: t });
                       }}
                     >
-                      <span className="wa-pick-list__name">{t.name}</span>
-                      <span className="wa-pick-list__sub">
-                        {languageLabel(t.language)} · {STATUS_LABELS[t.status] ?? t.status}
+                      <span className="wa-pick-list__name">
+                        <TemplateName name={t.name} />
                       </span>
+                      <span className="wa-pick-list__sub">{STATUS_LABELS[t.status] ?? t.status}</span>
                     </button>
                   ))}
                 </div>
@@ -485,8 +526,9 @@ export function SendTemplateModal({
                       setValues({});
                     }}
                   >
-                    <span className="wa-pick-list__name">{t.name}</span>
-                    <span className="wa-pick-list__sub">{languageLabel(t.language)}</span>
+                    <span className="wa-pick-list__name">
+                      <TemplateName name={t.name} />
+                    </span>
                   </button>
                 ))}
               </div>
@@ -779,7 +821,7 @@ function CreateTemplateForm({
         <button type="button" className="icon-btn" onClick={onCancel} aria-label="Back to templates">
           <ArrowLeft size={18} />
         </button>
-        <div className="wa-templates__title">{source ? `Copy of ${source.name}` : "New template"}</div>
+        <div className="wa-templates__title">{source ? `Copy of ${displayName(source.name).title}` : "New template"}</div>
       </div>
       <p className="page-subtitle" style={{ marginTop: 0 }}>
         WhatsApp reviews every new template before it can be sent.

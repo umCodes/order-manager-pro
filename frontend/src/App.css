@@ -2857,3 +2857,21 @@ div.wa-pick-list__row {
   margin: 0 0 8px;
   padding: 0;
 }
+
+/* Template names: readable title, with the language-prefix badge beside the status. */
+.wa-template__badges {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-template__language {
+  font-size: 11px;
+  background: var(--color-blue-50);
+  color: var(--color-blue-600);
+}
+
+.wa-pick-list__name .wa-template__language {
+  margin-inline-start: 6px;
+}

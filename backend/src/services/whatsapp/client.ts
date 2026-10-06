@@ -57,6 +57,26 @@ export async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: 
     }
 }
 
+/**
+ * Uploads a file through Meta's Resumable Upload API and returns its handle
+ * — what a new template's media header needs as its example (Meta's
+ * reviewers look at it). Different from uploadWhatsAppMedia, whose ids are
+ * for sending messages.
+ */
+export async function uploadResumableFile(appId: string, file: Buffer, filename: string, mimeType: string): Promise<string> {
+    const params = new URLSearchParams({ file_name: filename, file_length: String(file.length), file_type: mimeType })
+    const session = await GraphApi(`${appId}/uploads?${params}`, "POST")
+    const response = await fetch(`${GRAPH_BASE_URL}/${session.id}`, {
+        method: "POST",
+        headers: { Authorization: `OAuth ${ENV.WA_TOKEN}`, file_offset: "0" },
+        body: new Uint8Array(file),
+    })
+    const data = await response.json()
+    console.log(`[WhatsApp API] <- ${response.status} POST resumable upload of ${filename}`, JSON.stringify(data))
+    if (!response.ok) throw data
+    return data.h as string
+}
+
 /** Uploads a file (e.g. an invoice PDF) and returns its media id, for attaching to a template message. */
 export async function uploadWhatsAppMedia(file: Buffer, filename: string, mimeType: string) {
     try {

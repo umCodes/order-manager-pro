@@ -30,6 +30,9 @@ type Props = {
   closedNotice: string;
   /** Shown under the notice when replies aren't allowed (e.g. sending a template instead). */
   closedAction?: ReactNode;
+  /** The message being replied to, quoted above the input; whatever is sent next quotes it. */
+  replyTo?: { id: string; author: string; text: string } | null;
+  onCancelReply?: () => void;
   onSent: (conversation: WhatsAppConversation) => void;
 };
 
@@ -39,18 +42,27 @@ type Props = {
  * (opus-recorder) — the one audio format WhatsApp shows as a voice note,
  * and one browsers' own MediaRecorder mostly can't produce.
  */
-export default function WhatsAppComposer({ phone, canReply, closedNotice, closedAction, onSent }: Props) {
+export default function WhatsAppComposer({ phone, canReply, closedNotice, closedAction, replyTo, onCancelReply, onSent }: Props) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recorderRef = useRef<Recorder | null>(null);
   // Whether the recording in progress should be sent (true) or thrown away when it stops.
   const sendRecordingRef = useRef(false);
+  // A voice note is sent from the recorder's callback, so it reads the reply target from here.
+  const replyToRef = useRef<string | undefined>(undefined);
+  replyToRef.current = replyTo?.id;
 
   const isRecording = recordingSeconds !== null;
+
+  // Picking "Reply" puts the cursor straight in the message box.
+  useEffect(() => {
+    if (replyTo?.id) inputRef.current?.focus();
+  }, [replyTo?.id]);
 
   const filePreviewUrl = useMemo(() => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null), [file]);
   useEffect(
@@ -100,12 +112,12 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
     if (isSending) return;
     const body = text.trim();
     if (file) {
-      send(sendWhatsAppMedia(phone, file, { filename: file.name, ...(body && { caption: body }) }), () => {
+      send(sendWhatsAppMedia(phone, file, { filename: file.name, ...(body && { caption: body }), replyTo: replyTo?.id }), () => {
         setFile(null);
         setText("");
       });
     } else if (body) {
-      send(sendWhatsAppChatMessage(phone, body), () => setText(""));
+      send(sendWhatsAppChatMessage(phone, body, replyTo?.id), () => setText(""));
     }
   }
 
@@ -136,7 +148,7 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
     recorder.ondataavailable = (data: Uint8Array) => {
       if (!sendRecordingRef.current) return;
       const blob = new Blob([new Uint8Array(data)], { type: "audio/ogg" });
-      send(sendWhatsAppMedia(phone, blob, { filename: `voice-${Date.now()}.ogg`, voice: true }));
+      send(sendWhatsAppMedia(phone, blob, { filename: `voice-${Date.now()}.ogg`, voice: true, replyTo: replyToRef.current }));
     };
     recorderRef.current = recorder;
     try {
@@ -165,6 +177,18 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
       {!canReply && <div className="wa-composer__notice">{closedNotice}</div>}
       {!canReply && closedAction}
       {error && <div className="form-error">{error}</div>}
+
+      {replyTo && canReply && (
+        <div className="wa-reply-bar">
+          <div className="wa-quote wa-quote--composer">
+            <span className="wa-quote__author">Replying to {replyTo.author}</span>
+            <span className="wa-quote__text">{replyTo.text}</span>
+          </div>
+          <button type="button" className="wa-attachment__remove" onClick={onCancelReply} disabled={isSending} aria-label="Cancel reply">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {file && (
         <div className="wa-attachment">
@@ -238,6 +262,7 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
             <Paperclip size={18} />
           </button>
           <textarea
+            ref={inputRef}
             className="textarea wa-composer__input"
             rows={1}
             placeholder={!canReply ? "Replies unavailable" : file ? "Add a caption" : "Type a message"}

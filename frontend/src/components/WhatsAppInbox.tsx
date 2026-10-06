@@ -83,6 +83,17 @@ function formatDayDivider(timestamp: number) {
   return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
 }
 
+/** One line describing a message, for a reply's quote: its text, or what kind of file it is. */
+function quoteText(message: WhatsAppMessage) {
+  if (message.media) {
+    if (message.media.voice || message.type === "audio") return "🎤 Voice message";
+    if (message.type === "image" || message.type === "sticker") return message.text ? `📷 ${message.text}` : "📷 Photo";
+    if (message.type === "video") return message.text ? `🎥 ${message.text}` : "🎥 Video";
+    return `📄 ${message.media.filename ?? "Document"}`;
+  }
+  return message.text || "Message";
+}
+
 function StatusTicks({ status }: { status?: string }) {
   if (status === "read") return <CheckCheck size={14} className="wa-bubble__ticks wa-bubble__ticks--read" />;
   if (status === "delivered") return <CheckCheck size={14} className="wa-bubble__ticks" />;
@@ -344,6 +355,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<WhatsAppMessage | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastMessageId = conversation?.messages.at(-1)?.id;
@@ -427,6 +439,21 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
     setIsClearConfirmOpen(false);
   }
 
+  function handleReplyTo(message: WhatsAppMessage) {
+    setReplyingTo(message);
+    setActionMessage(null);
+  }
+
+  /** Scrolls to a quoted message and flashes it, if it's still in the history. */
+  function jumpToMessage(id: string) {
+    const element = document.getElementById(`wa-msg-${id}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.remove("wa-bubble-row--flash");
+    void element.offsetWidth; // restart the animation
+    element.classList.add("wa-bubble-row--flash");
+  }
+
   function handleCopyMessage(message: WhatsAppMessage) {
     navigator.clipboard?.writeText(message.text).catch(() => {});
     setActionMessage(null);
@@ -494,6 +521,9 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
 
   const messages = conversation?.messages ?? [];
   const canReply = conversation?.can_reply ?? false;
+  const messagesById = new Map(messages.map((m) => [m.id, m]));
+  // Only messages WhatsApp gave an id can be quoted (not ones that failed before sending).
+  const canQuote = (message: WhatsAppMessage) => canReply && !message.id.startsWith("failed-");
 
   return (
     <div className="wa-chat" ref={chatRef}>
@@ -552,6 +582,8 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
                 <MessageBubble
                   phone={chat.phone}
                   message={message}
+                  quoted={message.reply_to ? { message: messagesById.get(message.reply_to), contactName: chat.name } : undefined}
+                  onQuoteClick={() => message.reply_to && jumpToMessage(message.reply_to)}
                   onRetry={() => {
                     setRetryError(null);
                     setRetryingMessage(message);
@@ -575,8 +607,11 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
             Send a template
           </button>
         }
+        replyTo={replyingTo ? { id: replyingTo.id, author: replyingTo.direction === "out" ? "You" : chat.name, text: quoteText(replyingTo) } : null}
+        onCancelReply={() => setReplyingTo(null)}
         onSent={(result) => {
           setSendError(null);
+          setReplyingTo(null);
           showSentConversation(result);
         }}
       />
@@ -590,12 +625,17 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
               Deleting removes it from this device only — {chat.name} still has it.
             </div>
             <div className="wa-message-actions">
+              {canQuote(actionMessage) && (
+                <button type="button" className="btn btn--primary" onClick={() => handleReplyTo(actionMessage)}>
+                  Reply
+                </button>
+              )}
               {actionMessage.text && (
                 <button type="button" className="btn btn--secondary" onClick={() => handleCopyMessage(actionMessage)}>
                   Copy text
                 </button>
               )}
-              <button type="button" className="btn btn--primary" onClick={() => handleDeleteMessage(actionMessage)}>
+              <button type="button" className="btn btn--secondary" onClick={() => handleDeleteMessage(actionMessage)}>
                 Delete for me
               </button>
               <button type="button" className="btn btn--secondary" onClick={() => setActionMessage(null)}>
@@ -715,11 +755,16 @@ function useLongPress(onLongPress: () => void) {
 function MessageBubble({
   phone,
   message,
+  quoted,
+  onQuoteClick,
   onRetry,
   onLongPress,
 }: {
   phone: string;
   message: WhatsAppMessage;
+  /** The message this one replies to (undefined `message` when it's no longer in the history). */
+  quoted?: { message?: WhatsAppMessage; contactName: string };
+  onQuoteClick: () => void;
   onRetry: () => void;
   onLongPress: () => void;
 }) {
@@ -733,7 +778,7 @@ function MessageBubble({
       ? "Not delivered yet"
       : undefined;
   return (
-    <div className={`wa-bubble-row${isOut ? " wa-bubble-row--out" : ""}`}>
+    <div id={`wa-msg-${message.id}`} className={`wa-bubble-row${isOut ? " wa-bubble-row--out" : ""}`}>
       {isOut && message.can_retry && (
         <button
           type="button"
@@ -750,6 +795,14 @@ function MessageBubble({
         {...longPressHandlers}
       >
         {isTemplate && <div className="wa-bubble__label">Template message</div>}
+        {quoted && (
+          <button type="button" className="wa-quote" onClick={onQuoteClick} disabled={!quoted.message}>
+            <span className="wa-quote__author">
+              {quoted.message ? (quoted.message.direction === "out" ? "You" : quoted.contactName) : "Earlier message"}
+            </span>
+            <span className="wa-quote__text">{quoted.message ? quoteText(quoted.message) : "No longer in this chat's history"}</span>
+          </button>
+        )}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
         {message.text && <div className="wa-bubble__text">{message.text}</div>}
         <div className="wa-bubble__meta" title={problem}>

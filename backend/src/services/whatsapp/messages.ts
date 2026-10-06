@@ -4,6 +4,8 @@ import { recordFailedOutboundMessage, recordOutboundMessage } from "./chatStore.
 export type TemplateParameter =
     | { type: "text"; text: string; parameter_name?: string }
     | { type: "document"; document: { id: string; filename?: string } }
+    | { type: "image"; image: { id: string } }
+    | { type: "video"; video: { id: string } }
 
 export type TemplateComponent = {
     type: "header" | "body" | "button"
@@ -60,16 +62,23 @@ export async function sendWhatsAppTemplate(
     }
 }
 
-/** Sends a plain text message — only valid inside an open 24h customer service window. */
-export async function replyToWhatsAppMessage(to: string, message: string) {
+/**
+ * Sends a plain text message — only valid inside an open 24h customer
+ * service window. `replyTo` quotes one of the conversation's messages (by
+ * its WhatsApp id), like swiping to reply in WhatsApp.
+ */
+export async function replyToWhatsAppMessage(to: string, message: string, replyTo?: string) {
     try {
+        const context = replyTo ? { context: { message_id: replyTo } } : {}
         const result = await WhatsAppApi("messages", "POST", {
             messaging_product: "whatsapp",
             to,
             type: "text",
             text: { body: message },
+            ...context,
         })
-        await recordOutboundMessage(result, to, { type: "text", text: { body: message } })
+        // Stored the way WhatsApp itself delivers a reply (context.id), same as inbound ones.
+        await recordOutboundMessage(result, to, { type: "text", text: { body: message }, ...(replyTo && { context: { id: replyTo } }) })
         return result
     } catch (error) {
         console.error("Error replying to WhatsApp message:", error)
@@ -89,7 +98,7 @@ export async function sendWhatsAppMedia(
     kind: WhatsAppMediaKind,
     file: Buffer,
     mimeType: string,
-    options: { filename: string; caption?: string; voice?: boolean },
+    options: { filename: string; caption?: string; voice?: boolean; replyTo?: string },
 ) {
     try {
         const mediaId = await uploadWhatsAppMedia(file, options.filename, mimeType)
@@ -103,6 +112,7 @@ export async function sendWhatsAppMedia(
             to,
             type: kind,
             [kind]: payload,
+            ...(options.replyTo && { context: { message_id: options.replyTo } }),
         })
         await recordOutboundMessage(result, to, {
             type: kind,
@@ -112,6 +122,7 @@ export async function sendWhatsAppMedia(
                 ...(kind !== "document" && { filename: options.filename }),
                 ...(options.voice && { voice: true }),
             },
+            ...(options.replyTo && { context: { id: options.replyTo } }),
         })
         return result
     } catch (error) {

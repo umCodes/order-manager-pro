@@ -13,8 +13,8 @@ import {
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
-import { downloadWhatsAppMedia } from '../services/whatsapp/client.js';
-import { buildTemplateSend, createTemplate, listTemplates } from '../services/whatsapp/templates.js';
+import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
+import { buildTemplateSend, createTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -94,8 +94,22 @@ function toMessageView(message: StoredChatMessage) {
         ...(message.status && { status: message.status }),
         ...(message.error && { error: message.error }),
         ...(message.reaction && { reaction: message.reaction }),
+        // The message this one replies to (set by WhatsApp on inbound replies, and by us on ours).
+        ...(message.context?.id && { reply_to: String(message.context.id) }),
         can_retry: canRetry(message),
     }
+}
+
+/**
+ * A reply's target, if one was given: must be a message in this
+ * conversation that WhatsApp knows (not one that failed before it got an id).
+ */
+function readReplyTo(value: unknown, conversation: Awaited<ReturnType<typeof buildConversation>>) {
+    const replyTo = typeof value === "string" ? value.trim() : ""
+    if (!replyTo) return undefined
+    if (replyTo.startsWith("failed-") || !conversation.messages.some((m) => m.id === replyTo))
+        throw new Error("The message you're replying to isn't available any more")
+    return replyTo
 }
 
 /** Phone path params are wa_ids: digits only. */
@@ -236,11 +250,12 @@ export async function sendWhatsAppChatMessage(req: Request, res: Response) {
         if (!text) throw new Error("Message text is required")
         if (text.length > MAX_TEXT_LENGTH) throw new Error(`Messages are limited to ${MAX_TEXT_LENGTH} characters`)
 
-        const { can_reply } = await buildConversation(phone)
-        if (!can_reply)
+        const conversation = await buildConversation(phone)
+        if (!conversation.can_reply)
             throw new Error("WhatsApp only allows replies within 24 hours of the customer's last message")
+        const replyTo = readReplyTo(req.body?.reply_to, conversation)
 
-        await replyToWhatsAppMessage(phone, text)
+        await replyToWhatsAppMessage(phone, text, replyTo)
         res.status(201).json(await buildConversation(phone))
     } catch (error) {
         console.error('Error sending WhatsApp chat message:', error);
@@ -320,12 +335,13 @@ export async function sendWhatsAppChatMedia(req: Request, res: Response) {
         const caption = typeof req.query.caption === "string" ? req.query.caption.trim().slice(0, 1024) : ""
         const voice = req.query.voice === "1" && mimeType === "audio/ogg"
 
-        const { can_reply } = await buildConversation(phone)
-        if (!can_reply)
+        const conversation = await buildConversation(phone)
+        if (!conversation.can_reply)
             throw new Error("WhatsApp only allows replies within 24 hours of the customer's last message")
+        const replyTo = readReplyTo(req.query.reply_to, conversation)
 
         const kind = mediaKindFor(mimeType, file.length)
-        await sendWhatsAppMedia(phone, kind, file, mimeType, { filename, ...(caption && { caption }), voice })
+        await sendWhatsAppMedia(phone, kind, file, mimeType, { filename, ...(caption && { caption }), voice, ...(replyTo && { replyTo }) })
         res.status(201).json(await buildConversation(phone))
     } catch (error) {
         console.error('Error sending WhatsApp media:', error);
@@ -430,5 +446,42 @@ export async function sendWhatsAppChatTemplate(req: Request, res: Response) {
     } catch (error) {
         console.error('Error sending WhatsApp template:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send template' });
+    }
+}
+
+/** The uploaded file's type and name, from the X-File-Type / X-File-Name headers (raw-bytes uploads). */
+function readUpload(req: Request) {
+    const file = req.body
+    if (!Buffer.isBuffer(file) || file.length === 0) throw new Error("No file received")
+    if (file.length > MAX_MEDIA_BYTES) throw new Error("Files are limited to 16 MB")
+    const mimeType = String(req.get("X-File-Type") || "application/octet-stream").split(";")[0]!.trim().toLowerCase()
+    const filename = decodeURIComponent(String(req.get("X-File-Name") || "file")).slice(0, 200)
+    return { file, mimeType, filename }
+}
+
+/**
+ * Uploads the sample file for a new template's file header (`?format=` IMAGE,
+ * VIDEO or DOCUMENT); returns the handle to create the template with.
+ */
+export async function uploadWhatsAppTemplateSample(req: Request, res: Response) {
+    try {
+        const { file, mimeType, filename } = readUpload(req)
+        const handle = await uploadTemplateSample(String(req.query.format ?? ""), file, filename, mimeType)
+        res.status(201).json({ handle })
+    } catch (error) {
+        console.error('Error uploading WhatsApp template sample:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** Uploads the file to send in a template's file header; returns its media id for the send. */
+export async function uploadWhatsAppTemplateMedia(req: Request, res: Response) {
+    try {
+        const { file, mimeType, filename } = readUpload(req)
+        const id = await uploadWhatsAppMedia(file, filename, mimeType)
+        res.status(201).json({ id, filename })
+    } catch (error) {
+        console.error('Error uploading WhatsApp template file:', error);
+        res.status(400).json({ error: describeSendError(error) });
     }
 }

@@ -849,6 +849,8 @@ export type WhatsAppMessage = {
   can_retry?: boolean;
   /** Set on image / voice / video / document messages; load with fetchWhatsAppMedia. */
   media?: { mime_type?: string; filename?: string; voice?: boolean };
+  /** Id of the message this one replies to (quoted above it). */
+  reply_to?: string;
 };
 
 /** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */
@@ -881,12 +883,12 @@ export async function fetchWhatsAppConversation(phone: string): Promise<WhatsApp
   return response.json();
 }
 
-/** Sends a free-text reply; resolves to the updated conversation. */
-export async function sendWhatsAppChatMessage(phone: string, text: string): Promise<WhatsAppConversation> {
+/** Sends a free-text reply (quoting `replyTo`, if given); resolves to the updated conversation. */
+export async function sendWhatsAppChatMessage(phone: string, text: string, replyTo?: string): Promise<WhatsAppConversation> {
   const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+    body: JSON.stringify({ text, ...(replyTo && { reply_to: replyTo }) }),
     },
     body: JSON.stringify({ text }),
   });
@@ -929,6 +931,8 @@ export type WhatsAppTemplateComponent = {
   format?: string;
   text?: string;
   buttons?: WhatsAppTemplateButton[];
+  /** Meta's example values (body_text, header_text, body_text_named_params, …). */
+  example?: Record<string, unknown>;
 };
 
 /** A message template on the WhatsApp Business Account, as Meta reports it. */
@@ -947,7 +951,11 @@ export type NewWhatsAppTemplate = {
   name: string;
   language: string;
   category: "UTILITY" | "MARKETING";
+  /** TEXT (default) or a file sent with each message. */
+  header_format?: WhatsAppTemplateHeaderFormat;
   header?: string;
+  /** File headers: the sample file's handle, from uploadWhatsAppTemplateSample. */
+  header_handle?: string;
   header_example?: string;
   body: string;
   body_examples?: string[];
@@ -960,8 +968,12 @@ export type NewWhatsAppTemplate = {
 };
 
 /** Values for a template's variables, keyed by placeholder ("1", "2", …); `buttons` is keyed by button index. */
+export type WhatsAppTemplateHeaderFormat = "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
+
 export type WhatsAppTemplateValues = {
   header?: Record<string, string>;
+  /** File headers: the file to send, from uploadWhatsAppTemplateMedia. */
+  header_media?: { id: string; filename?: string };
   body?: Record<string, string>;
   buttons?: Record<string, string>;
 };
@@ -988,6 +1000,33 @@ export async function createWhatsAppTemplate(template: NewWhatsAppTemplate): Pro
     throw new Error(body.error ?? `Failed to create template (${response.status})`);
   }
   return response.json();
+}
+
+/** Posts a file's raw bytes to a backend upload endpoint (same as sendWhatsAppMedia does). */
+async function uploadRaw(url: string, file: File) {
+  const response = await apiFetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-File-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? (response.status === 413 ? "File is too large" : `Upload failed (${response.status})`));
+  return body;
+}
+
+/** Uploads the sample file a new template's file header needs for WhatsApp's review; resolves to its handle. */
+export async function uploadWhatsAppTemplateSample(format: WhatsAppTemplateHeaderFormat, file: File): Promise<string> {
+  const body = await uploadRaw(`${API_BASE_URL}/api/whatsapp/templates/sample?format=${format}`, file);
+  return body.handle;
+}
+
+/** Uploads the file to send in a template's file header. */
+export async function uploadWhatsAppTemplateMedia(file: File): Promise<{ id: string; filename: string }> {
+  return uploadRaw(`${API_BASE_URL}/api/whatsapp/templates/media`, file);
 }
 
 /**
@@ -1027,9 +1066,10 @@ export const MAX_WHATSAPP_UPLOAD_BYTES = 16 * 1024 * 1024;
 export async function sendWhatsAppMedia(
   phone: string,
   file: Blob,
-  options: { filename: string; caption?: string; voice?: boolean },
+  options: { filename: string; caption?: string; voice?: boolean; replyTo?: string },
 ): Promise<WhatsAppConversation> {
   const params = new URLSearchParams();
+  if (options.replyTo) params.set("reply_to", options.replyTo);
   if (options.caption) params.set("caption", options.caption);
   if (options.voice) params.set("voice", "1");
   const query = params.toString();

@@ -1,13 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ENV } from '../constants/env.js';
 
-/** Keys not required for the /api routes this middleware guards — used only by the WhatsApp webhook (mounted separately, outside /api), or with a fallback when unset (WA_BUSINESS_ACCOUNT_ID). */
+/** Keys not required for the /api routes this middleware guards — used only by the WhatsApp webhook (mounted separately, outside /api), or with a fallback when unset (WA_BUSINESS_ACCOUNT_ID, WA_APP_ID). */
 const OPTIONAL_KEYS = new Set<keyof typeof ENV>([
     "WA_SUPPORT_NUMBER",
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
     "WA_NOTIFY_EMAIL_TO",
     "WA_BUSINESS_ACCOUNT_ID",
+    "WA_APP_ID",
 ]);
 
 /** Rejects /api requests with a 500 when any required environment variable is missing. */

@@ -922,6 +922,100 @@ export async function retryWhatsAppMessage(phone: string, messageId: string): Pr
   return body;
 }
 
+export type WhatsAppTemplateButton = { type: string; text: string; url?: string; phone_number?: string };
+
+export type WhatsAppTemplateComponent = {
+  type: "HEADER" | "BODY" | "FOOTER" | "BUTTONS";
+  format?: string;
+  text?: string;
+  buttons?: WhatsAppTemplateButton[];
+};
+
+/** A message template on the WhatsApp Business Account, as Meta reports it. */
+export type WhatsAppTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  /** APPROVED, PENDING, REJECTED, PAUSED, DISABLED, … — only APPROVED can be sent. */
+  status: string;
+  category: string;
+  components: WhatsAppTemplateComponent[];
+  rejected_reason?: string;
+};
+
+export type NewWhatsAppTemplate = {
+  name: string;
+  language: string;
+  category: "UTILITY" | "MARKETING";
+  header?: string;
+  header_example?: string;
+  body: string;
+  body_examples?: string[];
+  footer?: string;
+  buttons?: (
+    | { type: "QUICK_REPLY"; text: string }
+    | { type: "URL"; text: string; url: string }
+    | { type: "PHONE_NUMBER"; text: string; phone_number: string }
+  )[];
+};
+
+/** Values for a template's variables, keyed by placeholder ("1", "2", …); `buttons` is keyed by button index. */
+export type WhatsAppTemplateValues = {
+  header?: Record<string, string>;
+  body?: Record<string, string>;
+  buttons?: Record<string, string>;
+};
+
+export async function fetchWhatsAppTemplates(force = false): Promise<WhatsAppTemplate[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/templates${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load templates (${response.status})`);
+  }
+  const data = await response.json();
+  return data.templates;
+}
+
+/** Submits a new template for WhatsApp's review; resolves to its initial status (usually PENDING). */
+export async function createWhatsAppTemplate(template: NewWhatsAppTemplate): Promise<{ id: string; status: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(template),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to create template (${response.status})`);
+  }
+  return response.json();
+}
+
+/**
+ * Sends an approved template to a contact (allowed any time, unlike
+ * free-text replies). Resolves to the updated conversation; if WhatsApp
+ * rejects it, throws with the reason and the conversation attached.
+ */
+export async function sendWhatsAppTemplateMessage(
+  phone: string,
+  template: { name: string; language: string },
+  values: WhatsAppTemplateValues,
+): Promise<WhatsAppConversation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: template.name, language: template.language, values }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error ?? `Failed to send template (${response.status})`) as Error & {
+      conversation?: WhatsAppConversation;
+    };
+    if (Array.isArray(body.messages)) error.conversation = body;
+    throw error;
+  }
+  return body;
+}
+
 /** Largest file the backend accepts (WhatsApp's limit for audio and video). */
 export const MAX_WHATSAPP_UPLOAD_BYTES = 16 * 1024 * 1024;
 

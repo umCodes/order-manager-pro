@@ -47,6 +47,7 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 | `WA_TOKEN` | WhatsApp Cloud API bearer token |
 | `WA_VERIFY_TOKEN` | Verify token for the `GET /api/wa-webhook` handshake |
 | `WA_PHONE_NUMBER_ID` | WhatsApp Business phone number ID (defaults to the org's number) |
+| `WA_BUSINESS_ACCOUNT_ID` | Optional. WhatsApp Business Account ID that owns the message templates (Messages → WhatsApp → Templates). When unset, it's looked up from the accounts `WA_TOKEN` was granted |
 | `WA_PREP_NUM` | (see `services/whatsapp`) |
 | `WA_PAYMENT_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the payment-confirmation message, per customer `preferred_language` |
 | `WA_BALANCE_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the invoice-sent/balance message, per customer `preferred_language` |

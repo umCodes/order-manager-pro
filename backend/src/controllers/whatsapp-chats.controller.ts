@@ -14,6 +14,7 @@ import {
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia } from '../services/whatsapp/client.js';
+import { buildTemplateSend, createTemplate, listTemplates } from '../services/whatsapp/templates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -378,5 +379,56 @@ export async function markWhatsAppChatRead(req: Request, res: Response) {
     } catch (error) {
         console.error('Error marking WhatsApp chat read:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to mark chat as read' });
+    }
+}
+
+/** Every message template on the WhatsApp Business Account, with its review status. `?refresh=1` skips the short cache. */
+export async function getWhatsAppTemplates(req: Request, res: Response) {
+    try {
+        const templates = await listTemplates(req.query.refresh === "1")
+        res.status(200).json({ templates })
+    } catch (error) {
+        console.error('Error loading WhatsApp templates:', error);
+        res.status(502).json({ error: describeSendError(error) });
+    }
+}
+
+/** Submits a new message template for Meta's review (it can be sent once approved). */
+export async function createWhatsAppTemplate(req: Request, res: Response) {
+    try {
+        const created = await createTemplate(req.body)
+        res.status(201).json(created)
+    } catch (error) {
+        console.error('Error creating WhatsApp template:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/**
+ * Sends an approved template to a contact, with its variables filled in.
+ * Unlike free-text replies this works outside the 24-hour window — that's
+ * what templates are for — so it can start a conversation.
+ */
+export async function sendWhatsAppChatTemplate(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        const name = String(req.body?.name ?? "")
+        const language = String(req.body?.language ?? "")
+        const template = (await listTemplates()).find((t) => t.name === name && t.language === language)
+        if (!template) throw new Error("Template not found")
+        const { components, summary } = buildTemplateSend(template, req.body?.values ?? {})
+
+        try {
+            await sendWhatsAppTemplate(phone, template.name, components, template.language, summary)
+        } catch (sendError) {
+            // Recorded as a failed message (with a retry) — show it along with the reason.
+            const conversation = await buildConversation(phone)
+            res.status(502).json({ error: describeSendError(sendError), ...conversation })
+            return
+        }
+        res.status(201).json(await buildConversation(phone))
+    } catch (error) {
+        console.error('Error sending WhatsApp template:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send template' });
     }
 }

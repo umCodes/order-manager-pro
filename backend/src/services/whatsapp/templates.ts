@@ -41,25 +41,66 @@ const TEMPLATES_CACHE_SECONDS = 60
 const BUSINESS_ACCOUNT_CACHE_KEY = "wa-business-account-id"
 const BUSINESS_ACCOUNT_CACHE_SECONDS = 24 * 60 * 60
 
+/** The WhatsApp Business Account ids WA_TOKEN was granted, read off the token itself (works for system-user tokens). */
+async function accountIdsFromToken(): Promise<string[]> {
+    const token = encodeURIComponent(ENV.WA_TOKEN ?? "")
+    const debug = await GraphApi(`debug_token?input_token=${token}&access_token=${token}`)
+    const scopes: { scope: string; target_ids?: string[] }[] = debug?.data?.granular_scopes ?? []
+    // Either WhatsApp permission's targets are business accounts; management first.
+    return ["whatsapp_business_management", "whatsapp_business_messaging"].flatMap(
+        (name) => scopes.find((s) => s.scope === name)?.target_ids ?? [],
+    )
+}
+
+/** The WhatsApp Business Accounts of every business the token's user can see (needs business_management). */
+async function accountIdsFromBusinesses(): Promise<string[]> {
+    const fields = "owned_whatsapp_business_accounts{id},client_whatsapp_business_accounts{id}"
+    const result = await GraphApi(`me/businesses?fields=${encodeURIComponent(fields)}`)
+    return (result?.data ?? []).flatMap((business: any) => [
+        ...(business?.owned_whatsapp_business_accounts?.data ?? []),
+        ...(business?.client_whatsapp_business_accounts?.data ?? []),
+    ]).map((account: any) => String(account.id))
+}
+
+/** Whether this business account owns the app's phone number (WA_PHONE_NUMBER_ID). */
+async function ownsPhoneNumber(accountId: string) {
+    try {
+        const result = await GraphApi(`${accountId}/phone_numbers?fields=id`)
+        return (result?.data ?? []).some((phone: any) => String(phone.id) === String(ENV.WA_PHONE_NUMBER_ID))
+    } catch {
+        return false
+    }
+}
+
 /**
  * The WhatsApp Business Account id: WA_BUSINESS_ACCOUNT_ID if set, otherwise
- * the account WA_TOKEN was granted whatsapp_business_management on (read
- * off the token itself, which works for system-user tokens).
+ * looked up from what WA_TOKEN can reach — preferring the account that owns
+ * WA_PHONE_NUMBER_ID, else the only candidate there is.
  */
 async function getBusinessAccountId(): Promise<string> {
     if (ENV.WA_BUSINESS_ACCOUNT_ID) return ENV.WA_BUSINESS_ACCOUNT_ID
     const cached = getCache(BUSINESS_ACCOUNT_CACHE_KEY)
     if (cached) return cached
 
-    let accountId: string | undefined
-    try {
-        const token = encodeURIComponent(ENV.WA_TOKEN ?? "")
-        const debug = await GraphApi(`debug_token?input_token=${token}&access_token=${token}`)
-        const scopes: { scope: string; target_ids?: string[] }[] = debug?.data?.granular_scopes ?? []
-        accountId = scopes.find((s) => s.scope === "whatsapp_business_management")?.target_ids?.[0]
-    } catch (error) {
-        console.error("Failed to look up the WhatsApp Business Account id from WA_TOKEN:", error)
+    const candidates = new Set<string>()
+    for (const lookup of [accountIdsFromToken, accountIdsFromBusinesses]) {
+        try {
+            for (const id of await lookup()) candidates.add(id)
+        } catch (error) {
+            console.error(`WhatsApp Business Account lookup (${lookup.name}) failed:`, error)
+        }
     }
+
+    let accountId: string | undefined
+    for (const id of candidates) {
+        if (await ownsPhoneNumber(id)) {
+            accountId = id
+            break
+        }
+    }
+    if (!accountId && candidates.size === 1) accountId = [...candidates][0]
+    console.log(`[WhatsApp templates] business account candidates: [${[...candidates].join(", ")}] -> ${accountId ?? "none"}`)
+
     if (!accountId)
         throw new Error("WhatsApp Business Account id unknown — set WA_BUSINESS_ACCOUNT_ID on the server")
     setTTLCache(BUSINESS_ACCOUNT_CACHE_KEY, accountId, BUSINESS_ACCOUNT_CACHE_SECONDS)

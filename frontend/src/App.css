@@ -2067,15 +2067,22 @@
 }
 
 /*
- * Touch screens: press-and-hold a bubble opens its actions (with "Copy
- * text"), so the browser's own selection / callout menu would only compete.
+ * No text selection anywhere in the chat (header, bubbles, notices): holding
+ * or right-clicking a bubble opens its actions, with "Copy text", so the
+ * browser's own selection / callout menu would only compete. Typing fields
+ * stay selectable so their text can still be edited.
  */
-@media (hover: none) {
-  .wa-bubble {
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-  }
+.wa-chat {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.wa-chat textarea,
+.wa-chat input {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .wa-chat__messages {

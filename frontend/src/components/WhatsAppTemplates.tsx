@@ -55,7 +55,32 @@ function languageLabel(code: string) {
 }
 
 /** Language names for the prefix our template names start with (am_…, ar_…, en_…). */
-const NAME_LANGUAGES: Record<string, string> = { am: "Amharic", ar: "Arabic", en: "English", fr: "French", om: "Oromo", ti: "Tigrinya", so: "Somali" };
+const NAME_LANGUAGES: Record<string, string> = {
+  am: "Amharic",
+  ar: "Arabic",
+  en: "English",
+  fr: "French",
+  om: "Oromo",
+  ti: "Tigrinya",
+  so: "Somali",
+  sw: "Swahili",
+  de: "German",
+  es: "Spanish",
+  it: "Italian",
+  tr: "Turkish",
+  zh: "Chinese",
+};
+
+/**
+ * The language a name prefix stands for: its code exactly ("en"), or any
+ * start of its name ("eng", "amh", "arabic"). Unknown prefixes aren't
+ * treated as languages, so a name like "order_ready" keeps its first word.
+ */
+function languageOfPrefix(prefix: string): string | undefined {
+  if (prefix in NAME_LANGUAGES) return NAME_LANGUAGES[prefix];
+  if (prefix.length < 2) return undefined;
+  return Object.values(NAME_LANGUAGES).find((language) => language.toLowerCase().startsWith(prefix));
+}
 
 /** Words shown in capitals in a template's title ("invoice_pdf" → "Invoice PDF"). */
 const ACRONYMS = new Set(["pdf", "id", "sms", "url", "vat", "etb", "otp"]);
@@ -70,12 +95,11 @@ const ACRONYMS = new Set(["pdf", "id", "sms", "url", "vat", "etb", "otp"]);
  */
 function displayName(name: string): { title: string; language?: string } {
   const words = name.split("_").filter(Boolean);
-  const prefix = words[0]?.toLowerCase();
-  const hasLanguage = words.length > 1 && !!prefix && (prefix in NAME_LANGUAGES || /^[a-z]{2}$/.test(prefix));
-  const titleWords = hasLanguage ? words.slice(1) : words;
+  const language = words.length > 1 ? languageOfPrefix(words[0].toLowerCase()) : undefined;
+  const titleWords = language ? words.slice(1) : words;
   return {
     title: titleWords.map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1))).join(" ") || name,
-    ...(hasLanguage && { language: NAME_LANGUAGES[prefix] ?? prefix.toUpperCase() }),
+    ...(language && { language }),
   };
 }
 

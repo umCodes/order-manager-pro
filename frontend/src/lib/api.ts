@@ -890,9 +890,9 @@ export async function sendWhatsAppChatMessage(phone: string, text: string, reply
   const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages`, {
     method: "POST",
     headers: {
-    body: JSON.stringify({ text, ...(replyTo && { reply_to: replyTo }) }),
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, ...(replyTo && { reply_to: replyTo }) }),
   });
 
   if (!response.ok) {

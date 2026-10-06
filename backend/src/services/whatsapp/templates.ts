@@ -1,6 +1,6 @@
 import { ENV } from "../../constants/env.js"
 import { deleteCache, getCache, setTTLCache } from "../../utils/cache.js"
-import { GraphApi } from "./client.js"
+import { GraphApi, uploadResumableFile } from "./client.js"
 import type { TemplateComponent } from "./messages.js"
 
 /**
@@ -40,6 +40,43 @@ const TEMPLATES_CACHE_KEY = "wa-templates"
 const TEMPLATES_CACHE_SECONDS = 60
 const BUSINESS_ACCOUNT_CACHE_KEY = "wa-business-account-id"
 const BUSINESS_ACCOUNT_CACHE_SECONDS = 24 * 60 * 60
+const APP_ID_CACHE_KEY = "wa-app-id"
+
+/** The Meta app WA_TOKEN belongs to: WA_APP_ID if set, otherwise read off the token. */
+async function getAppId(): Promise<string> {
+    if (ENV.WA_APP_ID) return ENV.WA_APP_ID
+    const cached = getCache(APP_ID_CACHE_KEY)
+    if (cached) return cached
+    const token = encodeURIComponent(ENV.WA_TOKEN ?? "")
+    const debug = await GraphApi(`debug_token?input_token=${token}&access_token=${token}`)
+    const appId = debug?.data?.app_id ? String(debug.data.app_id) : undefined
+    if (!appId) throw new Error("Meta app id unknown — set WA_APP_ID on the server")
+    setTTLCache(APP_ID_CACHE_KEY, appId, BUSINESS_ACCOUNT_CACHE_SECONDS)
+    return appId
+}
+
+/** Header kinds a template can have: text, or a file sent with each message. */
+export const MEDIA_HEADER_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"] as const
+export type MediaHeaderFormat = (typeof MEDIA_HEADER_FORMATS)[number]
+
+/** File types Meta accepts as the sample file for each media header kind. */
+const SAMPLE_TYPES: Record<MediaHeaderFormat, string[]> = {
+    IMAGE: ["image/jpeg", "image/png"],
+    VIDEO: ["video/mp4"],
+    DOCUMENT: ["application/pdf"],
+}
+
+/**
+ * Uploads the sample file a new template with a file header must include
+ * (Meta's reviewers look at it), returning the handle to create it with.
+ */
+export async function uploadTemplateSample(format: string, file: Buffer, filename: string, mimeType: string) {
+    if (!MEDIA_HEADER_FORMATS.includes(format as MediaHeaderFormat)) throw new Error("Unknown header type")
+    const allowed = SAMPLE_TYPES[format as MediaHeaderFormat]
+    if (!allowed.includes(mimeType))
+        throw new Error(`The sample for a ${format.toLowerCase()} header must be ${allowed.map((t) => t.split("/")[1]!.toUpperCase()).join(" or ")}`)
+    return uploadResumableFile(await getAppId(), file, filename, mimeType)
+}
 
 /** The WhatsApp Business Account ids WA_TOKEN was granted, read off the token itself (works for system-user tokens). */
 async function accountIdsFromToken(): Promise<string[]> {
@@ -139,9 +176,13 @@ export type NewTemplate = {
     name: string
     language: string
     category: "UTILITY" | "MARKETING"
+    /** TEXT (the default) or a file header — IMAGE, VIDEO or DOCUMENT — sent with each message. */
+    header_format?: "TEXT" | MediaHeaderFormat
     header?: string
     /** Example values for the header's {{1}}, if it has one. */
     header_example?: string
+    /** File headers: the sample file's handle, from uploadTemplateSample. */
+    header_handle?: string
     body: string
     /** Example values for the body's {{1}}, {{2}}, … in order. */
     body_examples?: string[]
@@ -183,8 +224,15 @@ export function buildTemplateDefinition(input: any) {
 
     const components: MetaTemplateComponent[] = []
 
+    const headerFormat = cleanText(input?.header_format) || "TEXT"
     const header = cleanText(input?.header)
-    if (header) {
+    if (MEDIA_HEADER_FORMATS.includes(headerFormat as MediaHeaderFormat)) {
+        const handle = cleanText(input?.header_handle)
+        if (!handle) throw new Error(`Add a sample ${headerFormat.toLowerCase()} for the header — WhatsApp's review needs one`)
+        components.push({ type: "HEADER", format: headerFormat as MediaHeaderFormat, example: { header_handle: [handle] } })
+    } else if (headerFormat !== "TEXT") {
+        throw new Error("Unknown header type")
+    } else if (header) {
         if (header.length > 60) throw new Error("The header is limited to 60 characters")
         const count = checkNumberedPlaceholders(header, "header", 1)
         const example = cleanText(input?.header_example)
@@ -254,6 +302,8 @@ export async function createTemplate(input: any): Promise<{ id: string; status: 
 /** Values to fill a template's variables with when sending it, keyed by placeholder ("1", "2", … or a name). */
 export type TemplateValues = {
     header?: Record<string, string>
+    /** File headers: the uploaded file to send (uploadWhatsAppMedia's id). */
+    header_media?: { id: string; filename?: string }
     body?: Record<string, string>
     /** Per button index, its URL's variable value. */
     buttons?: Record<string, string>
@@ -266,8 +316,7 @@ function fill(text: string | undefined, values: Record<string, string> | undefin
 /**
  * Turns a template plus the values for its variables into the send
  * components, and the readable text recorded in the chat history. Throws
- * if a value is missing or the template can't be sent from the app (a
- * media header needs a file the app doesn't collect).
+ * if a value (or a file header's file) is missing.
  */
 export function buildTemplateSend(template: MetaTemplate, values: TemplateValues) {
     if (template.status !== "APPROVED") throw new Error("Only approved templates can be sent")
@@ -285,8 +334,23 @@ export function buildTemplateSend(template: MetaTemplate, values: TemplateValues
 
     for (const component of template.components) {
         if (component.type === "HEADER") {
-            if (component.format && component.format !== "TEXT")
-                throw new Error(`This template has a ${component.format.toLowerCase()} header, which can't be sent from here`)
+            if (component.format && component.format !== "TEXT") {
+                const kind = component.format.toLowerCase()
+                if (!MEDIA_HEADER_FORMATS.includes(component.format as MediaHeaderFormat))
+                    throw new Error(`This template has a ${kind} header, which can't be sent from here`)
+                const media = values.header_media
+                if (!media?.id) throw new Error(`Attach the ${kind} for the header`)
+                const filename = cleanText(media.filename)
+                const parameter =
+                    kind === "document"
+                        ? { type: "document" as const, document: { id: media.id, ...(filename && { filename }) } }
+                        : kind === "image"
+                          ? { type: "image" as const, image: { id: media.id } }
+                          : { type: "video" as const, video: { id: media.id } }
+                components.push({ type: "header", parameters: [parameter] })
+                summary.push(kind === "document" ? `📄 ${filename || "Document"}` : kind === "image" ? "📷 Photo" : "🎥 Video")
+                continue
+            }
             const parameters = parametersFor(component.text, values.header, "header")
             if (parameters.length) components.push({ type: "header", parameters })
             summary.push(fill(component.text, values.header))

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
 import {
   createWhatsAppTemplate,
   fetchWhatsAppTemplates,
   sendWhatsAppTemplateMessage,
+  uploadWhatsAppTemplateMedia,
+  uploadWhatsAppTemplateSample,
   type NewWhatsAppTemplate,
   type WhatsAppChat,
   type WhatsAppConversation,
   type WhatsAppTemplate,
+  type WhatsAppTemplateHeaderFormat,
   type WhatsAppTemplateValues,
 } from "../lib/api";
 import RefreshButton from "./RefreshButton";
@@ -51,15 +54,89 @@ function languageLabel(code: string) {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
 }
 
+/** Language names for the prefix our template names start with (am_…, ar_…, en_…). */
+const NAME_LANGUAGES: Record<string, string> = {
+  am: "Amharic",
+  ar: "Arabic",
+  en: "English",
+  fr: "French",
+  om: "Oromo",
+  ti: "Tigrinya",
+  so: "Somali",
+  sw: "Swahili",
+  de: "German",
+  es: "Spanish",
+  it: "Italian",
+  tr: "Turkish",
+  zh: "Chinese",
+};
+
+/**
+ * The language a name prefix stands for: its code exactly ("en"), or any
+ * start of its name ("eng", "amh", "arabic"). Unknown prefixes aren't
+ * treated as languages, so a name like "order_ready" keeps its first word.
+ */
+function languageOfPrefix(prefix: string): string | undefined {
+  if (prefix in NAME_LANGUAGES) return NAME_LANGUAGES[prefix];
+  if (prefix.length < 2) return undefined;
+  return Object.values(NAME_LANGUAGES).find((language) => language.toLowerCase().startsWith(prefix));
+}
+
+/** Words shown in capitals in a template's title ("invoice_pdf" → "Invoice PDF"). */
+const ACRONYMS = new Set(["pdf", "id", "sms", "url", "vat", "etb", "otp"]);
+
+/**
+ * A template's name for reading: by our naming convention the first part
+ * is the language the text is written in (which can differ from the
+ * language it's registered under), shown as a badge; the rest becomes the
+ * title, words capitalised: "am_payment_confirmation" → "Payment
+ * Confirmation" with an "Amharic" badge. Names without a language prefix
+ * just get the title treatment.
+ */
+function displayName(name: string): { title: string; language?: string } {
+  const words = name.split("_").filter(Boolean);
+  const language = words.length > 1 ? languageOfPrefix(words[0].toLowerCase()) : undefined;
+  const titleWords = language ? words.slice(1) : words;
+  return {
+    title: titleWords.map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1))).join(" ") || name,
+    ...(language && { language }),
+  };
+}
+
+function TemplateName({ name }: { name: string }) {
+  const { title, language } = displayName(name);
+  return (
+    <>
+      <span className="wa-template__title">{title}</span>
+      {language && <span className="badge wa-template__language">{language}</span>}
+    </>
+  );
+}
+
 function part(template: WhatsAppTemplate, type: "HEADER" | "BODY" | "FOOTER" | "BUTTONS") {
   return template.components.find((c) => c.type === type);
+}
+
+type MediaFormat = Exclude<WhatsAppTemplateHeaderFormat, "TEXT">;
+
+/** File headers: what to call them, which files a sample (for review) may be, and which files can be sent. */
+const MEDIA_FORMATS: Record<MediaFormat, { label: string; icon: string; sampleAccept: string; sampleHint: string; sendAccept: string }> = {
+  DOCUMENT: { label: "Document", icon: "📄", sampleAccept: "application/pdf", sampleHint: "a PDF", sendAccept: "*/*" },
+  IMAGE: { label: "Image", icon: "📷", sampleAccept: "image/jpeg,image/png", sampleHint: "a JPG or PNG", sendAccept: "image/jpeg,image/png" },
+  VIDEO: { label: "Video", icon: "🎥", sampleAccept: "video/mp4", sampleHint: "an MP4", sendAccept: "video/mp4,video/3gpp" },
+};
+
+function mediaFormatOf(template: WhatsAppTemplate): MediaFormat | undefined {
+  const format = part(template, "HEADER")?.format;
+  return format && format in MEDIA_FORMATS ? (format as MediaFormat) : undefined;
 }
 
 /** Why a template can't be sent from the app, if it can't. */
 function unsendableReason(template: WhatsAppTemplate): string | undefined {
   if (template.status !== "APPROVED") return `${STATUS_LABELS[template.status] ?? template.status} — only approved templates can be sent`;
   const header = part(template, "HEADER");
-  if (header?.format && header.format !== "TEXT") return `Has a ${header.format.toLowerCase()} header — sent by the app automatically, not from here`;
+  if (header?.format && header.format !== "TEXT" && !mediaFormatOf(template))
+    return `Has a ${header.format.toLowerCase()} header, which can't be sent from here`;
   return undefined;
 }
 
@@ -90,7 +167,10 @@ function TemplatePreview({ template, values }: { template: WhatsAppTemplate; val
     <div className="wa-template__preview">
       {header &&
         (header.format && header.format !== "TEXT" ? (
-          <div className="wa-template__preview-media">[{header.format.toLowerCase()}]</div>
+          <div className="wa-template__preview-media">
+            {MEDIA_FORMATS[header.format as MediaFormat]?.icon ?? "📎"}{" "}
+            {values?.header_media?.filename ?? MEDIA_FORMATS[header.format as MediaFormat]?.label ?? header.format.toLowerCase()}
+          </div>
         ) : (
           <div className="wa-template__preview-header">{fill(header.text, values?.header)}</div>
         ))}
@@ -128,7 +208,9 @@ export default function WhatsAppTemplates({
 }) {
   const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
+  // The form's starting point: blank, or a copy of an existing template.
+  const [creating, setCreating] = useState<{ source?: WhatsAppTemplate } | null>(null);
+  const [isChoosingStart, setIsChoosingStart] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState<WhatsAppTemplate | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -158,12 +240,13 @@ export default function WhatsAppTemplates({
     load();
   }, []);
 
-  if (isCreating) {
+  if (creating) {
     return (
       <CreateTemplateForm
-        onCancel={() => setIsCreating(false)}
+        source={creating.source}
+        onCancel={() => setCreating(null)}
         onCreated={(name, status) => {
-          setIsCreating(false);
+          setCreating(null);
           setNotice(
             status === "APPROVED"
               ? `"${name}" was approved and is ready to send.`
@@ -188,7 +271,7 @@ export default function WhatsAppTemplates({
         </button>
         <div className="wa-templates__title">Templates</div>
         <RefreshButton onRefresh={() => load(true)} />
-        <button type="button" className="btn btn--primary wa-templates__new" onClick={() => setIsCreating(true)}>
+        <button type="button" className="btn btn--primary wa-templates__new" onClick={() => setIsChoosingStart(true)}>
           <Plus size={16} />
           New
         </button>
@@ -246,34 +329,90 @@ export default function WhatsAppTemplates({
                 >
                   <ChevronRight size={16} className="wa-template__chevron" />
                   <span className="wa-template__heading">
-                    <span className="wa-template__name">{template.name}</span>
+                    <span className="wa-template__name">{displayName(template.name).title}</span>
                     <span className="wa-template__meta">
-                      {languageLabel(template.language)} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
+                      {template.name} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
                     </span>
                   </span>
-                  <StatusBadge status={template.status} />
+                  <span className="wa-template__badges">
+                    {displayName(template.name).language && (
+                      <span className="badge wa-template__language">{displayName(template.name).language}</span>
+                    )}
+                    <StatusBadge status={template.status} />
+                  </span>
                 </button>
                 {isExpanded && (
                   <div className="wa-template__details">
                     <TemplatePreview template={template} />
+                    <div className="wa-template__hint">Registered with WhatsApp as {languageLabel(template.language)} ({template.language})</div>
                     {template.status === "REJECTED" && template.rejected_reason && template.rejected_reason !== "NONE" && (
                       <div className="form-error" style={{ marginTop: 8, marginBottom: 0 }}>
                         Rejected: {template.rejected_reason.replace(/_/g, " ").toLowerCase()}
                       </div>
                     )}
-                    {reason ? (
-                      template.status === "APPROVED" && <div className="wa-template__hint">{reason}</div>
-                    ) : (
-                      <button type="button" className="btn btn--secondary wa-template__send" onClick={() => setSending(template)}>
-                        <SendHorizontal size={15} />
-                        Send
+                    {reason && template.status === "APPROVED" && <div className="wa-template__hint">{reason}</div>}
+                    <div className="wa-template__actions">
+                      <button type="button" className="btn btn--secondary wa-template__send" onClick={() => setCreating({ source: template })}>
+                        <Copy size={15} />
+                        Copy
                       </button>
-                    )}
+                      {!reason && (
+                        <button type="button" className="btn btn--primary wa-template__send" onClick={() => setSending(template)}>
+                          <SendHorizontal size={15} />
+                          Send
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {isChoosingStart && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={() => setIsChoosingStart(false)} />
+          <div className="modal modal--wide">
+            <div className="modal__title">New template</div>
+            <button
+              type="button"
+              className="btn btn--primary btn--full"
+              onClick={() => {
+                setIsChoosingStart(false);
+                setCreating({});
+              }}
+            >
+              Start from blank
+            </button>
+            {sortedTemplates.length > 0 && (
+              <div className="field" style={{ marginTop: 14 }}>
+                <label className="field-label">Or start from a copy of</label>
+                <div className="wa-pick-list">
+                  {sortedTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="wa-pick-list__row"
+                      onClick={() => {
+                        setIsChoosingStart(false);
+                        setCreating({ source: t });
+                      }}
+                    >
+                      <span className="wa-pick-list__name">
+                        <TemplateName name={t.name} />
+                      </span>
+                      <span className="wa-pick-list__sub">{STATUS_LABELS[t.status] ?? t.status}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button type="button" className="btn btn--secondary btn--full" style={{ marginTop: 10 }} onClick={() => setIsChoosingStart(false)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -315,7 +454,22 @@ export function SendTemplateModal({
   const [query, setQuery] = useState("");
   const [values, setValues] = useState<WhatsAppTemplateValues>({});
   const [isSending, setIsSending] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaFormat = template ? mediaFormatOf(template) : undefined;
+
+  /** File headers: uploads the picked file to WhatsApp right away, so Send only sends. */
+  function handlePickFile(file: File | undefined) {
+    if (!file) return;
+    setIsUploading(true);
+    setError(null);
+    setValues((current) => ({ ...current, header_media: undefined }));
+    uploadWhatsAppTemplateMedia(file)
+      .then((uploaded) => setValues((current) => ({ ...current, header_media: uploaded })))
+      .catch((e) => setError(e instanceof Error ? e.message : "Upload failed"))
+      .finally(() => setIsUploading(false));
+  }
 
   useEffect(() => {
     if (fixedTemplate) return;
@@ -350,7 +504,8 @@ export function SendTemplateModal({
     [chats, normalizedQuery],
   );
 
-  const isComplete = !!template && !!chat && fields.every((f) => values[f.group]?.[f.key]?.trim());
+  const isComplete =
+    !!template && !!chat && fields.every((f) => values[f.group]?.[f.key]?.trim()) && (!mediaFormat || !!values.header_media);
 
   function setValue(group: "header" | "body" | "buttons", key: string, value: string) {
     setValues((current) => ({ ...current, [group]: { ...current[group], [key]: value } }));
@@ -395,8 +550,9 @@ export function SendTemplateModal({
                       setValues({});
                     }}
                   >
-                    <span className="wa-pick-list__name">{t.name}</span>
-                    <span className="wa-pick-list__sub">{languageLabel(t.language)}</span>
+                    <span className="wa-pick-list__name">
+                      <TemplateName name={t.name} />
+                    </span>
                   </button>
                 ))}
               </div>
@@ -446,6 +602,30 @@ export function SendTemplateModal({
 
         {template && (
           <>
+            {mediaFormat && (
+              <div className="field">
+                <label className="field-label">{MEDIA_FORMATS[mediaFormat].label} to send</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  hidden
+                  accept={MEDIA_FORMATS[mediaFormat].sendAccept}
+                  onChange={(e) => {
+                    handlePickFile(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--dashed btn--full wa-template__file-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading || isSending}
+                >
+                  {values.header_media ? <FileText size={16} /> : <Paperclip size={16} />}
+                  {isUploading ? "Uploading..." : (values.header_media?.filename ?? `Choose ${MEDIA_FORMATS[mediaFormat].label.toLowerCase()}`)}
+                </button>
+              </div>
+            )}
             {fields.map((f) => (
               <div className="field" key={`${f.group}-${f.key}`}>
                 <label className="field-label">{f.label}</label>
@@ -470,7 +650,7 @@ export function SendTemplateModal({
           <button type="button" className="btn btn--secondary" onClick={onClose} disabled={isSending}>
             Cancel
           </button>
-          <button type="button" className="btn btn--primary" onClick={handleSend} disabled={!isComplete || isSending}>
+          <button type="button" className="btn btn--primary" onClick={handleSend} disabled={!isComplete || isSending || isUploading}>
             {isSending ? "Sending..." : "Send"}
           </button>
         </div>
@@ -481,23 +661,139 @@ export function SendTemplateModal({
 
 type DraftButton = { type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; text: string; value: string };
 
-/** Form for a new template; WhatsApp reviews it before it can be sent. */
-function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: (name: string, status: string) => void }) {
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState<NewWhatsAppTemplate["category"]>("UTILITY");
-  const [language, setLanguage] = useState("en");
-  const [header, setHeader] = useState("");
-  const [headerExample, setHeaderExample] = useState("");
-  const [body, setBody] = useState("");
-  const [bodyExamples, setBodyExamples] = useState<Record<string, string>>({});
-  const [footer, setFooter] = useState("");
-  const [buttons, setButtons] = useState<DraftButton[]>([]);
+type HeaderChoice = "NONE" | WhatsAppTemplateHeaderFormat;
+
+const HEADER_CHOICES: { value: HeaderChoice; label: string }[] = [
+  { value: "NONE", label: "None" },
+  { value: "TEXT", label: "Text" },
+  { value: "DOCUMENT", label: "Document" },
+  { value: "IMAGE", label: "Image" },
+  { value: "VIDEO", label: "Video" },
+];
+
+type Draft = {
+  name: string;
+  category: NewWhatsAppTemplate["category"];
+  language: string;
+  headerChoice: HeaderChoice;
+  header: string;
+  headerExample: string;
+  body: string;
+  bodyExamples: Record<string, string>;
+  footer: string;
+  buttons: DraftButton[];
+};
+
+const BLANK_DRAFT: Draft = {
+  name: "",
+  category: "UTILITY",
+  language: "en",
+  headerChoice: "NONE",
+  header: "",
+  headerExample: "",
+  body: "",
+  bodyExamples: {},
+  footer: "",
+  buttons: [],
+};
+
+/**
+ * A new template's form, pre-filled from an existing one ("Copy"): same
+ * wording, examples and buttons, under a new name. Named variables
+ * ({{customer}}) become numbered ones, which is all the form creates. A file
+ * header's sample has to be added again — Meta doesn't hand it back.
+ */
+function draftFrom(source: WhatsAppTemplate): Draft {
+  const header = part(source, "HEADER");
+  const body = part(source, "BODY");
+  const example = (body?.example ?? {}) as { body_text?: string[][]; body_text_named_params?: { param_name: string; example: string }[] };
+  const headerExample = (header?.example ?? {}) as { header_text?: string[]; header_text_named_params?: { example: string }[] };
+
+  // Renumber the body's variables {{1}}, {{2}}, … in order of appearance.
+  const keys = placeholdersIn(body?.text);
+  const renumber = (text: string | undefined) =>
+    (text ?? "").replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (whole, key) => {
+      const index = keys.indexOf(key);
+      return index === -1 ? whole : `{{${index + 1}}}`;
+    });
+  const bodyExamples: Record<string, string> = {};
+  keys.forEach((key, index) => {
+    const value =
+      example.body_text?.[0]?.[Number(key) - 1] ?? example.body_text_named_params?.find((p) => p.param_name === key)?.example ?? "";
+    bodyExamples[String(index + 1)] = value;
+  });
+  const headerKeys = placeholdersIn(header?.text);
+
+  return {
+    name: `${source.name}_copy`.slice(0, 512),
+    category: source.category === "MARKETING" ? "MARKETING" : "UTILITY",
+    language: source.language,
+    headerChoice: !header
+      ? "NONE"
+      : !header.format || header.format === "TEXT"
+        ? "TEXT"
+        : header.format in MEDIA_FORMATS
+          ? (header.format as HeaderChoice)
+          : "NONE",
+    header: headerKeys.length ? (header?.text ?? "").replace(/\{\{\s*[A-Za-z0-9_]+\s*\}\}/, "{{1}}") : (header?.text ?? ""),
+    headerExample: headerExample.header_text?.[0] ?? headerExample.header_text_named_params?.[0]?.example ?? "",
+    body: renumber(body?.text),
+    bodyExamples,
+    footer: part(source, "FOOTER")?.text ?? "",
+    buttons: (part(source, "BUTTONS")?.buttons ?? [])
+      .filter((b) => b.type === "QUICK_REPLY" || b.type === "URL" || b.type === "PHONE_NUMBER")
+      .map((b) => ({ type: b.type as DraftButton["type"], text: b.text, value: b.type === "URL" ? (b.url ?? "") : (b.phone_number ?? "") })),
+  };
+}
+
+/** Form for a new template (blank, or a copy of `source`); WhatsApp reviews it before it can be sent. */
+function CreateTemplateForm({
+  source,
+  onCancel,
+  onCreated,
+}: {
+  source?: WhatsAppTemplate;
+  onCancel: () => void;
+  onCreated: (name: string, status: string) => void;
+}) {
+  const [initial] = useState<Draft>(() => (source ? draftFrom(source) : BLANK_DRAFT));
+  const [name, setName] = useState(initial.name);
+  const [category, setCategory] = useState<NewWhatsAppTemplate["category"]>(initial.category);
+  const [language, setLanguage] = useState(initial.language);
+  const [headerChoice, setHeaderChoice] = useState<HeaderChoice>(initial.headerChoice);
+  const [header, setHeader] = useState(initial.header);
+  const [headerExample, setHeaderExample] = useState(initial.headerExample);
+  // File headers: the sample file uploaded for review.
+  const [sample, setSample] = useState<{ handle: string; filename: string } | null>(null);
+  const [isUploadingSample, setIsUploadingSample] = useState(false);
+  const [body, setBody] = useState(initial.body);
+  const [bodyExamples, setBodyExamples] = useState<Record<string, string>>(initial.bodyExamples);
+  const [footer, setFooter] = useState(initial.footer);
+  const [buttons, setButtons] = useState<DraftButton[]>(initial.buttons);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const sampleInputRef = useRef<HTMLInputElement>(null);
+  const mediaChoice = headerChoice in MEDIA_FORMATS ? (headerChoice as MediaFormat) : undefined;
+
+  function chooseHeader(choice: HeaderChoice) {
+    setHeaderChoice(choice);
+    setSample(null);
+  }
+
+  function handlePickSample(file: File | undefined) {
+    if (!file || !mediaChoice) return;
+    setIsUploadingSample(true);
+    setError(null);
+    setSample(null);
+    uploadWhatsAppTemplateSample(mediaChoice, file)
+      .then((handle) => setSample({ handle, filename: file.name }))
+      .catch((e) => setError(e instanceof Error ? e.message : "Upload failed"))
+      .finally(() => setIsUploadingSample(false));
+  }
 
   const bodyVariables = placeholdersIn(body);
-  const headerHasVariable = placeholdersIn(header).length > 0;
+  const headerHasVariable = headerChoice === "TEXT" && placeholdersIn(header).length > 0;
 
   /** Inserts the next numbered variable at the cursor. */
   function addVariable() {
@@ -523,8 +819,9 @@ function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onC
       name,
       category,
       language,
-      ...(header.trim() && { header: header.trim() }),
+      ...(headerChoice === "TEXT" && header.trim() && { header_format: "TEXT", header: header.trim() }),
       ...(headerHasVariable && { header_example: headerExample }),
+      ...(mediaChoice && { header_format: mediaChoice, header_handle: sample?.handle }),
       body: body.trim(),
       body_examples: bodyVariables.map((key) => bodyExamples[key] ?? ""),
       ...(footer.trim() && { footer: footer.trim() }),
@@ -548,7 +845,7 @@ function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onC
         <button type="button" className="icon-btn" onClick={onCancel} aria-label="Back to templates">
           <ArrowLeft size={18} />
         </button>
-        <div className="wa-templates__title">New template</div>
+        <div className="wa-templates__title">{source ? `Copy of ${displayName(source.name).title}` : "New template"}</div>
       </div>
       <p className="page-subtitle" style={{ marginTop: 0 }}>
         WhatsApp reviews every new template before it can be sent.
@@ -603,18 +900,59 @@ function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onC
       </div>
 
       <div className="field">
-        <label className="field-label" htmlFor="tpl-header">
-          Header (optional)
-        </label>
-        <input
-          id="tpl-header"
-          type="text"
-          className="input"
-          maxLength={60}
-          placeholder="Bold first line, up to 60 characters"
-          value={header}
-          onChange={(e) => setHeader(e.target.value)}
-        />
+        <label className="field-label">Header</label>
+        <div className="wa-chips wa-chips--wrap" role="group" aria-label="Header type">
+          {HEADER_CHOICES.map((choice) => (
+            <button
+              key={choice.value}
+              type="button"
+              className={`wa-chip${headerChoice === choice.value ? " wa-chip--active" : ""}`}
+              aria-pressed={headerChoice === choice.value}
+              onClick={() => chooseHeader(choice.value)}
+            >
+              {choice.value in MEDIA_FORMATS && `${MEDIA_FORMATS[choice.value as MediaFormat].icon} `}
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        {headerChoice === "TEXT" && (
+          <input
+            id="tpl-header"
+            type="text"
+            className="input"
+            maxLength={60}
+            placeholder="Bold first line, up to 60 characters"
+            value={header}
+            onChange={(e) => setHeader(e.target.value)}
+          />
+        )}
+        {mediaChoice && (
+          <>
+            <div className="wa-template__hint" style={{ marginTop: 0, marginBottom: 6 }}>
+              Every message from this template carries a {MEDIA_FORMATS[mediaChoice].label.toLowerCase()}, chosen when you send it. WhatsApp's
+              review needs a sample — {MEDIA_FORMATS[mediaChoice].sampleHint}.
+            </div>
+            <input
+              ref={sampleInputRef}
+              type="file"
+              hidden
+              accept={MEDIA_FORMATS[mediaChoice].sampleAccept}
+              onChange={(e) => {
+                handlePickSample(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn--dashed btn--full wa-template__file-btn"
+              onClick={() => sampleInputRef.current?.click()}
+              disabled={isUploadingSample || isSubmitting}
+            >
+              {sample ? <FileText size={16} /> : <Paperclip size={16} />}
+              {isUploadingSample ? "Uploading..." : (sample?.filename ?? "Choose sample file")}
+            </button>
+          </>
+        )}
         {headerHasVariable && (
           <input
             type="text"
@@ -740,13 +1078,14 @@ function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onC
               status: "DRAFT",
               category,
               components: [
-                ...(header.trim() ? [{ type: "HEADER" as const, format: "TEXT", text: header }] : []),
+                ...(headerChoice === "TEXT" && header.trim() ? [{ type: "HEADER" as const, format: "TEXT", text: header }] : []),
+                ...(mediaChoice ? [{ type: "HEADER" as const, format: mediaChoice }] : []),
                 { type: "BODY" as const, text: body },
                 ...(footer.trim() ? [{ type: "FOOTER" as const, text: footer }] : []),
                 ...(buttons.length ? [{ type: "BUTTONS" as const, buttons: buttons.map((b) => ({ type: b.type, text: b.text || "Button" })) }] : []),
               ],
             }}
-            values={{ header: { 1: headerExample }, body: bodyExamples }}
+            values={{ header: { 1: headerExample }, body: bodyExamples, ...(sample && { header_media: { id: "", filename: sample.filename } }) }}
           />
         </div>
       )}
@@ -757,7 +1096,12 @@ function CreateTemplateForm({ onCancel, onCreated }: { onCancel: () => void; onC
         <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </button>
-        <button type="button" className="btn btn--primary" onClick={handleSubmit} disabled={isSubmitting || !name || !body.trim()}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={handleSubmit}
+          disabled={isSubmitting || isUploadingSample || !name || !body.trim() || (!!mediaChoice && !sample)}
+        >
           {isSubmitting ? "Submitting..." : "Submit for review"}
         </button>
       </div>

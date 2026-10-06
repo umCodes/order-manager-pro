@@ -2762,3 +2762,116 @@ div.wa-pick-list__row {
 .wa-chip--toggle {
   margin-inline-start: auto;
 }
+
+/* Replies: the quote inside a bubble, the bar above the reply box, and the flash on jumping to a quoted message. */
+.wa-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border: none;
+  border-inline-start: 3px solid var(--color-green-700);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wa-quote:disabled {
+  cursor: default;
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+}
+
+.wa-quote__author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-green-700);
+}
+
+.wa-quote__text {
+  font-size: 12.5px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+}
+
+.wa-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wa-quote--composer {
+  flex: 1;
+  margin-bottom: 0;
+  cursor: default;
+}
+
+@keyframes wa-flash {
+  from {
+    background: var(--color-blue-50);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.wa-bubble-row--flash {
+  animation: wa-flash 1.2s ease-out;
+  border-radius: var(--radius-md);
+}
+
+/* Templates: Copy / Send row, file pickers, wrapping header-type pills. */
+.wa-template__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wa-template__actions .wa-template__send {
+  flex: 1;
+}
+
+.wa-template__file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-chips--wrap {
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+/* Template names: readable title, with the language-prefix badge beside the status. */
+.wa-template__badges {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-template__language {
+  font-size: 11px;
+  background: var(--color-blue-50);
+  color: var(--color-blue-600);
+}
+
+.wa-pick-list__name .wa-template__language {
+  margin-inline-start: 6px;
+}

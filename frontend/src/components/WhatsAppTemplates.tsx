@@ -63,6 +63,18 @@ function unsendableReason(template: WhatsAppTemplate): string | undefined {
   return undefined;
 }
 
+/** List order: approved first, then ones still in review, then paused, then rejected / disabled. */
+const STATUS_ORDER: Record<string, number> = { APPROVED: 0, PENDING: 1, IN_APPEAL: 1, PAUSED: 2, REJECTED: 3, DISABLED: 3 };
+
+function statusRank(status: string) {
+  return STATUS_ORDER[status] ?? 2;
+}
+
+/** Rejected and disabled templates are hidden unless asked for — they can't be sent. */
+function isHiddenByDefault(template: WhatsAppTemplate) {
+  return template.status === "REJECTED" || template.status === "DISABLED";
+}
+
 function StatusBadge({ status }: { status: string }) {
   const tone = status === "APPROVED" ? "approved" : status === "REJECTED" || status === "DISABLED" ? "rejected" : "pending";
   return <span className={`badge wa-template__status wa-template__status--${tone}`}>{STATUS_LABELS[status] ?? status}</span>;
@@ -120,6 +132,7 @@ export default function WhatsAppTemplates({
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState<WhatsAppTemplate | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [showRejected, setShowRejected] = useState(false);
   // Templates start collapsed (name and status only); tapping one shows the rest.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
@@ -162,7 +175,9 @@ export default function WhatsAppTemplates({
     );
   }
 
-  const allTemplates = templates ?? [];
+  const sortedTemplates = (templates ?? []).toSorted((a, b) => statusRank(a.status) - statusRank(b.status));
+  const rejectedCount = sortedTemplates.filter(isHiddenByDefault).length;
+  const allTemplates = showRejected ? sortedTemplates : sortedTemplates.filter((t) => !isHiddenByDefault(t));
   const visibleTemplates = categoryFilter ? allTemplates.filter((t) => t.category === categoryFilter) : allTemplates;
 
   return (
@@ -182,7 +197,7 @@ export default function WhatsAppTemplates({
       {notice && <div className="wa-templates__notice">{notice}</div>}
       {error && <div className="form-error">{error}</div>}
 
-      {allTemplates.length > 0 && (
+      {sortedTemplates.length > 0 && (
         <div className="wa-chips" role="group" aria-label="Filter by category">
           <FilterChip label="All" count={allTemplates.length} active={categoryFilter === null} onClick={() => setCategoryFilter(null)} />
           {CATEGORIES.map((c) => (
@@ -194,13 +209,28 @@ export default function WhatsAppTemplates({
               onClick={() => setCategoryFilter(c.value)}
             />
           ))}
+          {rejectedCount > 0 && (
+            <button
+              type="button"
+              className={`wa-chip wa-chip--toggle${showRejected ? " wa-chip--active" : ""}`}
+              onClick={() => setShowRejected((current) => !current)}
+              aria-pressed={showRejected}
+            >
+              {showRejected ? "Hide rejected" : "Show rejected"}
+              <span className="wa-chip__count">{rejectedCount}</span>
+            </button>
+          )}
         </div>
       )}
 
       {templates === null && !error ? (
         <div className="items-area__empty">Loading...</div>
       ) : visibleTemplates.length === 0 ? (
-        <div className="items-area__empty">{categoryFilter ? "No templates in this category" : "No templates yet"}</div>
+        <div className="items-area__empty">{categoryFilter
+            ? "No templates in this category"
+            : rejectedCount > 0 && !showRejected
+              ? "No approved or in-review templates"
+              : "No templates yet"}</div>
       ) : (
         <div className="wa-templates">
           {visibleTemplates.map((template) => {

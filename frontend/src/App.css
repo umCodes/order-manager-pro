@@ -2750,3 +2750,8 @@ div.wa-pick-list__row {
   font-size: 12px;
   color: var(--color-gray-500);
 }
+
+/* Pushed to the end of its pill row, apart from the category filters. */
+.wa-chip--toggle {
+  margin-inline-start: auto;
+}

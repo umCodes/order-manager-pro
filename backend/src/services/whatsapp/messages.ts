@@ -2,12 +2,15 @@ import { WhatsAppApi, uploadWhatsAppMedia } from "./client.js"
 import { recordFailedOutboundMessage, recordOutboundMessage } from "./chatStore.js"
 
 export type TemplateParameter =
-    | { type: "text"; text: string }
+    | { type: "text"; text: string; parameter_name?: string }
     | { type: "document"; document: { id: string; filename?: string } }
 
 export type TemplateComponent = {
     type: "header" | "body" | "button"
     parameters: TemplateParameter[]
+    /** Buttons only: which kind, and its position among the template's buttons. */
+    sub_type?: "url"
+    index?: string
 }
 
 /**

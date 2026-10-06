@@ -2,7 +2,7 @@ import { ENV } from "../../constants/env.js"
 
 export type Methods = "GET" | "POST"
 
-const WA_BASE_URL = `https://graph.facebook.com/v25.0/${ENV.WA_PHONE_NUMBER_ID}`
+const GRAPH_BASE_URL = "https://graph.facebook.com/v25.0"
 
 /**
  * Calls the WhatsApp Cloud API, throwing the error body as-is on a non-2xx
@@ -12,9 +12,14 @@ const WA_BASE_URL = `https://graph.facebook.com/v25.0/${ENV.WA_PHONE_NUMBER_ID}`
  * visible here, at the point of the actual HTTP call.
  */
 export async function WhatsAppApi(endPoint: string, method: Methods = "GET", body?: any) {
+    return GraphApi(`${ENV.WA_PHONE_NUMBER_ID}/${endPoint}`, method, body)
+}
+
+/** Same as WhatsAppApi, but for any Graph API path (e.g. the business account's message templates), not just the phone number's. */
+export async function GraphApi(path: string, method: Methods = "GET", body?: any) {
     try {
-        console.log(`[WhatsApp API] -> ${method} ${endPoint}`, body ? JSON.stringify(body) : "(no body)")
-        const response = await fetch(`${WA_BASE_URL}/${endPoint}`, {
+        console.log(`[WhatsApp API] -> ${method} ${path}`, body ? JSON.stringify(body) : "(no body)")
+        const response = await fetch(`${GRAPH_BASE_URL}/${path}`, {
             method,
             headers: {
                 Authorization: `Bearer ${ENV.WA_TOKEN}`,
@@ -23,7 +28,7 @@ export async function WhatsAppApi(endPoint: string, method: Methods = "GET", bod
             ...(body && { body: JSON.stringify(body) }),
         })
         const data = await response.json()
-        console.log(`[WhatsApp API] <- ${response.status} ${method} ${endPoint}`, JSON.stringify(data))
+        console.log(`[WhatsApp API] <- ${response.status} ${method} ${path}`, JSON.stringify(data))
         if (!response.ok) throw data
         return data
     } catch (error) {
@@ -34,7 +39,7 @@ export async function WhatsAppApi(endPoint: string, method: Methods = "GET", bod
 /** Downloads inbound media (voice note, image, document, ...) by its media id: resolves the short-lived download URL, then fetches the bytes. */
 export async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
     try {
-        const metaResponse = await fetch(`https://graph.facebook.com/v25.0/${mediaId}`, {
+        const metaResponse = await fetch(`${GRAPH_BASE_URL}/${mediaId}`, {
             headers: { Authorization: `Bearer ${ENV.WA_TOKEN}` },
         })
         const meta = await metaResponse.json()
@@ -59,7 +64,7 @@ export async function uploadWhatsAppMedia(file: Buffer, filename: string, mimeTy
         form.append("messaging_product", "whatsapp")
         form.append("file", new Blob([new Uint8Array(file)], { type: mimeType }), filename)
 
-        const response = await fetch(`${WA_BASE_URL}/media`, {
+        const response = await fetch(`${GRAPH_BASE_URL}/${ENV.WA_PHONE_NUMBER_ID}/media`, {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${ENV.WA_TOKEN}`,

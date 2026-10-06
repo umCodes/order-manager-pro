@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FileText, Mic, Paperclip, SendHorizontal, Trash2, X } from "lucide-react";
 import Recorder from "opus-recorder";
 import encoderPath from "opus-recorder/dist/encoderWorker.min.js?url";
@@ -28,6 +28,8 @@ type Props = {
   canReply: boolean;
   /** Shown above the input when replies aren't allowed. */
   closedNotice: string;
+  /** Shown under the notice when replies aren't allowed (e.g. sending a template instead). */
+  closedAction?: ReactNode;
   onSent: (conversation: WhatsAppConversation) => void;
 };
 
@@ -37,7 +39,7 @@ type Props = {
  * (opus-recorder) — the one audio format WhatsApp shows as a voice note,
  * and one browsers' own MediaRecorder mostly can't produce.
  */
-export default function WhatsAppComposer({ phone, canReply, closedNotice, onSent }: Props) {
+export default function WhatsAppComposer({ phone, canReply, closedNotice, closedAction, onSent }: Props) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -161,6 +163,7 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, onSent
   return (
     <div className="wa-composer">
       {!canReply && <div className="wa-composer__notice">{closedNotice}</div>}
+      {!canReply && closedAction}
       {error && <div className="form-error">{error}</div>}
 
       {file && (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, Phone, RotateCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2 } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -22,6 +22,8 @@ import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
+import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import FilterChip from "./FilterChip";
 
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
 const KEYBOARD_THRESHOLD_PX = 120;
@@ -117,39 +119,6 @@ function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) 
   return chats.reduce((sum, chat) => sum + (unreadByPhone[chat.phone] ?? 0), 0);
 }
 
-/** A city / district filter pill: shows its unread messages as a badge when there are any, otherwise how many contacts it has. */
-function FilterChip({
-  label,
-  count,
-  unread = 0,
-  active,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  unread?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`wa-chip${active ? " wa-chip--active" : ""}`}
-      onClick={onClick}
-      aria-pressed={active}
-    >
-      {label}
-      {unread > 0 ? (
-        <span className="unread-badge unread-badge--chip" aria-label={`${unread} unread`}>
-          {unread > 99 ? "99+" : unread}
-        </span>
-      ) : (
-        count !== undefined && <span className="wa-chip__count">{count}</span>
-      )}
-    </button>
-  );
-}
-
 /**
  * The WhatsApp tab of the Messages page: every customer with a phone on file
  * (plus any other number that has written in), listed like a messaging app's
@@ -165,6 +134,7 @@ export default function WhatsAppInbox() {
   const [cityFilter, setCityFilter] = useState<string | null>(null);
   const [districtFilter, setDistrictFilter] = useState<string | null>(null);
   const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
   const unread = useUnread();
 
@@ -210,6 +180,20 @@ export default function WhatsAppInbox() {
     );
   }
 
+  if (isTemplatesOpen) {
+    return (
+      <WhatsAppTemplates
+        chats={chats ?? []}
+        onBack={() => setIsTemplatesOpen(false)}
+        onSent={(chat) => {
+          // Straight to the chat, to watch the template's delivery ticks.
+          setIsTemplatesOpen(false);
+          setOpenChat(chat);
+        }}
+      />
+    );
+  }
+
   const allChats = chats ?? [];
   const cityOptions = rankedValues(allChats, (chat) => chat.city, unread.chats);
   const chatsInCity = cityFilter ? allChats.filter((chat) => chat.city === cityFilter) : allChats;
@@ -238,6 +222,15 @@ export default function WhatsAppInbox() {
           />
         </div>
         <RefreshButton onRefresh={loadChats} />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setIsTemplatesOpen(true)}
+          aria-label="Templates"
+          title="Templates"
+        >
+          <LayoutTemplate size={14} />
+        </button>
       </div>
 
       {/* Only worth a row when customers are spread over more than one city. */}
@@ -350,6 +343,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [actionMessage, setActionMessage] = useState<WhatsAppMessage | null>(null);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isCallOpen, setIsCallOpen] = useState(false);
+  const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastMessageId = conversation?.messages.at(-1)?.id;
@@ -524,6 +518,15 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           <button
             type="button"
             className="icon-btn"
+            onClick={() => setIsTemplateOpen(true)}
+            aria-label="Send a template"
+            title="Send a template"
+          >
+            <LayoutTemplate size={14} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
             onClick={() => setIsCallOpen(true)}
             aria-label={`Call +${chat.phone}`}
             title="Call"
@@ -565,7 +568,13 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
       <WhatsAppComposer
         phone={chat.phone}
         canReply={canReply || conversation === null}
-        closedNotice="WhatsApp only allows replies within 24 hours of the contact's last message."
+        closedNotice="WhatsApp only allows replies within 24 hours of the contact's last message. A template can be sent any time."
+        closedAction={
+          <button type="button" className="btn btn--secondary wa-composer__template-btn" onClick={() => setIsTemplateOpen(true)}>
+            <LayoutTemplate size={15} />
+            Send a template
+          </button>
+        }
         onSent={(result) => {
           setSendError(null);
           showSentConversation(result);
@@ -615,6 +624,18 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
             </div>
           </div>
         </div>
+      )}
+
+      {isTemplateOpen && (
+        <SendTemplateModal
+          chat={chat}
+          onClose={() => setIsTemplateOpen(false)}
+          onSent={({ conversation, error }) => {
+            setIsTemplateOpen(false);
+            setSendError(error ? `Template not sent: ${error}` : null);
+            showSentConversation(conversation);
+          }}
+        />
       )}
 
       {isClearConfirmOpen && (

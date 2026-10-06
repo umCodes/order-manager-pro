@@ -25,6 +25,8 @@ export const ENV = {
   WA_TOKEN: process.env.WA_TOKEN,
   WA_VERIFY_TOKEN: process.env.WA_VERIFY_TOKEN,
   WA_PHONE_NUMBER_ID: process.env.WA_PHONE_NUMBER_ID || "1250845681454031",
+  /** WhatsApp Business Account that owns the message templates. Optional: looked up from WA_TOKEN's granted assets when unset. */
+  WA_BUSINESS_ACCOUNT_ID: process.env.WA_BUSINESS_ACCOUNT_ID,
 
   WA_PAYMENT_NOTIFICATION_TEMPLATE_AM: process.env.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,
   WA_PAYMENT_NOTIFICATION_TEMPLATE_AR: process.env.WA_PAYMENT_NOTIFICATION_TEMPLATE_AR,

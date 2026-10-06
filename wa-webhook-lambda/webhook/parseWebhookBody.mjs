@@ -18,6 +18,25 @@ export function extractMessages(body) {
     return messages;
 }
 
+/**
+ * The sender profiles that come with inbound messages
+ * (entry[].changes[].value.contacts[]): each sender's wa_id and the name
+ * they set on their WhatsApp (or WhatsApp Business) profile.
+ */
+export function extractContacts(body) {
+    const contacts = [];
+    for (const entry of body?.entry ?? []) {
+        for (const change of entry?.changes ?? []) {
+            if (change?.field !== "messages") continue;
+            for (const contact of change?.value?.contacts ?? []) {
+                const name = contact?.profile?.name?.trim();
+                if (contact?.wa_id && name) contacts.push({ waId: String(contact.wa_id), name });
+            }
+        }
+    }
+    return contacts;
+}
+
 /** Walks Meta's payload shape (entry[].changes[].value.statuses[]) for delivery/read receipts on messages we sent. */
 export function extractStatuses(body) {
     const statuses = [];

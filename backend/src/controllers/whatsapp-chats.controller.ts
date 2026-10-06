@@ -10,6 +10,7 @@ import {
     describeSendError,
     getUnreadCounts,
     markChatRead,
+    getProfileNames,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
@@ -42,6 +43,8 @@ type ChatPreview = { text: string; timestamp: number; direction: "in" | "out" }
 type ChatListEntry = {
     phone: string
     name: string
+    /** "whatsapp": not a Zoho customer — `name` is the one on their WhatsApp profile. */
+    name_source?: "whatsapp"
     customer_id?: string
     /** From the customer's address, for grouping the list by city / district. */
     city?: string
@@ -183,10 +186,20 @@ export async function getWhatsAppChats(req: Request, res: Response) {
             })
         }
 
+        // Names people gave their WhatsApp profile, for numbers no customer has.
+        const profileNames = await getProfileNames().catch((error) => {
+            console.error('Failed to read WhatsApp profile names:', error)
+            return {} as Record<string, string>
+        })
         for (const { phone } of chatPhones) {
             if (matchedChatPhones.has(phone)) continue
             const sender = await resolveUnknownSender(access_token, phone)
-            entries.push({ phone, ...sender })
+            const profileName = profileNames[phone]?.trim()
+            entries.push(
+                !sender.customer_id && profileName
+                    ? { phone, ...sender, name: profileName, name_source: "whatsapp" }
+                    : { phone, ...sender },
+            )
         }
 
         const withHistory = new Set(chatPhones.map((c) => c.phone))

@@ -77,6 +77,15 @@ function save(phone: string, stored: StoredConversation) {
   write(conversationKey(phone), { ...stored, deleted });
 }
 
+/**
+ * A chat's name as shown: a name taken from the contact's own WhatsApp
+ * profile (no Zoho customer has the number) gets WhatsApp's "~" prefix, the
+ * way WhatsApp shows people who aren't in your contacts.
+ */
+export function chatDisplayName(chat: Pick<WhatsAppChat, "name" | "name_source">) {
+  return chat.name_source === "whatsapp" ? `~${chat.name}` : chat.name;
+}
+
 export function loadStoredChats(): WhatsAppChat[] | null {
   const chats = read<WhatsAppChat[]>(CHATS_KEY);
   return Array.isArray(chats) ? chats : null;

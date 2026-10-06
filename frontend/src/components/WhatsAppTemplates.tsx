@@ -13,6 +13,7 @@ import {
   type WhatsAppTemplateHeaderFormat,
   type WhatsAppTemplateValues,
 } from "../lib/api";
+import { chatDisplayName } from "../lib/whatsappStore";
 import RefreshButton from "./RefreshButton";
 import FilterChip from "./FilterChip";
 
@@ -565,7 +566,7 @@ export function SendTemplateModal({
             <label className="field-label">To</label>
             {chat ? (
               <div className="wa-pick-list__row wa-pick-list__row--active">
-                <span className="wa-pick-list__name">{chat.name}</span>
+                <span className="wa-pick-list__name">{chatDisplayName(chat)}</span>
                 <span className="wa-pick-list__sub">+{chat.phone}</span>
                 <button type="button" className="field-label-row__action" onClick={() => setChat(null)}>
                   Change
@@ -589,7 +590,7 @@ export function SendTemplateModal({
                   ) : (
                     matchingChats.map((c) => (
                       <button key={`${c.phone}-${c.customer_id ?? ""}`} type="button" className="wa-pick-list__row" onClick={() => setChat(c)}>
-                        <span className="wa-pick-list__name">{c.name}</span>
+                        <span className="wa-pick-list__name">{chatDisplayName(c)}</span>
                         <span className="wa-pick-list__sub">+{c.phone}</span>
                       </button>
                     ))

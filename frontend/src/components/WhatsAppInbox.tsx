@@ -9,6 +9,7 @@ import {
   type WhatsAppMessage,
 } from "../lib/api";
 import {
+  chatDisplayName,
   chatPreview,
   clearStoredConversation,
   deleteStoredMessage,
@@ -315,7 +316,10 @@ export default function WhatsAppInbox() {
                 <span className="wa-avatar">{initials(chat.name)}</span>
                 <span className="wa-list__main">
                   <span className="wa-list__top">
-                    <span className="wa-list__name">{chat.name}</span>
+                    <span className={`wa-list__name${chat.name_source === "whatsapp" ? " wa-list__name--profile" : ""}`}>
+                      {chatDisplayName(chat)}
+                    </span>
+                    {chat.name_source === "whatsapp" && <span className="badge wa-profile-badge">WhatsApp name</span>}
                     {preview && <span className="wa-list__time">{formatListTime(preview.timestamp)}</span>}
                   </span>
                   <span className="wa-list__bottom">
@@ -532,7 +536,10 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
           <ArrowLeft size={18} />
         </button>
         <span className="wa-avatar wa-avatar--small">{initials(chat.name)}</span>
-        <div className="wa-chat__name">{chat.name}</div>
+        <div className="wa-chat__title">
+          <div className="wa-chat__name">{chatDisplayName(chat)}</div>
+          {chat.name_source === "whatsapp" && <div className="wa-chat__subtitle">+{chat.phone} · WhatsApp name</div>}
+        </div>
         <div className="wa-chat__header-actions">
           <RefreshButton onRefresh={() => loadRef.current()} />
           <button

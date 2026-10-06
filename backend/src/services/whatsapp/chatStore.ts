@@ -239,3 +239,13 @@ export async function getUnreadCounts(): Promise<Record<string, number>> {
     )
     return counts
 }
+
+/** Every stored WhatsApp profile name (wa_id → the name on their profile), written by the webhook Lambda. */
+export async function getProfileNames(): Promise<Record<string, string>> {
+    return redisClient.hGetAll("chats:profiles")
+}
+
+/** Remembers the name on a number's WhatsApp profile, same as the Lambda's saveProfileName. */
+export async function saveProfileName(phone: string, name: string) {
+    await redisClient.hSet("chats:profiles", phone, name)
+}

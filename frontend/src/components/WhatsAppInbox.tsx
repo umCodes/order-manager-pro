@@ -23,6 +23,7 @@ import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
 import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import FilterChip from "./FilterChip";
 
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
 const KEYBOARD_THRESHOLD_PX = 120;
@@ -116,39 +117,6 @@ function rankedValues(
 /** Unread messages across these chats. */
 function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) {
   return chats.reduce((sum, chat) => sum + (unreadByPhone[chat.phone] ?? 0), 0);
-}
-
-/** A city / district filter pill: shows its unread messages as a badge when there are any, otherwise how many contacts it has. */
-function FilterChip({
-  label,
-  count,
-  unread = 0,
-  active,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  unread?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`wa-chip${active ? " wa-chip--active" : ""}`}
-      onClick={onClick}
-      aria-pressed={active}
-    >
-      {label}
-      {unread > 0 ? (
-        <span className="unread-badge unread-badge--chip" aria-label={`${unread} unread`}>
-          {unread > 99 ? "99+" : unread}
-        </span>
-      ) : (
-        count !== undefined && <span className="wa-chip__count">{count}</span>
-      )}
-    </button>
-  );
 }
 
 /**
@@ -254,9 +222,14 @@ export default function WhatsAppInbox() {
           />
         </div>
         <RefreshButton onRefresh={loadChats} />
-        <button type="button" className="btn btn--secondary wa-list__templates-btn" onClick={() => setIsTemplatesOpen(true)}>
-          <LayoutTemplate size={15} />
-          Templates
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setIsTemplatesOpen(true)}
+          aria-label="Templates"
+          title="Templates"
+        >
+          <LayoutTemplate size={14} />
         </button>
       </div>
 

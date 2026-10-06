@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
 import {
   createWhatsAppTemplate,
   fetchWhatsAppTemplates,
@@ -11,6 +11,7 @@ import {
   type WhatsAppTemplateValues,
 } from "../lib/api";
 import RefreshButton from "./RefreshButton";
+import FilterChip from "./FilterChip";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -118,6 +119,18 @@ export default function WhatsAppTemplates({
   const [isCreating, setIsCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState<WhatsAppTemplate | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  // Templates start collapsed (name and status only); tapping one shows the rest.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function load(force = false) {
     return fetchWhatsAppTemplates(force)
@@ -149,6 +162,9 @@ export default function WhatsAppTemplates({
     );
   }
 
+  const allTemplates = templates ?? [];
+  const visibleTemplates = categoryFilter ? allTemplates.filter((t) => t.category === categoryFilter) : allTemplates;
+
   return (
     <div>
       <div className="wa-list__toolbar">
@@ -166,36 +182,64 @@ export default function WhatsAppTemplates({
       {notice && <div className="wa-templates__notice">{notice}</div>}
       {error && <div className="form-error">{error}</div>}
 
+      {allTemplates.length > 0 && (
+        <div className="wa-chips" role="group" aria-label="Filter by category">
+          <FilterChip label="All" count={allTemplates.length} active={categoryFilter === null} onClick={() => setCategoryFilter(null)} />
+          {CATEGORIES.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              count={allTemplates.filter((t) => t.category === c.value).length}
+              active={categoryFilter === c.value}
+              onClick={() => setCategoryFilter(c.value)}
+            />
+          ))}
+        </div>
+      )}
+
       {templates === null && !error ? (
         <div className="items-area__empty">Loading...</div>
-      ) : templates?.length === 0 ? (
-        <div className="items-area__empty">No templates yet</div>
+      ) : visibleTemplates.length === 0 ? (
+        <div className="items-area__empty">{categoryFilter ? "No templates in this category" : "No templates yet"}</div>
       ) : (
         <div className="wa-templates">
-          {(templates ?? []).map((template) => {
+          {visibleTemplates.map((template) => {
             const reason = unsendableReason(template);
+            const isExpanded = expandedIds.has(template.id);
             return (
-              <div key={template.id} className="wa-template">
-                <div className="wa-template__top">
-                  <span className="wa-template__name">{template.name}</span>
+              <div key={template.id} className={`wa-template${isExpanded ? " wa-template--expanded" : ""}`}>
+                <button
+                  type="button"
+                  className="wa-template__summary"
+                  onClick={() => toggleExpanded(template.id)}
+                  aria-expanded={isExpanded}
+                >
+                  <ChevronRight size={16} className="wa-template__chevron" />
+                  <span className="wa-template__heading">
+                    <span className="wa-template__name">{template.name}</span>
+                    <span className="wa-template__meta">
+                      {languageLabel(template.language)} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
+                    </span>
+                  </span>
                   <StatusBadge status={template.status} />
-                </div>
-                <div className="wa-template__meta">
-                  {languageLabel(template.language)} · {template.category.charAt(0) + template.category.slice(1).toLowerCase()}
-                </div>
-                <TemplatePreview template={template} />
-                {template.status === "REJECTED" && template.rejected_reason && template.rejected_reason !== "NONE" && (
-                  <div className="form-error" style={{ marginTop: 8, marginBottom: 0 }}>
-                    Rejected: {template.rejected_reason.replace(/_/g, " ").toLowerCase()}
+                </button>
+                {isExpanded && (
+                  <div className="wa-template__details">
+                    <TemplatePreview template={template} />
+                    {template.status === "REJECTED" && template.rejected_reason && template.rejected_reason !== "NONE" && (
+                      <div className="form-error" style={{ marginTop: 8, marginBottom: 0 }}>
+                        Rejected: {template.rejected_reason.replace(/_/g, " ").toLowerCase()}
+                      </div>
+                    )}
+                    {reason ? (
+                      template.status === "APPROVED" && <div className="wa-template__hint">{reason}</div>
+                    ) : (
+                      <button type="button" className="btn btn--secondary wa-template__send" onClick={() => setSending(template)}>
+                        <SendHorizontal size={15} />
+                        Send
+                      </button>
+                    )}
                   </div>
-                )}
-                {reason ? (
-                  template.status === "APPROVED" && <div className="wa-template__hint">{reason}</div>
-                ) : (
-                  <button type="button" className="btn btn--secondary wa-template__send" onClick={() => setSending(template)}>
-                    <SendHorizontal size={15} />
-                    Send
-                  </button>
                 )}
               </div>
             );

@@ -2509,7 +2509,6 @@
 }
 
 /* WhatsApp templates: list, create form, send dialog. */
-.wa-list__templates-btn,
 .wa-templates__new,
 .wa-template__send,
 .wa-composer__template-btn {
@@ -2552,15 +2551,37 @@
 .wa-template {
   border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-lg);
-  padding: 12px;
   background: var(--color-white);
 }
 
-.wa-template__top {
+.wa-template__summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  background: none;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wa-template__chevron {
+  flex-shrink: 0;
+  color: var(--color-gray-400);
+  transition: transform 0.15s ease;
+}
+
+.wa-template--expanded .wa-template__chevron {
+  transform: rotate(90deg);
+}
+
+.wa-template__heading {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .wa-template__name {
@@ -2570,9 +2591,13 @@
 }
 
 .wa-template__meta {
-  margin: 2px 0 8px;
+  margin-top: 2px;
   font-size: 12px;
   color: var(--color-gray-500);
+}
+
+.wa-template__details {
+  padding: 0 12px 12px;
 }
 
 .wa-template__status {

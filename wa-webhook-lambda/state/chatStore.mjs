@@ -78,3 +78,12 @@ export async function applyChatReaction(phoneNumber, targetMessageId, emoji) {
     }
     await client.hset(key, targetMessageId, JSON.stringify(message));
 }
+
+/**
+ * Remembers the name a number shows on its WhatsApp profile (kept without
+ * a TTL, and overwritten whenever they write again), so the app can name a
+ * chat that isn't any Zoho customer's. Read by the backend's chat list.
+ */
+export async function saveProfileName(phoneNumber, name) {
+    await getRedisClient().hset("chats:profiles", phoneNumber, name);
+}

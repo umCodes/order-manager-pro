@@ -828,6 +828,8 @@ export type WhatsAppChatPreview = { text: string; timestamp: number; direction: 
 export type WhatsAppChat = {
   phone: string;
   name: string;
+  /** "whatsapp": not a Zoho customer — `name` is the one they set on their WhatsApp profile. */
+  name_source?: "whatsapp";
   customer_id?: string;
   /** From the customer's address, for filtering the list by city / district. */
   city?: string;

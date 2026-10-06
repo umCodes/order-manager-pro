@@ -2875,3 +2875,30 @@ div.wa-pick-list__row {
 .wa-pick-list__name .wa-template__language {
   margin-inline-start: 6px;
 }
+
+/* Chats named from the contact's own WhatsApp profile (no Zoho customer has the number). */
+.wa-list__name--profile {
+  font-weight: 500;
+  color: var(--color-gray-700);
+}
+
+.wa-profile-badge {
+  flex-shrink: 0;
+  margin-inline-end: auto;
+  font-size: 10.5px;
+  background: #dcfce7;
+  color: var(--color-green-700);
+}
+
+.wa-chat__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-chat__subtitle {
+  font-size: 12px;
+  color: var(--color-gray-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

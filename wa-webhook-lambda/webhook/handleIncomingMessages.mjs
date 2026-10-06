@@ -1,8 +1,8 @@
-import { parseWebhookBody, extractMessages, extractStatuses } from "./parseWebhookBody.mjs";
+import { parseWebhookBody, extractMessages, extractStatuses, extractContacts } from "./parseWebhookBody.mjs";
 import { detectLanguage } from "../language/detectLanguage.mjs";
 import { getContactNotice } from "../messages/contactNotice.mjs";
 import { markNotifiedIfFirstTime } from "../state/notifiedStore.mjs";
-import { appendChatMessage, applyChatStatus, applyChatReaction } from "../state/chatStore.mjs";
+import { appendChatMessage, applyChatStatus, applyChatReaction, saveProfileName } from "../state/chatStore.mjs";
 import { replyToWhatsAppMessage, sendContactCard } from "../services/whatsapp/client.mjs";
 import { notifyByEmail } from "./notifyByEmail.mjs";
 
@@ -38,6 +38,14 @@ export async function handleIncomingMessages(event) {
     const messages = extractMessages(body);
     const statuses = extractStatuses(body);
     console.log(`Found ${messages.length} message(s), ${statuses.length} status update(s)`);
+
+    for (const { waId, name } of extractContacts(body)) {
+        try {
+            await saveProfileName(waId, name);
+        } catch (error) {
+            console.error(`Error saving WhatsApp profile name for ${waId}:`, JSON.stringify(error));
+        }
+    }
 
     for (const message of messages) {
         if (message?.type === "reaction") {

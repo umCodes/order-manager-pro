@@ -4,6 +4,7 @@ import { mintZohoAccessToken } from '../services/zoho/auth.js';
 import { findCustomerByPhone, getContactPreferredLanguage } from '../services/zoho/customers/index.js';
 import type { PreferredLanguage } from '../services/zoho/customers/index.js';
 import { downloadWhatsAppMedia } from '../services/whatsapp/client.js';
+import { saveProfileName, toWaId } from '../services/whatsapp/chatStore.js';
 import { replyWithUnmonitoredNumberNotice } from '../services/whatsapp/unmonitored-reply.js';
 import { sendWhatsAppMessageNotificationEmail, type InboundWhatsAppMessage } from '../services/email/whatsapp-notification.js';
 
@@ -125,6 +126,15 @@ export async function handleWaWebhookEvent(req: Request, res: Response) {
                 if (change?.field !== "messages" || !value?.messages?.length) continue
 
                 const senderName = value.contacts?.[0]?.profile?.name
+
+                // Same as the webhook Lambda: remember profile names for the chat list.
+                for (const contact of value.contacts ?? []) {
+                    const name = contact?.profile?.name?.trim()
+                    if (!contact?.wa_id || !name) continue
+                    await saveProfileName(toWaId(contact.wa_id), name).catch((error) =>
+                        console.error(`Error saving WhatsApp profile name for ${contact.wa_id}:`, error),
+                    )
+                }
 
                 for (const message of value.messages) {
                     try {

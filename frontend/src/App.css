@@ -2982,3 +2982,21 @@ div.wa-pick-list__row {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* Create form, named variables: the name input shown by "+ Add variable". */
+.wa-template__name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wa-template__name-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-template__name-insert {
+  padding: 9px 14px;
+  font-size: 14px;
+}

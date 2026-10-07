@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2, X } from "lucide-react";
 import {
   createWhatsAppTemplate,
   fetchWhatsAppTemplates,
@@ -607,8 +607,11 @@ const HEADER_CHOICES: { value: HeaderChoice; label: string }[] = [
   { value: "VIDEO", label: "Video" },
 ];
 
+type VariableStyle = "numbered" | "named";
+
 type Draft = {
   name: string;
+  variableStyle: VariableStyle;
   category: NewWhatsAppTemplate["category"];
   language: string;
   headerChoice: HeaderChoice;
@@ -622,6 +625,7 @@ type Draft = {
 
 const BLANK_DRAFT: Draft = {
   name: "",
+  variableStyle: "numbered",
   category: "UTILITY",
   language: "en",
   headerChoice: "NONE",
@@ -635,33 +639,25 @@ const BLANK_DRAFT: Draft = {
 
 /**
  * A new template's form, pre-filled from an existing one ("Copy"): same
- * wording, examples and buttons, under a new name. Named variables
- * ({{customer}}) become numbered ones, which is all the form creates. A file
- * header's sample has to be added again — Meta doesn't hand it back.
+ * wording, variables (numbered or named), examples and buttons, under a new
+ * name. A file header's sample has to be added again — Meta doesn't hand it
+ * back.
  */
 function draftFrom(source: WhatsAppTemplate): Draft {
   const header = part(source, "HEADER");
   const body = part(source, "BODY");
   const example = (body?.example ?? {}) as { body_text?: string[][]; body_text_named_params?: { param_name: string; example: string }[] };
   const headerExample = (header?.example ?? {}) as { header_text?: string[]; header_text_named_params?: { example: string }[] };
-
-  // Renumber the body's variables {{1}}, {{2}}, … in order of appearance.
-  const keys = placeholdersIn(body?.text);
-  const renumber = (text: string | undefined) =>
-    (text ?? "").replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (whole, key) => {
-      const index = keys.indexOf(key);
-      return index === -1 ? whole : `{{${index + 1}}}`;
-    });
-  const bodyExamples: Record<string, string> = {};
-  keys.forEach((key, index) => {
-    const value =
-      example.body_text?.[0]?.[Number(key) - 1] ?? example.body_text_named_params?.find((p) => p.param_name === key)?.example ?? "";
-    bodyExamples[String(index + 1)] = value;
-  });
-  const headerKeys = placeholdersIn(header?.text);
+  const bodyExamples = Object.fromEntries(
+    placeholdersIn(body?.text).map((key) => [
+      key,
+      example.body_text_named_params?.find((p) => p.param_name === key)?.example ?? example.body_text?.[0]?.[Number(key) - 1] ?? "",
+    ]),
+  );
 
   return {
     name: `${source.name}_copy`.slice(0, 512),
+    variableStyle: source.parameter_format === "NAMED" ? "named" : "numbered",
     category: source.category === "MARKETING" ? "MARKETING" : "UTILITY",
     language: source.language,
     headerChoice: !header
@@ -671,9 +667,9 @@ function draftFrom(source: WhatsAppTemplate): Draft {
         : header.format in MEDIA_FORMATS
           ? (header.format as HeaderChoice)
           : "NONE",
-    header: headerKeys.length ? (header?.text ?? "").replace(/\{\{\s*[A-Za-z0-9_]+\s*\}\}/, "{{1}}") : (header?.text ?? ""),
+    header: header?.text ?? "",
     headerExample: headerExample.header_text?.[0] ?? headerExample.header_text_named_params?.[0]?.example ?? "",
-    body: renumber(body?.text),
+    body: body?.text ?? "",
     bodyExamples,
     footer: part(source, "FOOTER")?.text ?? "",
     buttons: (part(source, "BUTTONS")?.buttons ?? [])
@@ -702,6 +698,9 @@ function CreateTemplateForm({
   // File headers: the sample file uploaded for review.
   const [sample, setSample] = useState<{ handle: string; filename: string } | null>(null);
   const [isUploadingSample, setIsUploadingSample] = useState(false);
+  const [variableStyle, setVariableStyle] = useState<VariableStyle>(initial.variableStyle);
+  // Named style: the name being typed for the variable to insert (null when not adding one).
+  const [newVariableName, setNewVariableName] = useState<string | null>(null);
   const [body, setBody] = useState(initial.body);
   const [bodyExamples, setBodyExamples] = useState<Record<string, string>>(initial.bodyExamples);
   const [footer, setFooter] = useState(initial.footer);
@@ -729,11 +728,22 @@ function CreateTemplateForm({
   }
 
   const bodyVariables = placeholdersIn(body);
-  const headerHasVariable = headerChoice === "TEXT" && placeholdersIn(header).length > 0;
+  const headerVariable = headerChoice === "TEXT" ? placeholdersIn(header)[0] : undefined;
+  const headerHasVariable = !!headerVariable;
 
-  /** Inserts the next numbered variable at the cursor. */
+  /** Numbered: inserts the next number. Named: asks for a name first (see insertVariable). */
   function addVariable() {
-    const next = `{{${bodyVariables.length + 1}}}`;
+    if (variableStyle === "named") {
+      setNewVariableName((current) => (current === null ? "" : current));
+      return;
+    }
+    const highest = Math.max(0, ...bodyVariables.map(Number).filter((n) => Number.isFinite(n)));
+    insertVariable(String(highest + 1));
+  }
+
+  /** Puts {{key}} at the cursor in the message. */
+  function insertVariable(key: string) {
+    const next = `{{${key}}}`;
     const input = bodyRef.current;
     const start = input?.selectionStart ?? body.length;
     const end = input?.selectionEnd ?? body.length;
@@ -758,8 +768,9 @@ function CreateTemplateForm({
       ...(headerChoice === "TEXT" && header.trim() && { header_format: "TEXT", header: header.trim() }),
       ...(headerHasVariable && { header_example: headerExample }),
       ...(mediaChoice && { header_format: mediaChoice, header_handle: sample?.handle }),
+      ...(variableStyle === "named" && { parameter_format: "NAMED" }),
       body: body.trim(),
-      body_examples: bodyVariables.map((key) => bodyExamples[key] ?? ""),
+      body_examples: Object.fromEntries(bodyVariables.map((key) => [key, bodyExamples[key] ?? ""])),
       ...(footer.trim() && { footer: footer.trim() }),
       buttons: buttons.map((b) =>
         b.type === "URL"
@@ -894,11 +905,40 @@ function CreateTemplateForm({
             type="text"
             className="input"
             style={{ marginTop: 6 }}
-            placeholder="Example value for the header's {{1}}"
+            placeholder={`Example value for the header's {{${headerVariable}}}`}
             value={headerExample}
             onChange={(e) => setHeaderExample(e.target.value)}
           />
         )}
+      </div>
+
+      <div className="field">
+        <label className="field-label">Variables</label>
+        <div className="mode-toggle" style={{ marginBottom: 4 }}>
+          {(
+            [
+              { value: "numbered", label: "Numbered {{1}}" },
+              { value: "named", label: "Named {{customer_name}}" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`mode-toggle__option${variableStyle === option.value ? " mode-toggle__option--active" : ""}`}
+              onClick={() => {
+                setVariableStyle(option.value);
+                setNewVariableName(null);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="wa-template__hint">
+          {variableStyle === "named"
+            ? "Names make the template easier to read and to fill in Settings. Lowercase letters, numbers and underscores."
+            : "Numbers must run {{1}}, {{2}}, {{3}}… without gaps."}
+        </div>
       </div>
 
       <div className="field">
@@ -910,18 +950,56 @@ function CreateTemplateForm({
             + Add variable
           </button>
         </div>
+        {newVariableName !== null && (
+          <div className="wa-template__name-row">
+            <input
+              type="text"
+              className="input"
+              autoFocus
+              placeholder="variable name, e.g. customer_name"
+              value={newVariableName}
+              // Same rules WhatsApp has: lowercase letters, numbers, underscores.
+              onChange={(e) => setNewVariableName(e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && /^[a-z]/.test(newVariableName)) {
+                  e.preventDefault();
+                  insertVariable(newVariableName);
+                  setNewVariableName(null);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn--primary wa-template__name-insert"
+              disabled={!/^[a-z]/.test(newVariableName)}
+              onClick={() => {
+                insertVariable(newVariableName);
+                setNewVariableName(null);
+              }}
+            >
+              Insert
+            </button>
+            <button type="button" className="icon-btn" aria-label="Cancel" onClick={() => setNewVariableName(null)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <textarea
           id="tpl-body"
           ref={bodyRef}
           className="textarea"
           rows={5}
           maxLength={1024}
-          placeholder={"e.g. Hello {{1}}, your order {{2}} is ready for pickup."}
+          placeholder={
+            variableStyle === "named"
+              ? "e.g. Hello {{customer_name}}, your order {{order_number}} is ready for pickup."
+              : "e.g. Hello {{1}}, your order {{2}} is ready for pickup."
+          }
           value={body}
           onChange={(e) => setBody(e.target.value)}
         />
         <div className="wa-template__hint">
-          Variables like {"{{1}}"} are filled in each time you send. WhatsApp needs an example value for each.
+          Variables are filled in each time you send. WhatsApp needs an example value for each.
         </div>
       </div>
 
@@ -1021,7 +1099,7 @@ function CreateTemplateForm({
                 ...(buttons.length ? [{ type: "BUTTONS" as const, buttons: buttons.map((b) => ({ type: b.type, text: b.text || "Button" })) }] : []),
               ],
             }}
-            values={{ header: { 1: headerExample }, body: bodyExamples, ...(sample && { header_media: { id: "", filename: sample.filename } }) }}
+            values={{ header: headerVariable ? { [headerVariable]: headerExample } : {}, body: bodyExamples, ...(sample && { header_media: { id: "", filename: sample.filename } }) }}
           />
         </div>
       )}

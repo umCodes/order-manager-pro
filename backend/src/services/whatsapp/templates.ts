@@ -178,14 +178,16 @@ export type NewTemplate = {
     category: "UTILITY" | "MARKETING"
     /** TEXT (the default) or a file header — IMAGE, VIDEO or DOCUMENT — sent with each message. */
     header_format?: "TEXT" | MediaHeaderFormat
+    /** NAMED: variables are names ({{customer_name}}) instead of numbers ({{1}}). */
+    parameter_format?: "POSITIONAL" | "NAMED"
     header?: string
-    /** Example values for the header's {{1}}, if it has one. */
+    /** Example value for the header's variable, if it has one. */
     header_example?: string
     /** File headers: the sample file's handle, from uploadTemplateSample. */
     header_handle?: string
     body: string
-    /** Example values for the body's {{1}}, {{2}}, … in order. */
-    body_examples?: string[]
+    /** Example value per message variable, keyed by its number or name ("1", "customer_name"). An array is read as {{1}}, {{2}}, … in order. */
+    body_examples?: Record<string, string> | string[]
     footer?: string
     buttons?: NewTemplateButton[]
 }
@@ -199,14 +201,30 @@ export function placeholdersIn(text: string | undefined): string[] {
     return found
 }
 
-/** New templates use numbered placeholders, which Meta requires to run {{1}}, {{2}}, … without gaps. */
-function checkNumberedPlaceholders(text: string, where: string, max: number) {
+/**
+ * A new template's variables in one text, checked against its style:
+ * numbered ones must run {{1}}, {{2}}, … without gaps; named ones are
+ * lowercase letters, digits and underscores, starting with a letter. Returns
+ * the keys — numbered in number order, named in order of appearance.
+ */
+function checkPlaceholders(text: string, where: string, max: number, named: boolean): string[] {
     const placeholders = placeholdersIn(text)
     if (placeholders.length > max) throw new Error(`The ${where} can have at most ${max} variable${max === 1 ? "" : "s"}`)
+    if (named) {
+        const bad = placeholders.find((key) => !/^[a-z][a-z0-9_]*$/.test(key))
+        if (bad) throw new Error(`"{{${bad}}}" in the ${where}: named variables use lowercase letters, numbers and underscores, starting with a letter`)
+        return placeholders
+    }
     const numbers = placeholders.map(Number).sort((a, b) => a - b)
     if (numbers.some((n, i) => n !== i + 1))
         throw new Error(`Variables in the ${where} must be numbered {{1}}, {{2}}, … in order`)
-    return numbers.length
+    return numbers.map(String)
+}
+
+/** The example for one variable, from examples keyed by variable (or, legacy, an array in {{1}}, {{2}} order). */
+function exampleFor(examples: unknown, key: string) {
+    if (Array.isArray(examples)) return cleanText(examples[Number(key) - 1])
+    return cleanText((examples as Record<string, unknown> | undefined)?.[key])
 }
 
 function cleanText(value: unknown) {
@@ -222,6 +240,7 @@ export function buildTemplateDefinition(input: any) {
     const category = input?.category
     if (category !== "UTILITY" && category !== "MARKETING") throw new Error("Choose a category")
 
+    const named = input?.parameter_format === "NAMED"
     const components: MetaTemplateComponent[] = []
 
     const headerFormat = cleanText(input?.header_format) || "TEXT"
@@ -234,28 +253,31 @@ export function buildTemplateDefinition(input: any) {
         throw new Error("Unknown header type")
     } else if (header) {
         if (header.length > 60) throw new Error("The header is limited to 60 characters")
-        const count = checkNumberedPlaceholders(header, "header", 1)
+        const [key] = checkPlaceholders(header, "header", 1, named)
         const example = cleanText(input?.header_example)
-        if (count && !example) throw new Error("Give an example value for the header's variable")
+        if (key && !example) throw new Error("Give an example value for the header's variable")
         components.push({
             type: "HEADER",
             format: "TEXT",
             text: header,
-            ...(count && { example: { header_text: [example] } }),
+            ...(key && { example: named ? { header_text_named_params: [{ param_name: key, example }] } : { header_text: [example] } }),
         })
     }
 
     const body = cleanText(input?.body)
     if (!body) throw new Error("The message text is required")
     if (body.length > 1024) throw new Error("The message text is limited to 1024 characters")
-    const bodyCount = checkNumberedPlaceholders(body, "message text", 100)
-    const bodyExamples: string[] = Array.isArray(input?.body_examples) ? input.body_examples.map(cleanText) : []
-    if (bodyExamples.slice(0, bodyCount).filter(Boolean).length < bodyCount)
-        throw new Error("Give an example value for every variable in the message text")
+    const bodyKeys = checkPlaceholders(body, "message text", 100, named)
+    const missing = bodyKeys.find((key) => !exampleFor(input?.body_examples, key))
+    if (missing) throw new Error(`Give an example value for {{${missing}}} in the message text`)
     components.push({
         type: "BODY",
         text: body,
-        ...(bodyCount && { example: { body_text: [bodyExamples.slice(0, bodyCount)] } }),
+        ...(bodyKeys.length && {
+            example: named
+                ? { body_text_named_params: bodyKeys.map((key) => ({ param_name: key, example: exampleFor(input?.body_examples, key) })) }
+                : { body_text: [bodyKeys.map((key) => exampleFor(input?.body_examples, key))] },
+        }),
     })
 
     const footer = cleanText(input?.footer)
@@ -287,7 +309,7 @@ export function buildTemplateDefinition(input: any) {
     })
     if (buttons.length) components.push({ type: "BUTTONS", buttons })
 
-    return { name, language, category, components }
+    return { name, language, category, ...(named && { parameter_format: "NAMED" as const }), components }
 }
 
 /** Submits a new template for Meta's review. Resolves to its id and initial status (usually PENDING). */

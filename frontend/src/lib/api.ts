@@ -945,6 +945,8 @@ export type WhatsAppTemplate = {
   /** APPROVED, PENDING, REJECTED, PAUSED, DISABLED, … — only APPROVED can be sent. */
   status: string;
   category: string;
+  /** NAMED: variables are names ({{customer_name}}) instead of numbers. */
+  parameter_format?: "POSITIONAL" | "NAMED";
   components: WhatsAppTemplateComponent[];
   rejected_reason?: string;
 };
@@ -959,8 +961,11 @@ export type NewWhatsAppTemplate = {
   /** File headers: the sample file's handle, from uploadWhatsAppTemplateSample. */
   header_handle?: string;
   header_example?: string;
+  /** NAMED: the template's variables are names ({{customer_name}}) instead of numbers ({{1}}). */
+  parameter_format?: "POSITIONAL" | "NAMED";
   body: string;
-  body_examples?: string[];
+  /** Example value per message variable, keyed by its number or name. */
+  body_examples?: Record<string, string>;
   footer?: string;
   buttons?: (
     | { type: "QUICK_REPLY"; text: string }

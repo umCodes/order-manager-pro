@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
 import {
   createWhatsAppTemplate,
   fetchWhatsAppTemplates,
@@ -16,6 +16,7 @@ import {
 import { chatDisplayName } from "../lib/whatsappStore";
 import RefreshButton from "./RefreshButton";
 import FilterChip from "./FilterChip";
+import NotificationTemplates from "./NotificationTemplates";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -212,6 +213,7 @@ export default function WhatsAppTemplates({
   // The form's starting point: blank, or a copy of an existing template.
   const [creating, setCreating] = useState<{ source?: WhatsAppTemplate } | null>(null);
   const [isChoosingStart, setIsChoosingStart] = useState(false);
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState<WhatsAppTemplate | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -240,6 +242,10 @@ export default function WhatsAppTemplates({
   useEffect(() => {
     load();
   }, []);
+
+  if (isNotificationSettingsOpen) {
+    return <NotificationTemplates onBack={() => setIsNotificationSettingsOpen(false)} />;
+  }
 
   if (creating) {
     return (
@@ -272,6 +278,15 @@ export default function WhatsAppTemplates({
         </button>
         <div className="wa-templates__title">Templates</div>
         <RefreshButton onRefresh={() => load(true)} />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setIsNotificationSettingsOpen(true)}
+          aria-label="Notification templates"
+          title="Notification templates"
+        >
+          <Bell size={14} />
+        </button>
         <button type="button" className="btn btn--primary wa-templates__new" onClick={() => setIsChoosingStart(true)}>
           <Plus size={16} />
           New

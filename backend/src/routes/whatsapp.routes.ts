@@ -13,6 +13,9 @@ import {
     sendWhatsAppChatTemplate,
     uploadWhatsAppTemplateSample,
     uploadWhatsAppTemplateMedia,
+    getWhatsAppNotificationTemplates,
+    setWhatsAppNotificationTemplate,
+    clearWhatsAppNotificationTemplate,
     MAX_MEDIA_BYTES,
 } from "../controllers/whatsapp-chats.controller.js";
 
@@ -27,6 +30,9 @@ whatsappRouter.post('/whatsapp/chats/:phone/messages/:messageId/retry', retryWha
 whatsappRouter.post('/whatsapp/chats/:phone/templates', sendWhatsAppChatTemplate);
 whatsappRouter.get('/whatsapp/templates', getWhatsAppTemplates);
 whatsappRouter.post('/whatsapp/templates', createWhatsAppTemplate);
+whatsappRouter.get('/whatsapp/notification-templates', getWhatsAppNotificationTemplates);
+whatsappRouter.put('/whatsapp/notification-templates/:kind/:language', setWhatsAppNotificationTemplate);
+whatsappRouter.delete('/whatsapp/notification-templates/:kind/:language', clearWhatsAppNotificationTemplate);
 const rawUpload = express.raw({ type: "application/octet-stream", limit: MAX_MEDIA_BYTES });
 whatsappRouter.post('/whatsapp/templates/sample', rawUpload, uploadWhatsAppTemplateSample);
 whatsappRouter.post('/whatsapp/templates/media', rawUpload, uploadWhatsAppTemplateMedia);

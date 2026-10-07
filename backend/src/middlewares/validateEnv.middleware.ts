@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ENV } from '../constants/env.js';
 
-/** Keys not required for the /api routes this middleware guards — used only by the WhatsApp webhook (mounted separately, outside /api), or with a fallback when unset (WA_BUSINESS_ACCOUNT_ID, WA_APP_ID). */
+/** Keys not required for the /api routes this middleware guards — used only by the WhatsApp webhook (mounted separately, outside /api), or with a fallback when unset (WA_BUSINESS_ACCOUNT_ID, WA_APP_ID, the notification template fallbacks). */
 const OPTIONAL_KEYS = new Set<keyof typeof ENV>([
     "WA_SUPPORT_NUMBER",
     "RESEND_API_KEY",
@@ -9,6 +9,13 @@ const OPTIONAL_KEYS = new Set<keyof typeof ENV>([
     "WA_NOTIFY_EMAIL_TO",
     "WA_BUSINESS_ACCOUNT_ID",
     "WA_APP_ID",
+    // Fallbacks only: notification templates are assigned in the app (see notificationTemplates.ts).
+    "WA_PAYMENT_NOTIFICATION_TEMPLATE_AM",
+    "WA_PAYMENT_NOTIFICATION_TEMPLATE_AR",
+    "WA_PAYMENT_NOTIFICATION_TEMPLATE_EN",
+    "WA_BALANCE_NOTIFICATION_TEMPLATE_AM",
+    "WA_BALANCE_NOTIFICATION_TEMPLATE_AR",
+    "WA_BALANCE_NOTIFICATION_TEMPLATE_EN",
 ]);
 
 /** Rejects /api requests with a 500 when any required environment variable is missing. */

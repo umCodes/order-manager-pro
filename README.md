@@ -50,8 +50,8 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 | `WA_BUSINESS_ACCOUNT_ID` | Optional. WhatsApp Business Account ID that owns the message templates (Messages → WhatsApp → Templates). When unset, it's looked up from the accounts `WA_TOKEN` was granted |
 | `WA_APP_ID` | Optional. Meta app ID, used to upload the sample file a template with a document / image / video header needs for review. When unset, it's read from `WA_TOKEN` |
 | `WA_PREP_NUM` | (see `services/whatsapp`) |
-| `WA_PAYMENT_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the payment-confirmation message, per customer `preferred_language` |
-| `WA_BALANCE_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the invoice-sent/balance message, per customer `preferred_language` |
+| `WA_PAYMENT_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Optional fallback. The payment-confirmation template per customer `preferred_language` is now assigned in the app (Messages → WhatsApp → Templates → 🔔 Notification templates, stored in Redis `wa:notification-templates`); these are only used for a language not assigned there |
+| `WA_BALANCE_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Optional fallback, same as above, for the invoice-sent/balance template |
 | `REDIS_URL` | Redis connection string |
 | `PORT` | Backend port (default `3000`) |
 

@@ -16,6 +16,13 @@ import {
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { buildTemplateSend, createTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import {
+    assignNotificationTemplate,
+    clearNotificationTemplate,
+    describeNotificationTemplates,
+    isNotificationKind,
+    isPreferredLanguage,
+} from '../services/whatsapp/notificationTemplates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -495,6 +502,50 @@ export async function uploadWhatsAppTemplateMedia(req: Request, res: Response) {
         res.status(201).json({ id, filename })
     } catch (error) {
         console.error('Error uploading WhatsApp template file:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** The automatic notifications, which template each language uses for them, and the templates that fit. `?refresh=1` skips the template cache. */
+export async function getWhatsAppNotificationTemplates(req: Request, res: Response) {
+    try {
+        res.status(200).json(await describeNotificationTemplates(req.query.refresh === "1"))
+    } catch (error) {
+        console.error('Error loading WhatsApp notification templates:', error);
+        res.status(502).json({ error: describeSendError(error) });
+    }
+}
+
+function readSlot(req: Request) {
+    const kind = String(req.params.kind ?? "")
+    const language = String(req.params.language ?? "")
+    if (!isNotificationKind(kind) || !isPreferredLanguage(language)) throw new Error("Unknown notification or language")
+    return { kind, language }
+}
+
+/** Assigns a template ({ name, language }) to one notification + customer language. */
+export async function setWhatsAppNotificationTemplate(req: Request, res: Response) {
+    try {
+        const { kind, language } = readSlot(req)
+        const name = typeof req.body?.name === "string" ? req.body.name.trim() : ""
+        const templateLanguage = typeof req.body?.language === "string" ? req.body.language.trim() : ""
+        if (!name || !templateLanguage) throw new Error("Choose a template")
+        await assignNotificationTemplate(kind, language, { name, language: templateLanguage })
+        res.status(200).json(await describeNotificationTemplates())
+    } catch (error) {
+        console.error('Error assigning WhatsApp notification template:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** Removes an assignment (the slot falls back to its env var, if any). */
+export async function clearWhatsAppNotificationTemplate(req: Request, res: Response) {
+    try {
+        const { kind, language } = readSlot(req)
+        await clearNotificationTemplate(kind, language)
+        res.status(200).json(await describeNotificationTemplates())
+    } catch (error) {
+        console.error('Error clearing WhatsApp notification template:', error);
         res.status(400).json({ error: describeSendError(error) });
     }
 }

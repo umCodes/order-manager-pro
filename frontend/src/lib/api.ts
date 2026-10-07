@@ -1004,6 +1004,49 @@ export async function createWhatsAppTemplate(template: NewWhatsAppTemplate): Pro
   return response.json();
 }
 
+/** Where a notification's template comes from: assigned in the app, or the old server env var. */
+export type NotificationTemplateChoice = { name: string; language: string; source: "app" | "env" };
+
+/** The automatic WhatsApp notifications and which template each customer language uses. */
+export type NotificationTemplateSettings = {
+  languages: string[];
+  notifications: {
+    kind: "payment" | "balance";
+    label: string;
+    description: string;
+    bodyVariables: string[];
+    header?: "DOCUMENT";
+    slots: { language: string; current: NotificationTemplateChoice | null }[];
+    /** Every template on the account; `incompatible` says why one doesn't fit this notification. */
+    options: { name: string; language: string; status: string; incompatible?: string }[];
+  }[];
+};
+
+async function notificationTemplatesRequest(path: string, init?: RequestInit): Promise<NotificationTemplateSettings> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/notification-templates${path}`, init);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to update notification templates (${response.status})`);
+  return body;
+}
+
+export function fetchNotificationTemplates(force = false) {
+  return notificationTemplatesRequest(force ? "?refresh=1" : "");
+}
+
+/** Assigns a template to one notification for customers of one language. */
+export function assignNotificationTemplate(kind: string, customerLanguage: string, template: { name: string; language: string }) {
+  return notificationTemplatesRequest(`/${kind}/${customerLanguage}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(template),
+  });
+}
+
+/** Removes the app's assignment (falls back to the server env var, if one is set). */
+export function clearNotificationTemplate(kind: string, customerLanguage: string) {
+  return notificationTemplatesRequest(`/${kind}/${customerLanguage}`, { method: "DELETE" });
+}
+
 /** Posts a file's raw bytes to a backend upload endpoint (same as sendWhatsAppMedia does). */
 async function uploadRaw(url: string, file: File) {
   const response = await apiFetch(url, {

@@ -2902,3 +2902,32 @@ div.wa-pick-list__row {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Notification templates settings: one card per automatic notification, a template picker per customer language. */
+.wa-notification {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+}
+
+.wa-notification__title {
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin-bottom: 2px;
+}
+
+.wa-notification__slot {
+  margin-top: 12px;
+}
+
+.wa-notification__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wa-notification__unset {
+  color: var(--color-red-600);
+}

@@ -297,12 +297,17 @@ export async function createInvoiceReturn(
         }
 
         // What the customer owes once this return's credit is applied — printed on its return notice.
-        try {
-            const customer = await ZohoGetCustomerById(headers, String(invoice.customer_id))
-            const balance = Number(customer?.outstanding_receivable_amount)
-            if (Number.isFinite(balance)) await redisClient.hSet(BALANCE_AFTER_KEY, creditNoteId, String(balance))
-        } catch (error) {
-            console.error(`Return ${creditNote.creditnote_number}: reading the customer's balance failed:`, error)
+        // Read only after the credit went through: if applying it failed, the balance
+        // wouldn't include it yet, so nothing is saved and the notice reads the balance
+        // when it's opened (after the credit has been applied in Zoho).
+        if (warnings.length === 0) {
+            try {
+                const customer = await ZohoGetCustomerById(headers, String(invoice.customer_id))
+                const balance = Number(customer?.outstanding_receivable_amount)
+                if (Number.isFinite(balance)) await redisClient.hSet(BALANCE_AFTER_KEY, creditNoteId, String(balance))
+            } catch (error) {
+                console.error(`Return ${creditNote.creditnote_number}: reading the customer's balance failed:`, error)
+            }
         }
 
         const trimmedReason = reason?.trim()

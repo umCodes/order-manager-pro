@@ -47,7 +47,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "ንዑስ ድምር:",
     colTotal: "ድምር",
     thankYou: "እናመሰግናለን!",
-    returnTitle: "የተመላሽ እቃ ማስታወቂያ",
+    returnTitle: "የተመላሽ እቃ ማሳወቅያ",
     returnNumber: "የተመላሽ ቁጥር:",
     referenceInvoice: "የተመለሰበት ደረሰኝ:",
   },

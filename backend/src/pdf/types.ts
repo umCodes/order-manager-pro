@@ -29,5 +29,9 @@ export type InvoicePdfData = {
    * from, and only a Total (no subtotal, discount, paid or balance).
    * `invoiceNumber` / `date` are then the return's own.
    */
-  returnNotice?: { referenceInvoiceNumber: string };
+  returnNotice?: {
+    referenceInvoiceNumber: string;
+    /** The customer's total balance due right after this return was recorded. */
+    balanceDue?: number;
+  };
 };

@@ -1,5 +1,6 @@
 import { redisClient } from "../../config/redis.js"
 import { ZohoGetInvoiceById, ZohoGetInvoices } from "../zoho/invoices/index.js"
+import { ZohoGetCustomerById } from "../zoho/customers/index.js"
 import {
     ZohoAddCreditNoteComment,
     ZohoApplyCreditNoteToInvoice,
@@ -25,6 +26,8 @@ import { todayInBusinessTimezone } from "../../utils/businessDate.js"
  */
 
 const returnsKey = (invoiceId: string) => `invoice-returns:${invoiceId}`
+/** Customer's balance due right after each return (credit note id -> amount), for its return notice. */
+const BALANCE_AFTER_KEY = "invoice-returns:balance-after"
 const lockKey = (invoiceId: string) => `invoice-returns:lock:${invoiceId}`
 const LOCK_MS = 60_000
 
@@ -293,6 +296,15 @@ export async function createInvoiceReturn(
             }
         }
 
+        // What the customer owes once this return's credit is applied — printed on its return notice.
+        try {
+            const customer = await ZohoGetCustomerById(headers, String(invoice.customer_id))
+            const balance = Number(customer?.outstanding_receivable_amount)
+            if (Number.isFinite(balance)) await redisClient.hSet(BALANCE_AFTER_KEY, creditNoteId, String(balance))
+        } catch (error) {
+            console.error(`Return ${creditNote.creditnote_number}: reading the customer's balance failed:`, error)
+        }
+
         const trimmedReason = reason?.trim()
         if (trimmedReason) {
             try {
@@ -365,7 +377,15 @@ export async function getInvoiceReturn(headers: string, invoiceId: string, credi
         ZohoGetCreditNote(headers, creditNoteId),
     ])
     if (!creditNote) throw new Error("This return no longer exists in Zoho")
-    return { invoice, creditNote }
+    const saved = await redisClient.hGet(BALANCE_AFTER_KEY, creditNoteId)
+    // Returns from before this was recorded fall back to the customer's current balance.
+    let balanceAfter = saved !== null && saved !== undefined ? Number(saved) : undefined
+    if (balanceAfter === undefined && invoice.customer_id) {
+        const customer = await ZohoGetCustomerById(headers, String(invoice.customer_id))
+        const current = Number(customer?.outstanding_receivable_amount)
+        if (Number.isFinite(current)) balanceAfter = current
+    }
+    return { invoice, creditNote, balanceAfter }
 }
 
 /**

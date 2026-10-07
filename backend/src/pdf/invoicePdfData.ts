@@ -25,8 +25,12 @@ export function toInvoicePdfData(invoice: ZohoInvoice): InvoicePdfData {
   };
 }
 
-/** Maps a return (Zoho credit note) and the invoice it's from to the PDF generator's input, as a return notice. */
-export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoInvoice): InvoicePdfData {
+/**
+ * Maps a return (Zoho credit note) and the invoice it's from to the PDF
+ * generator's input, as a return notice. `balanceDue` is the customer's
+ * total balance after the return.
+ */
+export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoInvoice, balanceDue?: number): InvoicePdfData {
   return {
     invoiceNumber: creditNote.creditnote_number,
     customerName: invoice.customer_name,
@@ -40,6 +44,6 @@ export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoI
     })),
     totalPrice: creditNote.total,
     paidAmount: 0,
-    returnNotice: { referenceInvoiceNumber: invoice.invoice_number },
+    returnNotice: { referenceInvoiceNumber: invoice.invoice_number, ...(balanceDue !== undefined && { balanceDue }) },
   };
 }

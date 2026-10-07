@@ -60,13 +60,18 @@ export type TabKey = "invoices" | "messages" | "drafts" | "items" | "customers";
 /** "new" always creates a fresh invoice; "update" edits a specific existing draft, chosen by invoice number. */
 export type InvoiceMode = "new" | "update";
 
-/** One of a customer's recorded payments, as listed on their details page. */
+/**
+ * One row of a customer's payments list: a recorded payment, or a return
+ * whose credit was used against their invoices ("return_credit" — numbered
+ * by its credit note), which lowers the balance the same way.
+ */
 export type CustomerPayment = {
   payment_id: string;
   payment_number?: string;
   date: string;
   amount: number;
   payment_mode?: string;
+  kind?: "payment" | "return_credit";
 };
 
 export type DraftInvoice = {

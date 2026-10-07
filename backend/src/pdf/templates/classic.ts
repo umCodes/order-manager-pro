@@ -172,8 +172,12 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   hr(doc);
 
   if (returnNotice) {
-    // A return only states what's credited back: no subtotal, discount, paid or balance.
+    // A return states what's credited back and what the customer owes after it — no subtotal, discount or paid.
     row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
+    if (returnNotice.balanceDue !== undefined) {
+      doc.moveDown(0.2);
+      row(doc, labels.balanceDue, money(returnNotice.balanceDue, currency), { bold: true, size: 10.5 });
+    }
   } else {
     drawSaleTotals(doc, invoice, labels, currency);
   }

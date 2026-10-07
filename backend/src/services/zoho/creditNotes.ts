@@ -21,6 +21,7 @@ export type ZohoCreditNoteLineItem = {
 export type ZohoCreditNote = {
     creditnote_id: string | number
     creditnote_number: string
+    customer_id?: string | number
     date: string
     status: string
     total: number
@@ -66,4 +67,11 @@ export async function ZohoApplyCreditNoteToInvoices(headers: string, creditNoteI
 export async function ZohoAddCreditNoteComment(headers: string, creditNoteId: string, description: string) {
     const response = await ZohoApi(`creditnotes/${encodeURIComponent(creditNoteId)}/comments`, headers, "POST", { description })
     return assertOk(response, "Zoho could not save the return reason")
+}
+
+/** A customer's credit notes (returns), newest first as Zoho lists them. */
+export async function ZohoGetCustomerCreditNotes(headers: string, customerId: string): Promise<ZohoCreditNote[]> {
+    const query = new URLSearchParams({ customer_id: customerId, per_page: "200" }).toString()
+    const response = await ZohoApi(`creditnotes?${query}`, headers)
+    return assertOk(response, "Failed to read the customer's returns").creditnotes ?? []
 }

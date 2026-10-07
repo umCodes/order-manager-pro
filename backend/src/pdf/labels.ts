@@ -21,6 +21,8 @@ export type Labels = {
   colTotal: string;
   /** POS-receipt template's footer line. */
   thankYou: string;
+  /** Invoice totals: credit from returns taken off this invoice. */
+  returned: string;
   /** Return notice (credit note): page title, its own number, and the invoice it returns goods from. */
   returnTitle: string;
   returnNumber: string;
@@ -47,6 +49,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "ንዑስ ድምር:",
     colTotal: "ድምር",
     thankYou: "እናመሰግናለን!",
+    returned: "ተመላሽ:",
     returnTitle: "የተመላሽ እቃ ማሳወቅያ",
     returnNumber: "የተመላሽ ቁጥር:",
     referenceInvoice: "የተመለሰበት ደረሰኝ:",
@@ -69,6 +72,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "Subtotal:",
     colTotal: "Total",
     thankYou: "Thank you!",
+    returned: "Returned:",
     returnTitle: "Return Notice",
     returnNumber: "Return Number:",
     referenceInvoice: "Reference Invoice:",
@@ -91,6 +95,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "Subtotal:",
     colTotal: "Total",
     thankYou: "Thank you!",
+    returned: "Returned:",
     returnTitle: "Return Notice",
     returnNumber: "Return Number:",
     referenceInvoice: "Reference Invoice:",

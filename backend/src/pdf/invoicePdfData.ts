@@ -19,7 +19,9 @@ export function toInvoicePdfData(invoice: ZohoInvoice): InvoicePdfData {
         rate: item.rate,
       })),
     totalPrice: invoice.total,
-    paidAmount: invoice.total - invoice.balance,
+    // Returns' credit is its own line: "Paid" is only what was paid.
+    paidAmount: invoice.total - invoice.balance - (invoice.credits_applied ?? 0),
+    returnedAmount: invoice.credits_applied ?? 0,
     discountAmount: invoice.sub_total + invoice.tax_total + invoice.shipping_charge + invoice.adjustment - invoice.total,
     subTotal: invoice.sub_total,
   };

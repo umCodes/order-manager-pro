@@ -17,7 +17,10 @@ export type InvoicePdfData = {
   date: string;
   lineItems: InvoiceLineItem[];
   totalPrice: number;
+  /** Paid by actual payments (not returns — see returnedAmount). */
   paidAmount: number;
+  /** Credit from returns applied to this invoice; shown as its own line, apart from payments. */
+  returnedAmount?: number;
   discountAmount?: number;
   currency?: string;
   logoPath?: string;

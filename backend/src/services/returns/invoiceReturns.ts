@@ -11,6 +11,7 @@ import {
 } from "../zoho/creditNotes.js"
 import type { LineItem, ZohoInvoice } from "../zoho/types.js"
 import { todayInBusinessTimezone } from "../../utils/businessDate.js"
+import { getAppliedInvoices } from "../../utils/getAppliedInvoices.js"
 
 /**
  * "Return Invoice" in the app = a Zoho credit note against the original
@@ -336,7 +337,8 @@ export async function createInvoiceReturn(
 
 /**
  * Spreads `amount` of a return's credit over the customer's other unpaid
- * invoices, oldest first, so it reduces what they owe instead of sitting as
+ * invoices, oldest first — the same split a customer-level payment uses
+ * (getAppliedInvoices) — so it reduces what they owe instead of sitting as
  * unused credit. Returns what went where.
  */
 async function applyToOtherUnpaidInvoices(
@@ -347,27 +349,16 @@ async function applyToOtherUnpaidInvoices(
     amount: number,
 ): Promise<CreatedReturn["applied_to_other_invoices"]> {
     const invoices: ZohoInvoice[] = (await ZohoGetInvoices(headers, { customer_id: customerId, per_page: 200 })) ?? []
-    const unpaid = invoices
-        .filter((inv) => String(inv.invoice_id) !== originalInvoiceId && !NOT_RETURNABLE_STATUSES.has(inv.status) && (inv.balance ?? 0) > 0)
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-
-    let remaining = amount
-    const allocations: CreatedReturn["applied_to_other_invoices"] = []
-    for (const inv of unpaid) {
-        if (remaining <= 0) break
-        const share = round2(Math.min(inv.balance, remaining))
-        if (share <= 0) continue
-        allocations.push({ invoice_id: String(inv.invoice_id), invoice_number: inv.invoice_number, amount: share })
-        remaining = round2(remaining - share)
-    }
-    if (allocations.length) {
-        await ZohoApplyCreditNoteToInvoices(
-            headers,
-            creditNoteId,
-            allocations.map((a) => ({ invoice_id: a.invoice_id, amount_applied: a.amount })),
-        )
-    }
-    return allocations
+    // The original invoice already got its share in the step before.
+    const others = invoices.filter((inv) => String(inv.invoice_id) !== originalInvoiceId)
+    const allocations = getAppliedInvoices(others, amount)
+    if (allocations.length) await ZohoApplyCreditNoteToInvoices(headers, creditNoteId, allocations)
+    const numbers = new Map(others.map((inv) => [String(inv.invoice_id), inv.invoice_number]))
+    return allocations.map((a) => ({
+        invoice_id: String(a.invoice_id),
+        invoice_number: numbers.get(String(a.invoice_id)) ?? "",
+        amount: a.amount_applied,
+    }))
 }
 
 /**

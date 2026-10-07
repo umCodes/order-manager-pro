@@ -192,13 +192,15 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
 /** A sale's totals block: subtotal, discount, paid, total and balance due. */
 function drawSaleTotals(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, labels: (typeof LABELS)[InvoiceLanguage], currency: string) {
   const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
-  const balanceDue = invoice.totalPrice - invoice.paidAmount;
+  const returned = invoice.returnedAmount ?? 0;
+  const balanceDue = invoice.totalPrice - invoice.paidAmount - returned;
 
   row(doc, labels.subTotal, money(subTotal, currency));
   if (invoice.discountAmount) {
     row(doc, labels.discount, "-" + money(invoice.discountAmount, currency));
   }
   row(doc, labels.paid, money(invoice.paidAmount, currency));
+  if (returned > 0) row(doc, labels.returned, "-" + money(returned, currency));
   subtleHr(doc);
   row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
   doc.moveDown(0.2);

@@ -130,7 +130,8 @@ export function renderReceiptInvoiceDocument(
     // --- Pricing summary: subtotal, discount (red), paid, balance, then a
     // divider and the final total (subtotal minus discount) ---
     const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
-    const balanceDue = invoice.totalPrice - invoice.paidAmount;
+    const returned = invoice.returnedAmount ?? 0;
+    const balanceDue = invoice.totalPrice - invoice.paidAmount - returned;
     const finalTotal = subTotal - (invoice.discountAmount ?? 0);
 
     const drawSummaryRow = (label: string, value: number, options?: { bold?: boolean; color?: string }) => {
@@ -146,6 +147,7 @@ export function renderReceiptInvoiceDocument(
       drawSummaryRow(labels.discount, -invoice.discountAmount, { color: RECEIPT_DISCOUNT_COLOR });
     }
     drawSummaryRow(labels.paid, invoice.paidAmount);
+    if (returned > 0) drawSummaryRow(labels.returned, -returned);
     drawSummaryRow(labels.balanceDue, balanceDue);
 
     doc.moveDown(0.2);

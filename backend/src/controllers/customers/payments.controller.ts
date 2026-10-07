@@ -5,6 +5,7 @@ import {
     ZohoGetCustomerPayments,
     ZohoGetCustomerPaymentById,
 } from '../../services/zoho/customers/index.js';
+import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
 import { notifyCustomerPayment } from '../../services/whatsapp/customers.js';
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
@@ -58,15 +59,39 @@ export async function getCustomerPayments(req: Request, res: Response){
         if (!id) throw new Error("Customer id is required")
 
         const customer = await ZohoGetCustomerById(access_token, id)
-        const payments = await ZohoGetCustomerPayments(access_token, id, customer.contact_name)
+        const [payments, returnCredits] = await Promise.all([
+            ZohoGetCustomerPayments(access_token, id, customer.contact_name),
+            // A failure here shouldn't hide the payments themselves.
+            ZohoGetCustomerCreditNotes(access_token, id).catch((error) => {
+                console.error('Error fetching customer credit notes:', error)
+                return []
+            }),
+        ])
         res.status(200).json({
-            payments: payments.map((p) => ({
-                payment_id: p.payment_id,
-                payment_number: p.payment_number,
-                date: p.date,
-                amount: p.amount,
-                payment_mode: p.payment_mode,
-            })),
+            // Payments and returns' credits in one list, newest first: a return's
+            // credit lowers the balance like a payment does.
+            payments: [
+                ...payments.map((p) => ({
+                    payment_id: p.payment_id,
+                    payment_number: p.payment_number,
+                    date: p.date,
+                    amount: p.amount,
+                    payment_mode: p.payment_mode,
+                    kind: "payment" as const,
+                })),
+                ...returnCredits
+                    .filter((note) => String(note.customer_id ?? id) === id && note.status !== "void" && note.status !== "draft")
+                    // Only the part of the return's credit actually used against invoices.
+                    .map((note) => ({ note, used: Math.round((note.total - (note.balance ?? 0)) * 100) / 100 }))
+                    .filter(({ used }) => used > 0)
+                    .map(({ note, used }) => ({
+                        payment_id: `creditnote-${note.creditnote_id}`,
+                        payment_number: note.creditnote_number,
+                        date: note.date,
+                        amount: used,
+                        kind: "return_credit" as const,
+                    })),
+            ].sort((a, b) => b.date.localeCompare(a.date)),
         })
     } catch (error) {
         console.error('Error fetching customer payments:', error);

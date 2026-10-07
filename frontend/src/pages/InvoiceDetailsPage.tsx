@@ -20,6 +20,7 @@ import { formatInvoiceForCopy } from "../lib/itemSummary";
 import { getContactList, getPrimaryContact } from "../lib/contacts";
 import ResendButton from "../components/ResendButton";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
+import ReturnNotices from "../components/ReturnNotices";
 import PaymentModal from "../components/PaymentModal";
 import ReturnInvoiceFlow from "../components/ReturnInvoiceFlow";
 import type { CreatedInvoiceReturn } from "../lib/api";
@@ -62,6 +63,21 @@ function lineItemsSignature(lineItems: InvoiceDetailLineItem[]): string {
  * Keyed by invoiceId internally so all local state resets cleanly on navigation
  * between invoices instead of being reset manually inside an effect.
  */
+/** Where a new return's credit went: off this invoice, off the customer's other unpaid invoices, or (beyond what they owe) kept as credit. */
+function describeCreatedReturn(created: CreatedInvoiceReturn) {
+  const parts = [
+    ...(created.applied_to_invoice > 0 ? [`${currency(created.applied_to_invoice)} from this invoice`] : []),
+    ...created.applied_to_other_invoices.map((a) => `${currency(a.amount)} from ${a.invoice_number}`),
+  ];
+  let text = `Return ${created.creditnote_number} created · ${currency(created.total)}.`;
+  if (parts.length) text += ` Taken off the customer's balance: ${parts.join(", ")}.`;
+  if (created.left_as_credit > 0)
+    text += parts.length
+      ? ` ${currency(created.left_as_credit)} is more than they owe, so it's kept as credit on their account.`
+      : " They owe nothing right now, so it's kept as credit on their account.";
+  return text;
+}
+
 export default function InvoiceDetailsPage({ invoiceId, onBack, onSelectCustomer }: Props) {
   return (
     <InvoiceDetailsView key={invoiceId} invoiceId={invoiceId} onBack={onBack} onSelectCustomer={onSelectCustomer} />
@@ -648,15 +664,14 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             <div className="notify-banner notify-banner--success">
               <CheckCircle2 className="notify-banner__icon" size={14} />
               <span>
-                Return Invoice {createdReturn.creditnote_number} created · {currency(createdReturn.total)}
-                {createdReturn.applied_to_invoice > 0
-                  ? createdReturn.applied_to_invoice < createdReturn.total
-                    ? `, ${currency(createdReturn.applied_to_invoice)} taken off this invoice, the rest kept as customer credit.`
-                    : ", taken off this invoice's balance."
-                  : " kept as customer credit."}
+                {describeCreatedReturn(createdReturn)}
                 {createdReturn.warnings.map((warning) => ` ${warning}`)}
               </span>
             </div>
+          )}
+
+          {invoice.status !== "draft" && invoice.status !== "void" && (
+            <ReturnNotices invoiceId={invoice.invoice_id} reloadKey={createdReturn?.creditnote_id} />
           )}
 
           {notifyBanner === "success" && (

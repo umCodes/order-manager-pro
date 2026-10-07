@@ -52,7 +52,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
 };
 
-/** How many of the customer's latest payments the Recent Payments section shows. */
+/** How many of the customer's latest payments (and return credits) the Recent Payments section shows. */
 const RECENT_PAYMENTS_SHOWN = 3;
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
@@ -489,22 +489,29 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                     <div className="draft-card__top">
                       <span className="draft-card__invoice-number">{payment.payment_number || "Payment"}</span>
                       <div className="draft-card__top-right">
-                        {payment.payment_mode && (
-                          <span className="draft-card__status">{formatPaymentMode(payment.payment_mode)}</span>
+                        {payment.kind === "return_credit" ? (
+                          <span className="draft-card__status">Return credit</span>
+                        ) : (
+                          payment.payment_mode && (
+                            <span className="draft-card__status">{formatPaymentMode(payment.payment_mode)}</span>
+                          )
                         )}
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => {
-                            setSendingPayment(payment);
-                            setSendPaymentStep("confirm");
-                          }}
-                          disabled={isSendingPayment}
-                          aria-label={`Send payment of ${currency(payment.amount)} on WhatsApp`}
-                          title="Send payment message on WhatsApp"
-                        >
-                          <Send size={14} />
-                        </button>
+                        {/* A return's credit isn't a payment the customer made: no payment message to send. */}
+                        {payment.kind !== "return_credit" && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => {
+                              setSendingPayment(payment);
+                              setSendPaymentStep("confirm");
+                            }}
+                            disabled={isSendingPayment}
+                            aria-label={`Send payment of ${currency(payment.amount)} on WhatsApp`}
+                            title="Send payment message on WhatsApp"
+                          >
+                            <Send size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="draft-card__bottom">

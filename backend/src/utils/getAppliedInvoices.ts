@@ -1,8 +1,13 @@
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 /**
- * Spreads a payment across a customer's open invoices oldest-first, and
- * returns the per-invoice amounts to send to Zoho. Drafts, paid and void
- * invoices are skipped, and any amount left over once they're all covered is
- * simply not applied.
+ * Spreads an amount — a payment, or a return's credit — across a customer's
+ * open invoices oldest-first, and returns the per-invoice amounts to send to
+ * Zoho. Drafts, paid and void invoices are skipped, and any amount left over
+ * once they're all covered is simply not applied. Amounts are rounded to
+ * cents, so floating-point leftovers never reach Zoho.
  */
 export function getAppliedInvoices(invoices: any[], amount: number) {
   const eligible = invoices
@@ -19,10 +24,10 @@ export function getAppliedInvoices(invoices: any[], amount: number) {
 
   for (const inv of eligible) {
     if (remaining <= 0) break;
-    const amountApplied = Math.min(inv.balance, remaining);
+    const amountApplied = round2(Math.min(inv.balance, remaining));
     if (amountApplied <= 0) continue;
     applied.push({ invoice_id: inv.invoice_id, amount_applied: amountApplied });
-    remaining -= amountApplied;
+    remaining = round2(remaining - amountApplied);
   }
 
   return applied;

@@ -130,6 +130,11 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   doc.y = MARGIN + LOGO_SIZE + 4;
 
   doc.font("Body-Bold").fontSize(13).text(shopNameFor(language), { align: "center" });
+  const returnNotice = invoice.returnNotice;
+  if (returnNotice) {
+    doc.moveDown(0.2);
+    doc.font("Body-Bold").fontSize(11).text(labels.returnTitle, { align: "center" });
+  }
   doc.moveDown(0.9);
 
   doc.fontSize(8.5);
@@ -139,7 +144,12 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   hr(doc, 0.3, 0.15);
 
   row(doc, labels.date, invoice.date, { valueBold: true });
-  row(doc, labels.invoiceNumber, invoice.invoiceNumber, { valueBold: true });
+  if (returnNotice) {
+    row(doc, labels.returnNumber, invoice.invoiceNumber, { valueBold: true });
+    row(doc, labels.referenceInvoice, returnNotice.referenceInvoiceNumber, { valueBold: true });
+  } else {
+    row(doc, labels.invoiceNumber, invoice.invoiceNumber, { valueBold: true });
+  }
 
   hr(doc, 0.7, 0.15);
   doc.moveDown(0.15);
@@ -161,24 +171,40 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
 
   hr(doc);
 
-  const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
-  const balanceDue = invoice.totalPrice - invoice.paidAmount;
-
-  row(doc, labels.subTotal, money(subTotal, currency));
-  if (invoice.discountAmount) {
-    row(doc, labels.discount, "-" + money(invoice.discountAmount, currency));
+  if (returnNotice) {
+    // A return states what's credited back and what the customer owes after it — no subtotal, discount or paid.
+    row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
+    if (returnNotice.balanceDue !== undefined) {
+      doc.moveDown(0.2);
+      row(doc, labels.balanceDue, money(returnNotice.balanceDue, currency), { bold: true, size: 10.5 });
+    }
+  } else {
+    drawSaleTotals(doc, invoice, labels, currency);
   }
-  row(doc, labels.paid, money(invoice.paidAmount, currency));
-  subtleHr(doc);
-  row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
-  doc.moveDown(0.2);
-  row(doc, labels.balanceDue, money(balanceDue, currency), { bold: true, size: 10.5 });
 
   doc.moveDown(0.35);
   hr(doc, 0.7, 0.2);
 
   doc.moveDown(0.7);
   doc.font("Body-Bold").fontSize(9).text(labels.thankYou, { align: "center" });
+}
+
+/** A sale's totals block: subtotal, discount, paid, total and balance due. */
+function drawSaleTotals(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, labels: (typeof LABELS)[InvoiceLanguage], currency: string) {
+  const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
+  const returned = invoice.returnedAmount ?? 0;
+  const balanceDue = invoice.totalPrice - invoice.paidAmount - returned;
+
+  row(doc, labels.subTotal, money(subTotal, currency));
+  if (invoice.discountAmount) {
+    row(doc, labels.discount, "-" + money(invoice.discountAmount, currency));
+  }
+  row(doc, labels.paid, money(invoice.paidAmount, currency));
+  if (returned > 0) row(doc, labels.returned, "-" + money(returned, currency));
+  subtleHr(doc);
+  row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
+  doc.moveDown(0.2);
+  row(doc, labels.balanceDue, money(balanceDue, currency), { bold: true, size: 10.5 });
 }
 
 /** Discards everything written to it — used only to measure a page's needed height, with no scratch file left behind. */

@@ -59,3 +59,13 @@ export function createInvoicePdfBufferForLanguage(
 ): Promise<Buffer> {
   return createBuffer(invoice, language);
 }
+
+/**
+ * Return notice (a Zoho credit note) in the given language: the sales
+ * invoice's layout, titled "Return Notice", with the return and reference
+ * invoice numbers and a Total only. Amharic is two pages (Amharic, then
+ * English), like the invoice; Arabic uses English labels, like the invoice.
+ */
+export function createReturnNoticePdfBuffer(notice: InvoicePdfData, language: InvoiceLanguage): Promise<Buffer> {
+  return createBuffer(notice, language);
+}

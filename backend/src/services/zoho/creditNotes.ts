@@ -21,6 +21,7 @@ export type ZohoCreditNoteLineItem = {
 export type ZohoCreditNote = {
     creditnote_id: string | number
     creditnote_number: string
+    customer_id?: string | number
     date: string
     status: string
     total: number
@@ -53,9 +54,12 @@ export async function ZohoGetCreditNote(headers: string, creditNoteId: string): 
 
 /** Applies `amount` of a credit note's credit to an invoice (reducing what's owed on it). */
 export async function ZohoApplyCreditNoteToInvoice(headers: string, creditNoteId: string, invoiceId: string, amount: number) {
-    const response = await ZohoApi(`creditnotes/${encodeURIComponent(creditNoteId)}/invoices`, headers, "POST", {
-        invoices: [{ invoice_id: invoiceId, amount_applied: amount }],
-    })
+    return ZohoApplyCreditNoteToInvoices(headers, creditNoteId, [{ invoice_id: invoiceId, amount_applied: amount }])
+}
+
+/** Applies a credit note's credit to several invoices in one go. */
+export async function ZohoApplyCreditNoteToInvoices(headers: string, creditNoteId: string, invoices: { invoice_id: string; amount_applied: number }[]) {
+    const response = await ZohoApi(`creditnotes/${encodeURIComponent(creditNoteId)}/invoices`, headers, "POST", { invoices })
     return assertOk(response, "Zoho could not apply the return's credit to the invoice")
 }
 
@@ -63,4 +67,11 @@ export async function ZohoApplyCreditNoteToInvoice(headers: string, creditNoteId
 export async function ZohoAddCreditNoteComment(headers: string, creditNoteId: string, description: string) {
     const response = await ZohoApi(`creditnotes/${encodeURIComponent(creditNoteId)}/comments`, headers, "POST", { description })
     return assertOk(response, "Zoho could not save the return reason")
+}
+
+/** A customer's credit notes (returns), newest first as Zoho lists them. */
+export async function ZohoGetCustomerCreditNotes(headers: string, customerId: string): Promise<ZohoCreditNote[]> {
+    const query = new URLSearchParams({ customer_id: customerId, per_page: "200" }).toString()
+    const response = await ZohoApi(`creditnotes?${query}`, headers)
+    return assertOk(response, "Failed to read the customer's returns").creditnotes ?? []
 }

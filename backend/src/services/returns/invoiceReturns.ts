@@ -1,8 +1,9 @@
 import { redisClient } from "../../config/redis.js"
-import { ZohoGetInvoiceById } from "../zoho/invoices/index.js"
+import { ZohoGetInvoiceById, ZohoGetInvoices } from "../zoho/invoices/index.js"
 import {
     ZohoAddCreditNoteComment,
     ZohoApplyCreditNoteToInvoice,
+    ZohoApplyCreditNoteToInvoices,
     ZohoCreateCreditNote,
     ZohoGetCreditNote,
     type ZohoCreditNote,
@@ -177,6 +178,10 @@ export type CreatedReturn = {
     total: number
     /** Credit applied to the original invoice's unpaid balance (0 if it was already paid). */
     applied_to_invoice: number
+    /** The rest, applied to the customer's other unpaid invoices, oldest first. */
+    applied_to_other_invoices: { invoice_id: string; invoice_number: string; amount: number }[]
+    /** Whatever's left after that (the customer owes nothing more): kept as credit on their account. */
+    left_as_credit: number
     /** Set when the return was created but a follow-up step (applying credit, saving the reason) failed. */
     warnings: string[]
 }
@@ -199,9 +204,11 @@ export function parseReturnItems(body: unknown): ReturnRequestItem[] {
 /**
  * Creates a return (credit note) for some of an invoice's items. Quantities
  * are checked again here against what's still returnable — under a per-invoice
- * lock, so two returns at once can't both pass the check. When the original
- * invoice still has an unpaid balance, the return's credit is applied to it;
- * otherwise it stays as credit on the customer's account.
+ * lock, so two returns at once can't both pass the check. The return's
+ * credit then comes straight off what the customer owes: first the original
+ * invoice's unpaid balance, then their other unpaid invoices, oldest first.
+ * Only what's left after all of that (they owe nothing more) stays as
+ * credit on their account.
  */
 export async function createInvoiceReturn(
     headers: string,
@@ -255,20 +262,35 @@ export async function createInvoiceReturn(
         const warnings: string[] = []
 
         let appliedToInvoice = 0
+        let creditLeft = 0
         try {
             // Re-read both: Zoho may already have applied the credit itself.
             const [freshInvoice, freshNote] = await Promise.all([
                 ZohoGetInvoiceById(headers, invoiceId) as Promise<ZohoInvoice>,
                 ZohoGetCreditNote(headers, creditNoteId),
             ])
-            const amount = round2(Math.min(freshInvoice.balance ?? 0, freshNote?.balance ?? 0))
+            creditLeft = round2(freshNote?.balance ?? 0)
+            const amount = round2(Math.min(freshInvoice.balance ?? 0, creditLeft))
             if (amount > 0) {
                 await ZohoApplyCreditNoteToInvoice(headers, creditNoteId, invoiceId, amount)
                 appliedToInvoice = amount
+                creditLeft = round2(creditLeft - amount)
             }
         } catch (error) {
             console.error(`Return ${creditNote.creditnote_number}: applying credit to invoice ${invoiceId} failed:`, error)
             warnings.push("The return was saved, but its credit couldn't be applied to the invoice — apply it in Zoho.")
+            creditLeft = 0 // unknown: don't spread it over other invoices either
+        }
+
+        let appliedToOthers: CreatedReturn["applied_to_other_invoices"] = []
+        if (creditLeft > 0) {
+            try {
+                appliedToOthers = await applyToOtherUnpaidInvoices(headers, creditNoteId, String(invoice.customer_id), invoiceId, creditLeft)
+                creditLeft = round2(creditLeft - appliedToOthers.reduce((sum, a) => sum + a.amount, 0))
+            } catch (error) {
+                console.error(`Return ${creditNote.creditnote_number}: applying credit to other invoices failed:`, error)
+                warnings.push("The return was saved, but its credit couldn't be taken off the customer's other invoices — apply it in Zoho.")
+            }
         }
 
         const trimmedReason = reason?.trim()
@@ -286,9 +308,78 @@ export async function createInvoiceReturn(
             creditnote_number: creditNote.creditnote_number,
             total: creditNote.total,
             applied_to_invoice: appliedToInvoice,
+            applied_to_other_invoices: appliedToOthers,
+            left_as_credit: creditLeft,
             warnings,
         }
     } finally {
         await redisClient.del(lockKey(invoiceId))
     }
+}
+
+/**
+ * Spreads `amount` of a return's credit over the customer's other unpaid
+ * invoices, oldest first, so it reduces what they owe instead of sitting as
+ * unused credit. Returns what went where.
+ */
+async function applyToOtherUnpaidInvoices(
+    headers: string,
+    creditNoteId: string,
+    customerId: string,
+    originalInvoiceId: string,
+    amount: number,
+): Promise<CreatedReturn["applied_to_other_invoices"]> {
+    const invoices: ZohoInvoice[] = (await ZohoGetInvoices(headers, { customer_id: customerId, per_page: 200 })) ?? []
+    const unpaid = invoices
+        .filter((inv) => String(inv.invoice_id) !== originalInvoiceId && !NOT_RETURNABLE_STATUSES.has(inv.status) && (inv.balance ?? 0) > 0)
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+
+    let remaining = amount
+    const allocations: CreatedReturn["applied_to_other_invoices"] = []
+    for (const inv of unpaid) {
+        if (remaining <= 0) break
+        const share = round2(Math.min(inv.balance, remaining))
+        if (share <= 0) continue
+        allocations.push({ invoice_id: String(inv.invoice_id), invoice_number: inv.invoice_number, amount: share })
+        remaining = round2(remaining - share)
+    }
+    if (allocations.length) {
+        await ZohoApplyCreditNoteToInvoices(
+            headers,
+            creditNoteId,
+            allocations.map((a) => ({ invoice_id: a.invoice_id, amount_applied: a.amount })),
+        )
+    }
+    return allocations
+}
+
+/**
+ * A return made from this invoice, with the invoice itself — for its return
+ * notice PDF. Only returns this app recorded for the invoice can be read,
+ * so a credit note id from elsewhere can't be fetched through it.
+ */
+export async function getInvoiceReturn(headers: string, invoiceId: string, creditNoteId: string) {
+    if (!(await redisClient.sIsMember(returnsKey(invoiceId), creditNoteId))) throw new Error("Return not found for this invoice")
+    const [invoice, creditNote] = await Promise.all([
+        ZohoGetInvoiceById(headers, invoiceId) as Promise<ZohoInvoice>,
+        ZohoGetCreditNote(headers, creditNoteId),
+    ])
+    if (!creditNote) throw new Error("This return no longer exists in Zoho")
+    return { invoice, creditNote }
+}
+
+/**
+ * Just the returns made from an invoice (for its page's "Returns" list).
+ * Reads Zoho only when the app has recorded any, so viewing an invoice with
+ * no returns costs no Zoho calls.
+ */
+export async function listInvoiceReturns(headers: string, invoiceId: string): Promise<PastReturn[]> {
+    if ((await redisClient.sCard(returnsKey(invoiceId))) === 0) return []
+    return (await loadReturns(headers, invoiceId)).map((note) => ({
+        creditnote_id: String(note.creditnote_id),
+        creditnote_number: note.creditnote_number,
+        date: note.date,
+        status: note.status,
+        total: note.total,
+    }))
 }

@@ -21,6 +21,10 @@ export type Labels = {
   colTotal: string;
   /** POS-receipt template's footer line. */
   thankYou: string;
+  /** Return notice (credit note): page title, its own number, and the invoice it returns goods from. */
+  returnTitle: string;
+  returnNumber: string;
+  referenceInvoice: string;
 };
 
 /** Arabic invoices deliberately use English labels, per business preference. */
@@ -43,6 +47,9 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "ንዑስ ድምር:",
     colTotal: "ድምር",
     thankYou: "እናመሰግናለን!",
+    returnTitle: "የተመላሽ እቃ ማስታወቂያ",
+    returnNumber: "የተመላሽ ቁጥር:",
+    referenceInvoice: "የተመለሰበት ደረሰኝ:",
   },
   ar: {
     title: "Invoice",
@@ -62,6 +69,9 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "Subtotal:",
     colTotal: "Total",
     thankYou: "Thank you!",
+    returnTitle: "Return Notice",
+    returnNumber: "Return Number:",
+    referenceInvoice: "Reference Invoice:",
   },
   en: {
     title: "Invoice",
@@ -81,6 +91,9 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     subTotal: "Subtotal:",
     colTotal: "Total",
     thankYou: "Thank you!",
+    returnTitle: "Return Notice",
+    returnNumber: "Return Number:",
+    referenceInvoice: "Reference Invoice:",
   },
 };
 

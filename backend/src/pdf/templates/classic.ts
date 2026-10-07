@@ -130,6 +130,11 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   doc.y = MARGIN + LOGO_SIZE + 4;
 
   doc.font("Body-Bold").fontSize(13).text(shopNameFor(language), { align: "center" });
+  const returnNotice = invoice.returnNotice;
+  if (returnNotice) {
+    doc.moveDown(0.2);
+    doc.font("Body-Bold").fontSize(11).text(labels.returnTitle, { align: "center" });
+  }
   doc.moveDown(0.9);
 
   doc.fontSize(8.5);
@@ -139,7 +144,12 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   hr(doc, 0.3, 0.15);
 
   row(doc, labels.date, invoice.date, { valueBold: true });
-  row(doc, labels.invoiceNumber, invoice.invoiceNumber, { valueBold: true });
+  if (returnNotice) {
+    row(doc, labels.returnNumber, invoice.invoiceNumber, { valueBold: true });
+    row(doc, labels.referenceInvoice, returnNotice.referenceInvoiceNumber, { valueBold: true });
+  } else {
+    row(doc, labels.invoiceNumber, invoice.invoiceNumber, { valueBold: true });
+  }
 
   hr(doc, 0.7, 0.15);
   doc.moveDown(0.15);
@@ -161,6 +171,22 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
 
   hr(doc);
 
+  if (returnNotice) {
+    // A return only states what's credited back: no subtotal, discount, paid or balance.
+    row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
+  } else {
+    drawSaleTotals(doc, invoice, labels, currency);
+  }
+
+  doc.moveDown(0.35);
+  hr(doc, 0.7, 0.2);
+
+  doc.moveDown(0.7);
+  doc.font("Body-Bold").fontSize(9).text(labels.thankYou, { align: "center" });
+}
+
+/** A sale's totals block: subtotal, discount, paid, total and balance due. */
+function drawSaleTotals(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, labels: (typeof LABELS)[InvoiceLanguage], currency: string) {
   const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
   const balanceDue = invoice.totalPrice - invoice.paidAmount;
 
@@ -173,12 +199,6 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   row(doc, labels.total, money(invoice.totalPrice, currency), { bold: true, size: 10.5 });
   doc.moveDown(0.2);
   row(doc, labels.balanceDue, money(balanceDue, currency), { bold: true, size: 10.5 });
-
-  doc.moveDown(0.35);
-  hr(doc, 0.7, 0.2);
-
-  doc.moveDown(0.7);
-  doc.font("Body-Bold").fontSize(9).text(labels.thankYou, { align: "center" });
 }
 
 /** Discards everything written to it — used only to measure a page's needed height, with no scratch file left behind. */

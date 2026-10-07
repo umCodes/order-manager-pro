@@ -23,4 +23,11 @@ export type InvoicePdfData = {
   logoPath?: string;
   /** Pre-discount total. Required by the receipt template's Subtotal row; optional elsewhere. */
   subTotal?: number;
+  /**
+   * Set for a return (Zoho credit note) instead of a sale: the page is
+   * titled "Return Notice", shows the return's number and the invoice it's
+   * from, and only a Total (no subtotal, discount, paid or balance).
+   * `invoiceNumber` / `date` are then the return's own.
+   */
+  returnNotice?: { referenceInvoiceNumber: string };
 };

@@ -1151,9 +1151,29 @@ export type CreatedInvoiceReturn = {
   creditnote_id: string;
   creditnote_number: string;
   total: number;
+  /** Credit taken off this invoice's unpaid balance. */
   applied_to_invoice: number;
+  /** The rest, taken off the customer's other unpaid invoices (oldest first). */
+  applied_to_other_invoices: { invoice_id: string; invoice_number: string; amount: number }[];
+  /** Anything beyond what the customer owes, kept as credit on their account. */
+  left_as_credit: number;
   warnings: string[];
 };
+
+/** The returns made from an invoice (cheap: no Zoho calls when there are none). */
+export async function fetchInvoiceReturnList(invoiceId: string): Promise<InvoiceReturnSummary["returns"]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/returns/list`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load returns (${response.status})`);
+  }
+  return (await response.json()).returns;
+}
+
+/** URL for a return's "Return Notice" PDF. Append `?download=1` to have it served as an attachment. */
+export function returnNoticePdfUrl(invoiceId: string, creditNoteId: string): string {
+  return `${API_BASE_URL}/api/invoices/${invoiceId}/returns/${creditNoteId}/pdf`;
+}
 
 export async function fetchInvoiceReturns(invoiceId: string): Promise<InvoiceReturnSummary> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/returns`);

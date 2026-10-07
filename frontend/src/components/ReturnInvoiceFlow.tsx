@@ -6,7 +6,7 @@ import type { Cart, CatalogItem } from "../types";
 
 type Props = {
   invoiceId: string;
-  /** The invoice's unpaid balance: a return's credit goes there first. */
+  /** The invoice's unpaid balance: a return's credit comes off it first, then off the customer's other unpaid invoices. */
   invoiceBalance: number;
   onClose: () => void;
   onCreated: (created: CreatedInvoiceReturn) => void;
@@ -152,11 +152,9 @@ export default function ReturnInvoiceFlow({ invoiceId, invoiceBalance, onClose, 
             </div>
 
             <div className="return-review__note">
-              {invoiceBalance > 0
-                ? total > invoiceBalance
-                  ? `${currency(invoiceBalance)} comes off this invoice's balance; the rest stays as credit for ${summary.customer_name}.`
-                  : "This comes off the invoice's unpaid balance."
-                : `The invoice is paid, so this stays as credit for ${summary.customer_name}.`}
+              {invoiceBalance > 0 && total <= invoiceBalance
+                ? "This comes off the invoice's unpaid balance."
+                : `${invoiceBalance > 0 ? `${currency(invoiceBalance)} comes off this invoice; the rest` : "This"} comes off ${summary.customer_name}'s other unpaid invoices, oldest first. Only anything beyond what they owe stays as credit.`}
               {summary.returns.length > 0 &&
                 ` Already returned: ${summary.returns.map((r) => `${r.creditnote_number} (${currency(r.total)})`).join(", ")}.`}
             </div>

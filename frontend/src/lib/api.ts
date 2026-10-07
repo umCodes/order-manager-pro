@@ -1004,6 +1004,67 @@ export async function createWhatsAppTemplate(template: NewWhatsAppTemplate): Pro
   return response.json();
 }
 
+/** What fills one template variable: one of the action's values, or fixed text. */
+export type ActionValueSource = { field: string } | { text: string };
+
+export type ActionTemplateMapping = {
+  header?: Record<string, ActionValueSource>;
+  /** A document header: which of the action's files goes in it. */
+  header_media?: string;
+  body?: Record<string, ActionValueSource>;
+  /** URL button variables, by button index. */
+  buttons?: Record<string, ActionValueSource>;
+};
+
+export type ActionTemplateAssignment = {
+  name: string;
+  language: string;
+  mapping: ActionTemplateMapping;
+  /** "env": the old server env var, used until one is assigned in Settings. */
+  source: "settings" | "env";
+};
+
+/** Settings → WhatsApp templates: the actions that send a template, and each customer language's template + mapping. */
+export type ActionTemplateSettings = {
+  languages: string[];
+  actions: {
+    key: string;
+    label: string;
+    description: string;
+    fields: { key: string; label: string; example: string }[];
+    media: { key: string; label: string; format: string }[];
+    assignments: Record<string, ActionTemplateAssignment | null>;
+  }[];
+};
+
+async function actionTemplatesRequest(path: string, init?: RequestInit): Promise<ActionTemplateSettings> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/action-templates${path}`, init);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
+  return body;
+}
+
+export function fetchActionTemplates() {
+  return actionTemplatesRequest("");
+}
+
+/** Assigns a template, with what fills each of its variables, to an action for customers of one language. */
+export function assignActionTemplate(
+  action: string,
+  customerLanguage: string,
+  assignment: { name: string; language: string; mapping: ActionTemplateMapping },
+) {
+  return actionTemplatesRequest(`/${action}/${customerLanguage}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(assignment),
+  });
+}
+
+export function clearActionTemplate(action: string, customerLanguage: string) {
+  return actionTemplatesRequest(`/${action}/${customerLanguage}`, { method: "DELETE" });
+}
+
 /** Posts a file's raw bytes to a backend upload endpoint (same as sendWhatsAppMedia does). */
 async function uploadRaw(url: string, file: File) {
   const response = await apiFetch(url, {

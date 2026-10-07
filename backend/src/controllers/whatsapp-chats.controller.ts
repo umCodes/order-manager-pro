@@ -16,6 +16,13 @@ import {
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { buildTemplateSend, createTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import {
+    assignActionTemplate,
+    clearActionTemplate,
+    describeActionTemplates,
+    isActionKey,
+    isPreferredLanguage,
+} from '../services/whatsapp/actionTemplates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -495,6 +502,47 @@ export async function uploadWhatsAppTemplateMedia(req: Request, res: Response) {
         res.status(201).json({ id, filename })
     } catch (error) {
         console.error('Error uploading WhatsApp template file:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** Settings: the actions that send a WhatsApp template, their values and files, and each language's template + mapping. */
+export async function getWhatsAppActionTemplates(req: Request, res: Response) {
+    try {
+        res.status(200).json(await describeActionTemplates())
+    } catch (error) {
+        console.error('Error loading WhatsApp action templates:', error);
+        res.status(500).json({ error: describeSendError(error) });
+    }
+}
+
+function readActionSlot(req: Request) {
+    const action = String(req.params.action ?? "")
+    const language = String(req.params.language ?? "")
+    if (!isActionKey(action) || !isPreferredLanguage(language)) throw new Error("Unknown action or language")
+    return { action, language }
+}
+
+/** Assigns a template ({ name, language, mapping }) to an action for customers of one language. */
+export async function setWhatsAppActionTemplate(req: Request, res: Response) {
+    try {
+        const { action, language } = readActionSlot(req)
+        await assignActionTemplate(action, language, req.body)
+        res.status(200).json(await describeActionTemplates())
+    } catch (error) {
+        console.error('Error assigning WhatsApp action template:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** Removes an action's template for one language (it falls back to the env var, if any). */
+export async function clearWhatsAppActionTemplate(req: Request, res: Response) {
+    try {
+        const { action, language } = readActionSlot(req)
+        await clearActionTemplate(action, language)
+        res.status(200).json(await describeActionTemplates())
+    } catch (error) {
+        console.error('Error clearing WhatsApp action template:', error);
         res.status(400).json({ error: describeSendError(error) });
     }
 }

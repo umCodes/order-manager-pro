@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Settings, Trash2 } from "lucide-react";
 import {
   deleteTelegramMessage,
   editTelegramMessage,
@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import ConfirmModal from "../components/ConfirmModal";
 import WhatsAppInbox from "../components/WhatsAppInbox";
+import SettingsPage from "./SettingsPage";
 import { getUnread, useUnread } from "../lib/unread";
 import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
@@ -29,6 +30,7 @@ export default function MessagesPage() {
   // Straight to WhatsApp when there's something unread there.
   const [channel, setChannel] = useState<Channel>(() => (getUnread().total > 0 ? "whatsapp" : "telegram"));
   const unread = useUnread();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
   const [text, setText] = useState("");
@@ -123,9 +125,16 @@ export default function MessagesPage() {
       .finally(() => setIsDeleting(false));
   }
 
+  if (isSettingsOpen) return <SettingsPage onBack={() => setIsSettingsOpen(false)} />;
+
   return (
     <div>
-      <h1 className="page-title">Messages</h1>
+      <div className="page-header">
+        <h1 className="page-title">Messages</h1>
+        <button type="button" className="icon-btn" onClick={() => setIsSettingsOpen(true)} aria-label="Settings" title="Settings">
+          <Settings size={14} />
+        </button>
+      </div>
 
       <div className="mode-toggle">
         <button

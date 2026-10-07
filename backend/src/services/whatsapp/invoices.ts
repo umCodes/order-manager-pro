@@ -35,10 +35,16 @@ export async function notifyPaymentRecorded(
         const preferredLanguage = getContactPreferredLanguage(contact)
         console.log(`[WhatsApp] notifyPaymentRecorded: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         const remainingBalance = String(contact.outstanding_receivable_amount)
+        const contactName = String(contact.contact_name || contact.company_name || "")
         let allSucceeded = true
         for (const phone of phones) {
             try {
-                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, remainingBalance)
+                await sendPaymentNotification(phone, preferredLanguage, {
+                    customer_name: contactName,
+                    payment_amount: String(paymentAmount),
+                    payment_date: paymentDate,
+                    remaining_balance: remainingBalance,
+                })
             } catch (error) {
                 console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false
@@ -80,17 +86,17 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         let allSucceeded = true
         for (const phone of phones) {
             try {
-                await sendBalanceNotification(
-                    phone,
-                    preferredLanguage,
-                    pdf,
-                    `${invoice.invoice_number}.pdf`,
-                    invoice.invoice_number,
-                    String(invoice.total),
-                    String(paidAmountFromInvoice),
-                    String(balanceBefore),
-                    String(balanceAfter),
-                )
+                await sendBalanceNotification(phone, preferredLanguage, pdf, `${invoice.invoice_number}.pdf`, {
+                    customer_name: String(contact.contact_name || contact.company_name || invoice.customer_name || ""),
+                    invoice_number: invoice.invoice_number,
+                    invoice_date: invoice.date ?? "",
+                    due_date: invoice.due_date ?? "",
+                    invoice_amount: String(invoice.total),
+                    paid_amount: String(paidAmountFromInvoice),
+                    invoice_balance: String(invoice.balance),
+                    balance_before: String(balanceBefore),
+                    balance_after: String(balanceAfter),
+                })
             } catch (error) {
                 console.error(`Failed to send WhatsApp balance notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false

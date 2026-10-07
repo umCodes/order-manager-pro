@@ -1,64 +1,18 @@
-import { ENV } from "../../constants/env.js"
-import { uploadWhatsAppMedia } from "./client.js"
-import { sendWhatsAppTemplate } from "./messages.js"
+import { sendActionTemplate } from "./actionTemplates.js"
 import type { PreferredLanguage } from "../zoho/customers/index.js"
 
-const PAYMENT_NOTIFICATION_TEMPLATES: Record<PreferredLanguage, string | undefined> = {
-    am: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,
-    ar: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AR,
-    en: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_EN,
-}
-
-const BALANCE_NOTIFICATION_TEMPLATES: Record<PreferredLanguage, string | undefined> = {
-    am: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AM,
-    ar: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AR,
-    en: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_EN,
-}
-
-/** WhatsApp template language code: Amharic templates are registered under "en" in Meta Business Manager, not "am". */
-const WA_LANGUAGE_CODES: Record<PreferredLanguage, string> = {
-    am: "en",
-    ar: "ar",
-    en: "en",
-}
-
 /**
- * "Payment Confirmation" template: sent when a payment is made.
- * Body params: {{1}} current payment amount, {{2}} date, {{3}} the customer's
- * total remaining balance across all their invoices.
- * The same template exists per-language in Meta Business Manager; which one
- * is used depends on the customer's preferred_language.
+ * "Payment recorded": sent when a payment is made. Which template, and which
+ * of these values fills which of its variables, is set per customer
+ * preferred_language in Settings (see actionTemplates.ts).
  */
 export async function sendPaymentNotification(
     to: string,
     preferredLanguage: PreferredLanguage,
-    paymentAmount: string,
-    date: string,
-    remainingBalance: string,
+    values: { customer_name: string; payment_amount: string; payment_date: string; remaining_balance: string },
 ) {
     try {
-        const templateName = PAYMENT_NOTIFICATION_TEMPLATES[preferredLanguage]
-        console.log(
-            `[WhatsApp] payment notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}"`,
-        )
-        if (!templateName) throw new Error(`No payment notification template configured for language "${preferredLanguage}"`)
-
-        return await sendWhatsAppTemplate(
-            to,
-            templateName,
-            [
-                {
-                    type: "body",
-                    parameters: [
-                        { type: "text", text: paymentAmount },
-                        { type: "text", text: date },
-                        { type: "text", text: remainingBalance },
-                    ],
-                },
-            ],
-            WA_LANGUAGE_CODES[preferredLanguage],
-            `Payment confirmation: ${paymentAmount} received on ${date}. Remaining balance: ${remainingBalance}`,
-        )
+        return await sendActionTemplate("payment_recorded", to, preferredLanguage, values)
     } catch (error) {
         console.error("Error sending payment notification:", error)
         throw error
@@ -66,56 +20,29 @@ export async function sendPaymentNotification(
 }
 
 /**
- * "Balance Notification" template: sent when an invoice is marked as sent.
- * Header: the invoice PDF. Body params: {{1}} invoice number, {{2}} invoice
- * amount, {{3}} amount paid from the invoice, {{4}} balance before this
- * invoice, {{5}} balance after this invoice.
+ * "Invoice sent": sent with the invoice PDF when an invoice is marked as
+ * sent. Template and value mapping as above.
  */
 export async function sendBalanceNotification(
     to: string,
     preferredLanguage: PreferredLanguage,
     pdf: Buffer,
     pdfFilename: string,
-    invoiceNumber: string,
-    invoiceAmount: string,
-    paidAmountFromInvoice: string,
-    balanceBeforeInvoice: string,
-    balanceAfterInvoice: string,
+    values: {
+        customer_name: string
+        invoice_number: string
+        invoice_date: string
+        due_date: string
+        invoice_amount: string
+        paid_amount: string
+        invoice_balance: string
+        balance_before: string
+        balance_after: string
+    },
 ) {
     try {
-        const templateName = BALANCE_NOTIFICATION_TEMPLATES[preferredLanguage]
-        console.log(
-            `[WhatsApp] balance notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}", pdfFilename="${pdfFilename}", pdfBytes=${pdf.length}`,
-        )
-        if (!templateName) throw new Error(`No balance notification template configured for language "${preferredLanguage}"`)
-
-        const mediaId = await uploadWhatsAppMedia(pdf, pdfFilename, "application/pdf")
-        console.log(`[WhatsApp] balance notification: uploaded PDF media id="${mediaId}"`)
-
-        return await sendWhatsAppTemplate(
-            to,
-            templateName,
-            [
-                {
-                    type: "header",
-                    parameters: [
-                        { type: "document", document: { id: mediaId, filename: pdfFilename } },
-                    ],
-                },
-                {
-                    type: "body",
-                    parameters: [
-                        { type: "text", text: invoiceNumber },
-                        { type: "text", text: invoiceAmount },
-                        { type: "text", text: paidAmountFromInvoice },
-                        { type: "text", text: balanceBeforeInvoice },
-                        { type: "text", text: balanceAfterInvoice },
-                    ],
-                },
-            ],
-            WA_LANGUAGE_CODES[preferredLanguage],
-            `Invoice ${invoiceNumber} (${pdfFilename}): amount ${invoiceAmount}, paid ${paidAmountFromInvoice}. Balance ${balanceBeforeInvoice} → ${balanceAfterInvoice}`,
-        )
+        console.log(`[WhatsApp] invoice_sent: pdfFilename="${pdfFilename}", pdfBytes=${pdf.length}`)
+        return await sendActionTemplate("invoice_sent", to, preferredLanguage, values, { invoice_pdf: { buffer: pdf, filename: pdfFilename } })
     } catch (error) {
         console.error("Error sending balance notification:", error)
         throw error

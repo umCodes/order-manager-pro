@@ -2902,3 +2902,83 @@ div.wa-pick-list__row {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Settings page: sections, and action cards (one row per customer language). */
+.settings-section__title {
+  margin: 4px 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.wa-notification {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+}
+
+.wa-notification__title {
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin-bottom: 2px;
+}
+
+.settings-slots {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.settings-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  border-top: 1px solid var(--color-gray-100);
+  background: none;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-slot__language {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.settings-slot__value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-slot__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--color-gray-900);
+}
+
+.settings-slot__unset {
+  font-size: 14px;
+  color: var(--color-red-600);
+}
+
+.settings-slot__chevron {
+  flex-shrink: 0;
+  color: var(--color-gray-400);
+}
+
+.settings-slot__badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

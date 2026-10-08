@@ -96,10 +96,7 @@ export default function SaveWhatsAppContactModal({
             />
           </div>
         ) : (
-          <div className="field">
-            <label className="field-label">Customer</label>
-            <CustomerCombobox contacts={contacts} selectedContactId={customerId} onSelect={(c) => setCustomerId(c.contact_id)} />
-          </div>
+          <CustomerCombobox contacts={contacts} selectedContactId={customerId} onSelect={(c) => setCustomerId(c.contact_id)} />
         )}
         {error && <div className="form-error">{error}</div>}
         <div className="invoice-details__actions" style={{ marginTop: 14 }}>

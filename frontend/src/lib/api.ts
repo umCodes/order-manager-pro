@@ -831,6 +831,10 @@ export type WhatsAppChat = {
   /** "whatsapp": not a Zoho customer — `name` is the one they set on their WhatsApp profile. */
   name_source?: "whatsapp";
   customer_id?: string;
+  /** The customer's name when `name` is a person under that customer — shown second, after the person's name. */
+  customer_name?: string;
+  /** Saved in the app's contact list: given a name, or linked to a customer. */
+  saved?: "name" | "customer";
   /** From the customer's address, for filtering the list by city / district. */
   city?: string;
   district?: string;
@@ -872,6 +876,47 @@ export async function fetchWhatsAppChats(): Promise<WhatsAppChat[]> {
 
   const data = await response.json();
   return data.chats;
+}
+
+/**
+ * Saves a number (one that isn't a customer's own phone) to the app's
+ * contact list: `{ name }` names it, `{ customer_id }` links it to a
+ * customer. Resolves to its updated chat-list entry.
+ */
+export async function saveWhatsAppContact(
+  phone: string,
+  contact: { name: string } | { customer_id: string; name?: string },
+): Promise<WhatsAppChat> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/contact`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(contact),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to save contact (${response.status})`);
+  return body.chat;
+}
+
+/** Whether a number is already one of this customer's contact persons, and under what name. */
+export async function lookupWhatsAppContact(
+  phone: string,
+  customerId: string,
+): Promise<{ customer_name: string; contact: { contact_person_id: string; name: string | null } | null }> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/contact/lookup?customer_id=${encodeURIComponent(customerId)}`,
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to look up contact (${response.status})`);
+  return body;
+}
+
+/** Removes a number's saved name / customer link. */
+export async function removeWhatsAppContact(phone: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/contact`, { method: "DELETE" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to remove contact (${response.status})`);
+  }
 }
 
 export async function fetchWhatsAppConversation(phone: string): Promise<WhatsAppConversation> {
@@ -1002,6 +1047,15 @@ export async function createWhatsAppTemplate(template: NewWhatsAppTemplate): Pro
     throw new Error(body.error ?? `Failed to create template (${response.status})`);
   }
   return response.json();
+}
+
+/** Deletes a template from the WhatsApp Business Account (just this language of it). */
+export async function deleteWhatsAppTemplate(id: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to delete template (${response.status})`);
+  }
 }
 
 /** Posts a file's raw bytes to a backend upload endpoint (same as sendWhatsAppMedia does). */

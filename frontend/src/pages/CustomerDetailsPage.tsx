@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, CheckCircle2, Coffee, ExternalLink, MapPin, Pencil, Send, ShoppingBasket, TriangleAlert, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
@@ -14,8 +15,12 @@ import {
   getRawContactAddress,
   getRawContactBusinessType,
   getRawContactPreferredLanguage,
+  fetchWhatsAppChats,
   type BusinessType,
+  type WhatsAppChat,
 } from "../lib/api";
+import { findChatForPhone, loadStoredChats, saveStoredChats } from "../lib/whatsappStore";
+import { ChatView } from "../components/WhatsAppInbox";
 import { parseAddress } from "../lib/address";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -29,7 +34,7 @@ import AddContactModal from "../components/AddContactModal";
 import DeleteContactModal from "../components/DeleteContactModal";
 import ConfirmModal from "../components/ConfirmModal";
 import NotifyContactModal from "../components/NotifyContactModal";
-import type { Contact, CustomerPayment, DraftInvoice } from "../types";
+import type { Contact, ContactPerson, CustomerPayment, DraftInvoice } from "../types";
 
 type SendPaymentStep = "closed" | "confirm" | "pickContact";
 
@@ -76,6 +81,8 @@ export default function CustomerDetailsPage(props: Props) {
 
 function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [customer, setCustomer] = useState<Contact | null>(null);
+  // A contact's WhatsApp conversation, opened over this page.
+  const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<DraftInvoice[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -249,6 +256,36 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   }
 
   const contacts = customer ? getContactList(customer) : [];
+
+  /**
+   * Opens a contact's WhatsApp chat in the app: named after the person, with
+   * the customer as the secondary label. Finds the number's chat on this
+   * device's copy of the chat list, or the server's if it isn't there.
+   */
+  async function openContactChat(person: ContactPerson) {
+    if (!customer) return;
+    const rawPhone = person.phone || person.mobile;
+    if (!rawPhone) return;
+    let found = findChatForPhone(rawPhone, loadStoredChats());
+    if (!found.chat) {
+      try {
+        const chats = await fetchWhatsAppChats();
+        saveStoredChats(chats);
+        found = findChatForPhone(rawPhone, chats);
+      } catch {
+        // Open it anyway, by number; the conversation loads on its own.
+      }
+    }
+    const customerName = customer.contact_name || customer.company_name;
+    const personName = person.first_name?.trim();
+    setOpenChat({
+      phone: found.phone,
+      name: personName || customerName,
+      ...(personName && personName !== customerName && { customer_name: customerName }),
+      customer_id: customer.contact_id,
+      ...(found.chat?.last_message && { last_message: found.chat.last_message }),
+    });
+  }
   const { city, district, street, locationLink } = parseAddress(customer ? getRawContactAddress(customer) : undefined);
   const businessType = customer ? getRawContactBusinessType(customer) : undefined;
   const BusinessTypeIcon = businessType ? BUSINESS_TYPE_ICON[businessType] : null;
@@ -421,6 +458,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                           }
                     }
                     onMakePrimary={() => handleMakePrimary(c.contact_person_id)}
+                    onOpenChat={() => openContactChat(c)}
                   />
                 ))}
               </div>
@@ -584,6 +622,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         onClose={() => setIsEditCustomerOpen(false)}
         onSaved={setCustomer}
       />
+
+      {/* On top of everything, like the Messages tab's own chat view. */}
+      {openChat &&
+        createPortal(
+          <ChatView chat={openChat} onBack={() => setOpenChat(null)} onContactChange={(updated) => updated && setOpenChat(updated)} />,
+          document.body,
+        )}
     </div>
   );
 }

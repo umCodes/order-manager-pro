@@ -95,6 +95,25 @@ export function saveStoredChats(chats: WhatsAppChat[]) {
   write(CHATS_KEY, chats);
 }
 
+/** Last 9 digits — how the backend matches numbers across country-code / leading-zero differences. */
+function phoneMatchKey(phone: string) {
+  return phone.replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "").slice(-9);
+}
+
+/**
+ * The WhatsApp chat for a phone number as stored on a customer's contact
+ * (in whatever format it was typed): the matching entry of the chat list if
+ * there is one, else just its WhatsApp number — a local "0…" number taken
+ * as Saudi (+966), the app's default country.
+ */
+export function findChatForPhone(phone: string, chats: WhatsAppChat[] | null): { phone: string; chat?: WhatsAppChat } {
+  const key = phoneMatchKey(phone);
+  const chat = chats?.find((c) => phoneMatchKey(c.phone) === key);
+  if (chat) return { phone: chat.phone, chat };
+  const digits = phone.replace(/\D/g, "").replace(/^00/, "");
+  return { phone: digits.startsWith("0") ? `966${digits.slice(1)}` : digits };
+}
+
 /** The locally stored conversation, or null if this chat was never opened on this device. */
 export function loadStoredConversation(phone: string): WhatsAppConversation | null {
   const stored = readConversation(phone);

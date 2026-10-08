@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
 import {
   createWhatsAppTemplate,
+  deleteWhatsAppTemplate,
   fetchWhatsAppTemplates,
   sendWhatsAppTemplateMessage,
   uploadWhatsAppTemplateMedia,
@@ -16,6 +17,7 @@ import {
 import { chatDisplayName } from "../lib/whatsappStore";
 import RefreshButton from "./RefreshButton";
 import FilterChip from "./FilterChip";
+import ConfirmModal from "./ConfirmModal";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -214,6 +216,9 @@ export default function WhatsAppTemplates({
   const [isChoosingStart, setIsChoosingStart] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState<WhatsAppTemplate | null>(null);
+  const [deleting, setDeleting] = useState<WhatsAppTemplate | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showRejected, setShowRejected] = useState(false);
   // Templates start collapsed (name and status only); tapping one shows the rest.
@@ -240,6 +245,21 @@ export default function WhatsAppTemplates({
   useEffect(() => {
     load();
   }, []);
+
+  function handleDelete() {
+    if (!deleting) return;
+    const template = deleting;
+    setIsDeleting(true);
+    setDeleteError(null);
+    deleteWhatsAppTemplate(template.id)
+      .then(() => {
+        setDeleting(null);
+        setTemplates((current) => current?.filter((t) => t.id !== template.id) ?? current);
+        setNotice(`"${template.name}" (${languageLabel(template.language)}) was deleted.`);
+      })
+      .catch((e) => setDeleteError(e instanceof Error ? e.message : "Failed to delete template"))
+      .finally(() => setIsDeleting(false));
+  }
 
   if (creating) {
     return (
@@ -353,6 +373,18 @@ export default function WhatsAppTemplates({
                     )}
                     {reason && template.status === "APPROVED" && <div className="wa-template__hint">{reason}</div>}
                     <div className="wa-template__actions">
+                      <button
+                        type="button"
+                        className="icon-btn wa-template__delete"
+                        onClick={() => {
+                          setDeleteError(null);
+                          setDeleting(template);
+                        }}
+                        aria-label={`Delete ${template.name}`}
+                        title="Delete template"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                       <button type="button" className="btn btn--secondary wa-template__send" onClick={() => setCreating({ source: template })}>
                         <Copy size={15} />
                         Copy
@@ -415,6 +447,20 @@ export default function WhatsAppTemplates({
             </button>
           </div>
         </div>
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Delete template?"
+          message={`Delete "${deleting.name}" (${languageLabel(deleting.language)}) from WhatsApp? This can't be undone${
+            deleting.status === "APPROVED" ? ", and WhatsApp won't allow the same name for a new template for 30 days" : ""
+          }.`}
+          confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+          error={deleteError}
+          isConfirming={isDeleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleting(null)}
+        />
       )}
 
       {sending && (

@@ -249,3 +249,49 @@ export async function getProfileNames(): Promise<Record<string, string>> {
 export async function saveProfileName(phone: string, name: string) {
     await redisClient.hSet("chats:profiles", phone, name)
 }
+
+/**
+ * Contacts saved in the app for numbers that aren't any customer's own
+ * phone — the WhatsApp tab's own contact list:
+ *   chats:saved  hash  wa_id -> JSON { name } (a name given to the number)
+ *                                or { customer_id, name? } (linked to a Zoho
+ *                                customer, as the person `name` there)
+ * Kept without a TTL, unlike the history, so a saved number stays listed.
+ */
+const SAVED_CONTACTS_KEY = "chats:saved"
+
+export type SavedContact = { name: string } | { customer_id: string; name?: string }
+
+function parseSavedContact(raw: string): SavedContact | undefined {
+    try {
+        const value = JSON.parse(raw)
+        if (typeof value?.customer_id === "string" && value.customer_id) {
+            const name = typeof value.name === "string" ? value.name.trim() : ""
+            return { customer_id: value.customer_id, ...(name && { name }) }
+        }
+        if (typeof value?.name === "string" && value.name.trim()) return { name: value.name.trim() }
+    } catch {
+        // ignore malformed entry
+    }
+    return undefined
+}
+
+/** Every saved contact, by wa_id. */
+export async function getSavedContacts(): Promise<Record<string, SavedContact>> {
+    const saved: Record<string, SavedContact> = {}
+    for (const [phone, raw] of Object.entries(await redisClient.hGetAll(SAVED_CONTACTS_KEY))) {
+        const contact = parseSavedContact(raw)
+        if (contact) saved[phone] = contact
+    }
+    return saved
+}
+
+/** Names a number, or links it to a customer (replacing whatever was saved for it). */
+export async function saveContact(phone: string, contact: SavedContact) {
+    await redisClient.hSet(SAVED_CONTACTS_KEY, phone, JSON.stringify(contact))
+}
+
+/** Forgets a saved contact; the number goes back to its WhatsApp profile name (or just the number). */
+export async function removeSavedContact(phone: string) {
+    await redisClient.hDel(SAVED_CONTACTS_KEY, phone)
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, MessageCircle, Pencil, Trash2, Check, X, Star } from "lucide-react";
+import { Phone, MessageCircle, MessageSquareText, Pencil, Trash2, Check, X, Star } from "lucide-react";
 import type { ContactPerson } from "../types";
 import { LEGACY_CONTACT_ID } from "../lib/contacts";
 import PhoneInput from "./PhoneInput";
@@ -11,6 +11,8 @@ type Props = {
   /** Not offered for the synthetic legacy contact — there's no real Zoho contact person to delete. */
   onDelete?: () => void;
   onMakePrimary: () => void;
+  /** Opens this contact's WhatsApp conversation inside the app. */
+  onOpenChat?: () => void;
 };
 
 /** Digits-only phone, for tel:/wa.me links. */
@@ -20,13 +22,15 @@ function dialablePhone(phone: string) {
 
 /**
  * One customer contact as a card: read-only by default (name, phone, primary
- * badge, and Call/WhatsApp/Edit/Delete quick actions), switching its name
+ * badge, and chat-in-app/WhatsApp/Edit/Delete quick actions — tapping the
+ * underlined number offers to call it), switching its name
  * and phone into inputs when Edit is clicked. The Edit button itself becomes
  * Confirm while editing; Cancel discards changes and reverts to read-only
  * without saving anything.
  */
-export default function ContactCard({ contact, isSaving, onSave, onDelete, onMakePrimary }: Props) {
+export default function ContactCard({ contact, isSaving, onSave, onDelete, onMakePrimary, onOpenChat }: Props) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isCallOpen, setIsCallOpen] = useState(false);
   const [name, setName] = useState(contact.first_name);
   const [phone, setPhone] = useState(contact.phone || contact.mobile);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +115,13 @@ export default function ContactCard({ contact, isSaving, onSave, onDelete, onMak
           <span className="contact-card__name">{contact.first_name || "Contact"}</span>
           {contact.is_primary_contact && <span className="badge">primary</span>}
         </div>
-        <div className="contact-card__phone">{displayPhone || "No phone"}</div>
+        {displayPhone ? (
+          <button type="button" className="contact-card__phone contact-card__phone--link" onClick={() => setIsCallOpen(true)}>
+            {displayPhone}
+          </button>
+        ) : (
+          <div className="contact-card__phone">No phone</div>
+        )}
       </div>
       <div className="contact-card__actions">
         {!contact.is_primary_contact && (
@@ -125,19 +135,19 @@ export default function ContactCard({ contact, isSaving, onSave, onDelete, onMak
             <Star size={16} />
           </button>
         )}
-        {displayPhone && (
-          <a className="icon-btn" href={`tel:${dialablePhone(displayPhone)}`} aria-label="Call" title="Call">
-            <Phone size={16} />
-          </a>
+        {displayPhone && onOpenChat && (
+          <button type="button" className="icon-btn" onClick={onOpenChat} aria-label="Chat in the app" title="Chat in the app">
+            <MessageSquareText size={16} />
+          </button>
         )}
         {displayPhone && (
           <a
-            className="icon-btn"
+            className="icon-btn contact-card__whatsapp"
             href={`https://wa.me/${dialablePhone(displayPhone).replace(/^\+/, "")}`}
             target="_blank"
             rel="noreferrer"
-            aria-label="WhatsApp"
-            title="WhatsApp"
+            aria-label="Open in WhatsApp"
+            title="Open in WhatsApp"
           >
             <MessageCircle size={16} />
           </a>
@@ -151,6 +161,26 @@ export default function ContactCard({ contact, isSaving, onSave, onDelete, onMak
           </button>
         )}
       </div>
+
+      {isCallOpen && displayPhone && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={() => setIsCallOpen(false)} />
+          <div className="modal">
+            <div className="modal__title">Call {contact.first_name || "contact"}</div>
+            <div className="wa-call__number">{displayPhone}</div>
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn--secondary" onClick={() => setIsCallOpen(false)}>
+                Cancel
+              </button>
+              {/* Opens the phone's dialer with the number filled in. */}
+              <a className="btn btn--primary wa-call__dial" href={`tel:${dialablePhone(displayPhone)}`} onClick={() => setIsCallOpen(false)}>
+                <Phone size={16} />
+                Call
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

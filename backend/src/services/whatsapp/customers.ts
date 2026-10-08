@@ -24,12 +24,13 @@ export async function notifyCustomerPayment(
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${customerId}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
+        const customerName = contact.contact_name || contact.company_name || ""
         console.log(`[WhatsApp] notifyCustomerPayment: resolved preferred_language="${preferredLanguage}" for customer=${customerId}`)
         const remainingBalance = String(contact.outstanding_receivable_amount)
         let allSucceeded = true
         for (const phone of phones) {
             try {
-                await sendPaymentNotification(phone, preferredLanguage, String(paymentAmount), paymentDate, remainingBalance)
+                await sendPaymentNotification(phone, customerName, preferredLanguage, String(paymentAmount), paymentDate, remainingBalance)
             } catch (error) {
                 console.error(`Failed to send WhatsApp payment notification to ${phone} (language="${preferredLanguage}"):`, error)
                 allSucceeded = false

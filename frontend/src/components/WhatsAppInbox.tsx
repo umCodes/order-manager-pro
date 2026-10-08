@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2, UserPen, UserPlus } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -24,6 +24,7 @@ import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
 import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import SaveWhatsAppContactModal from "./SaveWhatsAppContactModal";
 import FilterChip from "./FilterChip";
 
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
@@ -126,6 +127,11 @@ function rankedValues(
     .map(([value, group]) => ({ value, ...group }));
 }
 
+/** The read-state filter's steps, in the order a tap cycles through them (All is the default). */
+const READ_FILTERS = ["all", "read", "unread"] as const;
+type ReadFilter = (typeof READ_FILTERS)[number];
+const READ_FILTER_LABELS: Record<ReadFilter, string> = { all: "All", read: "Read", unread: "Unread" };
+
 /** Unread messages across these chats. */
 function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) {
   return chats.reduce((sum, chat) => sum + (unreadByPhone[chat.phone] ?? 0), 0);
@@ -145,6 +151,7 @@ export default function WhatsAppInbox() {
   const [query, setQuery] = useState("");
   const [cityFilter, setCityFilter] = useState<string | null>(null);
   const [districtFilter, setDistrictFilter] = useState<string | null>(null);
+  const [readFilter, setReadFilter] = useState<ReadFilter>("all");
   const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
@@ -181,6 +188,22 @@ export default function WhatsAppInbox() {
     return (
       <ChatView
         chat={openChat}
+        onContactChange={(updated) => {
+          if (updated) {
+            setOpenChat(updated);
+            return;
+          }
+          // Removed: back to whatever the server names the number now (its WhatsApp profile name, or the number).
+          setOpenChat({ phone: openChat.phone, name: `+${openChat.phone}`, last_message: openChat.last_message });
+          fetchWhatsAppChats()
+            .then((list) => {
+              setChats(list);
+              saveStoredChats(list);
+              const current = list.find((c) => c.phone === openChat.phone);
+              if (current) setOpenChat(current);
+            })
+            .catch(() => {});
+        }}
         onBack={() => {
           setOpenChat(null);
           // A new array so the previews pick up anything deleted in the chat
@@ -212,13 +235,19 @@ export default function WhatsAppInbox() {
   const districtOptions = rankedValues(chatsInCity, (chat) => chat.district, unread.chats);
 
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleChats = chatsInCity.filter(
-    (chat) =>
-      (!districtFilter || chat.district === districtFilter) &&
-      (!normalizedQuery ||
-        chat.name.toLowerCase().includes(normalizedQuery) ||
-        chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery)),
-  );
+  const hasUnread = (chat: WhatsAppChat) => (unread.chats[chat.phone] ?? 0) > 0;
+  const visibleChats = chatsInCity
+    .filter(
+      (chat) =>
+        (!districtFilter || chat.district === districtFilter) &&
+        (readFilter === "all" || (readFilter === "unread") === hasUnread(chat)) &&
+        (!normalizedQuery ||
+          chat.name.toLowerCase().includes(normalizedQuery) ||
+          chat.customer_name?.toLowerCase().includes(normalizedQuery) ||
+          chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery)),
+    )
+    // Chats with unread messages always come first; otherwise the server's order (most recent first).
+    .toSorted((a, b) => Number(hasUnread(b)) - Number(hasUnread(a)));
 
   return (
     <div>
@@ -233,6 +262,16 @@ export default function WhatsAppInbox() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {/* Each tap moves on: All → Read → Unread → All. */}
+        <button
+          type="button"
+          className={`wa-chip wa-chip--toggle wa-read-filter${readFilter !== "all" ? " wa-chip--active" : ""}`}
+          onClick={() => setReadFilter((current) => READ_FILTERS[(READ_FILTERS.indexOf(current) + 1) % READ_FILTERS.length])}
+          aria-label={`Showing ${READ_FILTER_LABELS[readFilter].toLowerCase()} chats — tap to change`}
+          title="Filter by read / unread"
+        >
+          {READ_FILTER_LABELS[readFilter]}
+        </button>
         <RefreshButton onRefresh={loadChats} />
         <button
           type="button"
@@ -300,7 +339,15 @@ export default function WhatsAppInbox() {
       {chats === null && !chatsError ? (
         <div className="items-area__empty">Loading...</div>
       ) : visibleChats.length === 0 ? (
-        <div className="items-area__empty">{normalizedQuery ? "No matching contacts" : "No contacts with a phone number"}</div>
+        <div className="items-area__empty">
+          {normalizedQuery
+            ? "No matching contacts"
+            : readFilter === "unread"
+              ? "No unread messages"
+              : readFilter === "read"
+                ? "No read chats"
+                : "No contacts with a phone number"}
+        </div>
       ) : (
         <div className="wa-list">
           {visibleChats.map((chat) => {
@@ -320,6 +367,7 @@ export default function WhatsAppInbox() {
                       {chatDisplayName(chat)}
                     </span>
                     {chat.name_source === "whatsapp" && <span className="badge wa-profile-badge">WhatsApp name</span>}
+                    {chat.customer_name && <span className="wa-list__customer">{chat.customer_name}</span>}
                     {preview && <span className="wa-list__time">{formatListTime(preview.timestamp)}</span>}
                   </span>
                   <span className="wa-list__bottom">
@@ -347,7 +395,16 @@ export default function WhatsAppInbox() {
  * and contact name, the message history scrolling in between, and the reply
  * box fixed at the bottom.
  */
-function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) {
+export function ChatView({
+  chat,
+  onBack,
+  onContactChange,
+}: {
+  chat: WhatsAppChat;
+  onBack: () => void;
+  /** After saving the number to the contact list (with its new entry), or removing it (undefined). */
+  onContactChange: (chat: WhatsAppChat | undefined) => void;
+}) {
   // This device's copy shows instantly; opening the chat then refreshes it.
   const [conversation, setConversation] = useState<WhatsAppConversation | null>(() => loadStoredConversation(chat.phone));
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -359,6 +416,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
+  const [isContactOpen, setIsContactOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<WhatsAppMessage | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -539,8 +597,23 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         <div className="wa-chat__title">
           <div className="wa-chat__name">{chatDisplayName(chat)}</div>
           {chat.name_source === "whatsapp" && <div className="wa-chat__subtitle">+{chat.phone} · WhatsApp name</div>}
+          {chat.name_source !== "whatsapp" && (chat.saved || chat.customer_name) && (
+            <div className="wa-chat__subtitle">{chat.customer_name ? `${chat.customer_name} · +${chat.phone}` : `+${chat.phone}`}</div>
+          )}
         </div>
         <div className="wa-chat__header-actions">
+          {/* Numbers that aren't a customer's: name them or link them to a customer. */}
+          {(!chat.customer_id || chat.saved) && (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setIsContactOpen(true)}
+              aria-label={chat.saved ? "Edit contact" : "Save contact"}
+              title={chat.saved ? "Edit contact" : "Save contact"}
+            >
+              {chat.saved ? <UserPen size={14} /> : <UserPlus size={14} />}
+            </button>
+          )}
           <RefreshButton onRefresh={() => loadRef.current()} />
           <button
             type="button"
@@ -685,6 +758,21 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         />
       )}
 
+      {isContactOpen && (
+        <SaveWhatsAppContactModal
+          chat={chat}
+          onClose={() => setIsContactOpen(false)}
+          onSaved={(updated) => {
+            setIsContactOpen(false);
+            onContactChange({ ...updated, last_message: chat.last_message });
+          }}
+          onRemoved={() => {
+            setIsContactOpen(false);
+            onContactChange(undefined);
+          }}
+        />
+      )}
+
       {isClearConfirmOpen && (
         <ConfirmModal
           title="Clear chat?"
@@ -811,7 +899,11 @@ function MessageBubble({
           </button>
         )}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
-        {message.text && <div className="wa-bubble__text">{message.text}</div>}
+        {message.text && (
+          <div className="wa-bubble__text" dir="auto">
+            {message.text}
+          </div>
+        )}
         <div className="wa-bubble__meta" title={problem}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           {isOut && isTemplate && message.status && !isFailed && (

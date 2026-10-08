@@ -1,6 +1,6 @@
 import { ENV } from "../../constants/env.js"
 
-export type Methods = "GET" | "POST"
+export type Methods = "GET" | "POST" | "DELETE"
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v25.0"
 

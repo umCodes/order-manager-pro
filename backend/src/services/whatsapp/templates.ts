@@ -299,6 +299,39 @@ export async function createTemplate(input: any): Promise<{ id: string; status: 
     return { id: result.id, status: result.status, category: result.category }
 }
 
+/** Template names the app sends notifications with (WA_*_NOTIFICATION_TEMPLATE_*), which must not be deleted. */
+function notificationTemplateNames() {
+    return new Set(
+        [
+            ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,
+            ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AR,
+            ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_EN,
+            ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AM,
+            ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AR,
+            ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_EN,
+        ].filter(Boolean),
+    )
+}
+
+/**
+ * Deletes one template (one name in one language — `hsm_id` keeps Meta from
+ * deleting the name's other languages too). Refuses the templates the app's
+ * payment / balance notifications are sent with. Meta won't let the same
+ * name be reused for 30 days after deleting an approved template.
+ */
+export async function deleteTemplate(id: string) {
+    const template = (await listTemplates(true)).find((t) => t.id === id)
+    if (!template) throw new Error("Template not found")
+    if (notificationTemplateNames().has(template.name))
+        throw new Error("This template is used for payment / balance notifications and can't be deleted")
+    const accountId = await getBusinessAccountId()
+    await GraphApi(
+        `${accountId}/message_templates?hsm_id=${encodeURIComponent(template.id)}&name=${encodeURIComponent(template.name)}`,
+        "DELETE",
+    )
+    deleteCache(TEMPLATES_CACHE_KEY)
+}
+
 /** Values to fill a template's variables with when sending it, keyed by placeholder ("1", "2", … or a name). */
 export type TemplateValues = {
     header?: Record<string, string>

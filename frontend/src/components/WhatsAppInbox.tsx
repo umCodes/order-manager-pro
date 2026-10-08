@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2, UserPen, UserPlus } from "lucide-react";
 import {
   fetchWhatsAppChats,
   fetchWhatsAppConversation,
@@ -24,6 +24,7 @@ import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
 import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import SaveWhatsAppContactModal from "./SaveWhatsAppContactModal";
 import FilterChip from "./FilterChip";
 
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
@@ -181,6 +182,22 @@ export default function WhatsAppInbox() {
     return (
       <ChatView
         chat={openChat}
+        onContactChange={(updated) => {
+          if (updated) {
+            setOpenChat(updated);
+            return;
+          }
+          // Removed: back to whatever the server names the number now (its WhatsApp profile name, or the number).
+          setOpenChat({ phone: openChat.phone, name: `+${openChat.phone}`, last_message: openChat.last_message });
+          fetchWhatsAppChats()
+            .then((list) => {
+              setChats(list);
+              saveStoredChats(list);
+              const current = list.find((c) => c.phone === openChat.phone);
+              if (current) setOpenChat(current);
+            })
+            .catch(() => {});
+        }}
         onBack={() => {
           setOpenChat(null);
           // A new array so the previews pick up anything deleted in the chat
@@ -347,7 +364,16 @@ export default function WhatsAppInbox() {
  * and contact name, the message history scrolling in between, and the reply
  * box fixed at the bottom.
  */
-function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) {
+function ChatView({
+  chat,
+  onBack,
+  onContactChange,
+}: {
+  chat: WhatsAppChat;
+  onBack: () => void;
+  /** After saving the number to the contact list (with its new entry), or removing it (undefined). */
+  onContactChange: (chat: WhatsAppChat | undefined) => void;
+}) {
   // This device's copy shows instantly; opening the chat then refreshes it.
   const [conversation, setConversation] = useState<WhatsAppConversation | null>(() => loadStoredConversation(chat.phone));
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -359,6 +385,7 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
+  const [isContactOpen, setIsContactOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<WhatsAppMessage | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -539,8 +566,21 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         <div className="wa-chat__title">
           <div className="wa-chat__name">{chatDisplayName(chat)}</div>
           {chat.name_source === "whatsapp" && <div className="wa-chat__subtitle">+{chat.phone} · WhatsApp name</div>}
+          {chat.saved && <div className="wa-chat__subtitle">+{chat.phone}</div>}
         </div>
         <div className="wa-chat__header-actions">
+          {/* Numbers that aren't a customer's: name them or link them to a customer. */}
+          {(!chat.customer_id || chat.saved) && (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setIsContactOpen(true)}
+              aria-label={chat.saved ? "Edit contact" : "Save contact"}
+              title={chat.saved ? "Edit contact" : "Save contact"}
+            >
+              {chat.saved ? <UserPen size={14} /> : <UserPlus size={14} />}
+            </button>
+          )}
           <RefreshButton onRefresh={() => loadRef.current()} />
           <button
             type="button"
@@ -685,6 +725,21 @@ function ChatView({ chat, onBack }: { chat: WhatsAppChat; onBack: () => void }) 
         />
       )}
 
+      {isContactOpen && (
+        <SaveWhatsAppContactModal
+          chat={chat}
+          onClose={() => setIsContactOpen(false)}
+          onSaved={(updated) => {
+            setIsContactOpen(false);
+            onContactChange({ ...updated, last_message: chat.last_message });
+          }}
+          onRemoved={() => {
+            setIsContactOpen(false);
+            onContactChange(undefined);
+          }}
+        />
+      )}
+
       {isClearConfirmOpen && (
         <ConfirmModal
           title="Clear chat?"
@@ -811,7 +866,11 @@ function MessageBubble({
           </button>
         )}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
-        {message.text && <div className="wa-bubble__text">{message.text}</div>}
+        {message.text && (
+          <div className="wa-bubble__text" dir="auto">
+            {message.text}
+          </div>
+        )}
         <div className="wa-bubble__meta" title={problem}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           {isOut && isTemplate && message.status && !isFailed && (

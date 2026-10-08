@@ -11,11 +11,15 @@ import {
     getUnreadCounts,
     markChatRead,
     getProfileNames,
+    getSavedContacts,
+    saveContact,
+    removeSavedContact,
+    type SavedContact,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
-import { buildTemplateSend, createTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -46,6 +50,8 @@ type ChatListEntry = {
     /** "whatsapp": not a Zoho customer — `name` is the one on their WhatsApp profile. */
     name_source?: "whatsapp"
     customer_id?: string
+    /** Saved in the app (see chats:saved): given a name, or linked to a customer. */
+    saved?: "name" | "customer"
     /** From the customer's address, for grouping the list by city / district. */
     city?: string
     district?: string
@@ -170,11 +176,13 @@ export async function getWhatsAppChats(req: Request, res: Response) {
 
         const chatByMatchKey = new Map(chatPhones.map((c) => [phoneMatchKey(c.phone), c.phone]))
         const matchedChatPhones = new Set<string>()
+        const customerPhoneKeys = new Set<string>()
         const entries: ChatListEntry[] = []
 
         for (const customer of customers) {
             const rawPhone = customer?.mobile || customer?.phone
             if (!rawPhone) continue
+            customerPhoneKeys.add(phoneMatchKey(rawPhone))
             const chatPhone = chatByMatchKey.get(phoneMatchKey(rawPhone))
             if (!chatPhone && customer.status && customer.status !== "active") continue
             if (chatPhone) matchedChatPhones.add(chatPhone)
@@ -186,13 +194,38 @@ export async function getWhatsAppChats(req: Request, res: Response) {
             })
         }
 
-        // Names people gave their WhatsApp profile, for numbers no customer has.
-        const profileNames = await getProfileNames().catch((error) => {
-            console.error('Failed to read WhatsApp profile names:', error)
-            return {} as Record<string, string>
-        })
-        for (const { phone } of chatPhones) {
-            if (matchedChatPhones.has(phone)) continue
+        // For numbers no customer has: contacts saved in the app (listed even
+        // once their history has expired), else the name on their WhatsApp profile.
+        const [savedContacts, profileNames] = await Promise.all([
+            getSavedContacts().catch((error) => {
+                console.error('Failed to read saved WhatsApp contacts:', error)
+                return {} as Record<string, SavedContact>
+            }),
+            getProfileNames().catch((error) => {
+                console.error('Failed to read WhatsApp profile names:', error)
+                return {} as Record<string, string>
+            }),
+        ])
+        const customersById = new Map(customers.map((customer) => [String(customer.contact_id), customer]))
+        const otherPhones = new Set([...chatPhones.map((c) => c.phone), ...Object.keys(savedContacts)])
+        for (const phone of otherPhones) {
+            if (matchedChatPhones.has(phone) || customerPhoneKeys.has(phoneMatchKey(phone))) continue
+            const saved = savedContacts[phone]
+            const linked = saved && "customer_id" in saved ? customersById.get(saved.customer_id) : undefined
+            if (linked) {
+                entries.push({
+                    phone,
+                    name: linked.contact_name || linked.company_name || `+${phone}`,
+                    customer_id: String(linked.contact_id),
+                    saved: "customer",
+                    ...locationOf(linked),
+                })
+                continue
+            }
+            if (saved && "name" in saved) {
+                entries.push({ phone, name: saved.name, saved: "name" })
+                continue
+            }
             const sender = await resolveUnknownSender(access_token, phone)
             const profileName = profileNames[phone]?.trim()
             entries.push(
@@ -223,6 +256,61 @@ export async function getWhatsAppChats(req: Request, res: Response) {
     } catch (error) {
         console.error('Error loading WhatsApp chats:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load WhatsApp chats' });
+    }
+}
+
+const MAX_SAVED_NAME_LENGTH = 100
+
+/**
+ * Saves a number to the app's contact list: `{ name }` names it, or
+ * `{ customer_id }` links it to a Zoho customer. Only for numbers that
+ * aren't already a customer's own phone. Resolves to the number's updated
+ * chat-list entry.
+ */
+export async function saveWhatsAppContact(req: Request, res: Response) {
+    try {
+        const access_token = requireAccessToken(req, "A problem occured saving the contact")
+        const phone = readPhoneParam(req)
+        const customers: any[] = await ZohoGetCustomersCached(access_token)
+        if (customers.some((c) => (c?.mobile || c?.phone) && phoneMatchKey(c.mobile || c.phone) === phoneMatchKey(phone)))
+            throw new Error("This number is already a customer's phone number")
+
+        const customerId = typeof req.body?.customer_id === "string" ? req.body.customer_id.trim() : ""
+        const name = typeof req.body?.name === "string" ? req.body.name.trim() : ""
+        let entry: ChatListEntry
+        if (customerId) {
+            const customer = customers.find((c) => String(c.contact_id) === customerId)
+            if (!customer) throw new Error("Customer not found")
+            await saveContact(phone, { customer_id: customerId })
+            entry = {
+                phone,
+                name: customer.contact_name || customer.company_name || `+${phone}`,
+                customer_id: customerId,
+                saved: "customer",
+                ...locationOf(customer),
+            }
+        } else {
+            if (!name) throw new Error("Enter a name, or pick a customer")
+            if (name.length > MAX_SAVED_NAME_LENGTH) throw new Error(`Names are limited to ${MAX_SAVED_NAME_LENGTH} characters`)
+            await saveContact(phone, { name })
+            entry = { phone, name, saved: "name" }
+        }
+        res.status(200).json({ chat: entry })
+    } catch (error) {
+        console.error('Error saving WhatsApp contact:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save contact' });
+    }
+}
+
+/** Removes a number from the app's contact list (its name or customer link). */
+export async function removeWhatsAppContact(req: Request, res: Response) {
+    try {
+        const phone = readPhoneParam(req)
+        await removeSavedContact(phone)
+        res.status(200).json({ ok: true })
+    } catch (error) {
+        console.error('Error removing WhatsApp contact:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to remove contact' });
     }
 }
 
@@ -429,6 +517,17 @@ export async function createWhatsAppTemplate(req: Request, res: Response) {
         res.status(201).json(created)
     } catch (error) {
         console.error('Error creating WhatsApp template:', error);
+        res.status(400).json({ error: describeSendError(error) });
+    }
+}
+
+/** Deletes a message template from the WhatsApp Business Account. */
+export async function deleteWhatsAppTemplate(req: Request, res: Response) {
+    try {
+        await deleteTemplate(String(req.params.id ?? ""))
+        res.status(200).json({ ok: true })
+    } catch (error) {
+        console.error('Error deleting WhatsApp template:', error);
         res.status(400).json({ error: describeSendError(error) });
     }
 }

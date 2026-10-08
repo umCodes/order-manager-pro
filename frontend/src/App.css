@@ -2842,6 +2842,14 @@ div.wa-pick-list__row {
   flex: 1;
 }
 
+.wa-template__delete {
+  flex-shrink: 0;
+  align-self: flex-end;
+  width: 36px;
+  height: 36px;
+  color: var(--color-red-600);
+}
+
 .wa-template__file-btn {
   display: inline-flex;
   align-items: center;

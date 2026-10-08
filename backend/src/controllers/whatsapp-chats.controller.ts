@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { ZohoGetCustomersCached, findCustomerByPhone, getContactAddress } from '../services/zoho/customers/index.js';
+import { ZohoGetCustomerById, ZohoGetCustomersCached, findCustomerByPhone, getContactAddress } from '../services/zoho/customers/index.js';
 import {
     describeChatMessage,
     getChatMessages,
@@ -50,6 +50,8 @@ type ChatListEntry = {
     /** "whatsapp": not a Zoho customer — `name` is the one on their WhatsApp profile. */
     name_source?: "whatsapp"
     customer_id?: string
+    /** The customer's name, when `name` is a person under that customer — shown second, after the person's name. */
+    customer_name?: string
     /** Saved in the app (see chats:saved): given a name, or linked to a customer. */
     saved?: "name" | "customer"
     /** From the customer's address, for grouping the list by city / district. */
@@ -70,6 +72,39 @@ function locationOf(contact: any): { city?: string; district?: string } {
 /** Last 9 digits — tolerates country-code / leading-zero differences, same as findCustomerByPhone. */
 function phoneMatchKey(phone: string) {
     return toWaId(phone).replace(/^0/, "").slice(-9)
+}
+
+/** A Zoho contact person's full name. */
+function personName(person: any): string {
+    return `${person?.first_name ?? ""} ${person?.last_name ?? ""}`.trim()
+}
+
+/** The customer's contact person with this phone number, if any (needs a contact fetched by id — the list has no persons). */
+function findPersonByPhone(customer: any, phone: string): any | undefined {
+    const key = phoneMatchKey(phone)
+    return (customer?.contact_persons ?? []).find((person: any) => {
+        const candidate = person?.phone || person?.mobile
+        return candidate && phoneMatchKey(candidate) === key
+    })
+}
+
+function customerDisplayName(customer: any, phone: string) {
+    return customer?.contact_name || customer?.company_name || `+${phone}`
+}
+
+/**
+ * A number belonging to a customer: named after the person when known, with
+ * the customer's name as the secondary label; otherwise the customer's name.
+ */
+function customerChatEntry(phone: string, customer: any, person?: string): ChatListEntry {
+    const customerName = customerDisplayName(customer, phone)
+    return {
+        phone,
+        name: person || customerName,
+        ...(person && { customer_name: customerName }),
+        customer_id: String(customer.contact_id),
+        ...locationOf(customer),
+    }
 }
 
 function toPreview(message: StoredChatMessage | undefined): ChatPreview | undefined {
@@ -129,10 +164,10 @@ function readPhoneParam(req: Request) {
 }
 
 /** Names a chat whose number isn't any customer's main phone (e.g. a secondary contact person), cached per number. */
-type ResolvedSender = { name: string; customer_id?: string; city?: string; district?: string }
+type ResolvedSender = { name: string; customer_name?: string; customer_id?: string; city?: string; district?: string }
 
 async function resolveUnknownSender(accessToken: string, phone: string): Promise<ResolvedSender> {
-    const cacheKey = `wa-chat-sender:${phone}`
+    const cacheKey = `wa-chat-sender:v2:${phone}`
     const cached = getCache(cacheKey)
     if (cached) return cached
 
@@ -140,12 +175,8 @@ async function resolveUnknownSender(accessToken: string, phone: string): Promise
     try {
         const match = await findCustomerByPhone(accessToken, phone)
         if (match) {
-            const customerName = match.contact?.contact_name || match.contact?.company_name || `+${phone}`
-            resolved = {
-                name: match.contactPerson?.first_name ? `${customerName} (${match.contactPerson.first_name})` : customerName,
-                customer_id: String(match.contact?.contact_id),
-                ...locationOf(match.contact),
-            }
+            const { phone: _phone, ...entry } = customerChatEntry(phone, match.contact, personName(match.contactPerson))
+            resolved = entry
         }
     } catch (error) {
         console.error(`Failed to resolve WhatsApp sender ${phone} to a customer:`, error)
@@ -213,16 +244,10 @@ export async function getWhatsAppChats(req: Request, res: Response) {
             const saved = savedContacts[phone]
             const linked = saved && "customer_id" in saved ? customersById.get(saved.customer_id) : undefined
             if (linked) {
-                entries.push({
-                    phone,
-                    name: linked.contact_name || linked.company_name || `+${phone}`,
-                    customer_id: String(linked.contact_id),
-                    saved: "customer",
-                    ...locationOf(linked),
-                })
+                entries.push({ ...customerChatEntry(phone, linked, saved?.name), saved: "customer" })
                 continue
             }
-            if (saved && "name" in saved) {
+            if (saved && !("customer_id" in saved)) {
                 entries.push({ phone, name: saved.name, saved: "name" })
                 continue
             }
@@ -261,37 +286,61 @@ export async function getWhatsAppChats(req: Request, res: Response) {
 
 const MAX_SAVED_NAME_LENGTH = 100
 
+/** Refuses numbers that are already a customer's own (main) phone — those are listed as that customer anyway. */
+function assertNotCustomerPhone(customers: any[], phone: string) {
+    if (customers.some((c) => (c?.mobile || c?.phone) && phoneMatchKey(c.mobile || c.phone) === phoneMatchKey(phone)))
+        throw new Error("This number is already a customer's phone number")
+}
+
+/**
+ * Before linking a number to a customer: whether it's already one of that
+ * customer's contact persons, and under what name.
+ */
+export async function lookupWhatsAppContact(req: Request, res: Response) {
+    try {
+        const access_token = requireAccessToken(req, "A problem occured looking up the contact")
+        const phone = readPhoneParam(req)
+        const customerId = typeof req.query.customer_id === "string" ? req.query.customer_id.trim() : ""
+        if (!customerId) throw new Error("Pick a customer")
+        const customer = await ZohoGetCustomerById(access_token, customerId)
+        if (!customer) throw new Error("Customer not found")
+        const person = findPersonByPhone(customer, phone)
+        res.status(200).json({
+            customer_name: customerDisplayName(customer, phone),
+            contact: person ? { contact_person_id: String(person.contact_person_id), name: personName(person) || null } : null,
+        })
+    } catch (error) {
+        console.error('Error looking up WhatsApp contact:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to look up contact' });
+    }
+}
+
 /**
  * Saves a number to the app's contact list: `{ name }` names it, or
- * `{ customer_id }` links it to a Zoho customer. Only for numbers that
- * aren't already a customer's own phone. Resolves to the number's updated
- * chat-list entry.
+ * `{ customer_id, name? }` links it to a Zoho customer — as the contact
+ * person with this number if the customer has one (their name wins), else
+ * as the optional `name` given. Only for numbers that aren't already a
+ * customer's own phone. Resolves to the number's updated chat-list entry.
  */
 export async function saveWhatsAppContact(req: Request, res: Response) {
     try {
         const access_token = requireAccessToken(req, "A problem occured saving the contact")
         const phone = readPhoneParam(req)
         const customers: any[] = await ZohoGetCustomersCached(access_token)
-        if (customers.some((c) => (c?.mobile || c?.phone) && phoneMatchKey(c.mobile || c.phone) === phoneMatchKey(phone)))
-            throw new Error("This number is already a customer's phone number")
+        assertNotCustomerPhone(customers, phone)
 
         const customerId = typeof req.body?.customer_id === "string" ? req.body.customer_id.trim() : ""
         const name = typeof req.body?.name === "string" ? req.body.name.trim() : ""
+        if (name.length > MAX_SAVED_NAME_LENGTH) throw new Error(`Names are limited to ${MAX_SAVED_NAME_LENGTH} characters`)
         let entry: ChatListEntry
         if (customerId) {
-            const customer = customers.find((c) => String(c.contact_id) === customerId)
-            if (!customer) throw new Error("Customer not found")
-            await saveContact(phone, { customer_id: customerId })
-            entry = {
-                phone,
-                name: customer.contact_name || customer.company_name || `+${phone}`,
-                customer_id: customerId,
-                saved: "customer",
-                ...locationOf(customer),
-            }
+            if (!customers.some((c) => String(c.contact_id) === customerId)) throw new Error("Customer not found")
+            const customer = await ZohoGetCustomerById(access_token, customerId)
+            const person = personName(findPersonByPhone(customer, phone)) || name
+            await saveContact(phone, { customer_id: customerId, ...(person && { name: person }) })
+            entry = { ...customerChatEntry(phone, customer, person), saved: "customer" }
         } else {
             if (!name) throw new Error("Enter a name, or pick a customer")
-            if (name.length > MAX_SAVED_NAME_LENGTH) throw new Error(`Names are limited to ${MAX_SAVED_NAME_LENGTH} characters`)
             await saveContact(phone, { name })
             entry = { phone, name, saved: "name" }
         }

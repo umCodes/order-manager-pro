@@ -9,6 +9,7 @@ import {
     getWhatsAppUnread,
     markWhatsAppChatRead,
     saveWhatsAppContact,
+    lookupWhatsAppContact,
     removeWhatsAppContact,
     getWhatsAppTemplates,
     createWhatsAppTemplate,
@@ -24,6 +25,7 @@ export const whatsappRouter = Router();
 whatsappRouter.get('/whatsapp/chats', getWhatsAppChats);
 whatsappRouter.get('/whatsapp/unread', getWhatsAppUnread);
 whatsappRouter.post('/whatsapp/chats/:phone/read', markWhatsAppChatRead);
+whatsappRouter.get('/whatsapp/chats/:phone/contact/lookup', lookupWhatsAppContact);
 whatsappRouter.put('/whatsapp/chats/:phone/contact', saveWhatsAppContact);
 whatsappRouter.delete('/whatsapp/chats/:phone/contact', removeWhatsAppContact);
 whatsappRouter.get('/whatsapp/chats/:phone/messages', getWhatsAppChatMessages);

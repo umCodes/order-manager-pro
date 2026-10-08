@@ -127,6 +127,11 @@ function rankedValues(
     .map(([value, group]) => ({ value, ...group }));
 }
 
+/** The read-state filter's steps, in the order a tap cycles through them (All is the default). */
+const READ_FILTERS = ["all", "read", "unread"] as const;
+type ReadFilter = (typeof READ_FILTERS)[number];
+const READ_FILTER_LABELS: Record<ReadFilter, string> = { all: "All", read: "Read", unread: "Unread" };
+
 /** Unread messages across these chats. */
 function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) {
   return chats.reduce((sum, chat) => sum + (unreadByPhone[chat.phone] ?? 0), 0);
@@ -146,6 +151,7 @@ export default function WhatsAppInbox() {
   const [query, setQuery] = useState("");
   const [cityFilter, setCityFilter] = useState<string | null>(null);
   const [districtFilter, setDistrictFilter] = useState<string | null>(null);
+  const [readFilter, setReadFilter] = useState<ReadFilter>("all");
   const [openChat, setOpenChat] = useState<WhatsAppChat | null>(null);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
@@ -229,13 +235,19 @@ export default function WhatsAppInbox() {
   const districtOptions = rankedValues(chatsInCity, (chat) => chat.district, unread.chats);
 
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleChats = chatsInCity.filter(
-    (chat) =>
-      (!districtFilter || chat.district === districtFilter) &&
-      (!normalizedQuery ||
-        chat.name.toLowerCase().includes(normalizedQuery) ||
-        chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery)),
-  );
+  const hasUnread = (chat: WhatsAppChat) => (unread.chats[chat.phone] ?? 0) > 0;
+  const visibleChats = chatsInCity
+    .filter(
+      (chat) =>
+        (!districtFilter || chat.district === districtFilter) &&
+        (readFilter === "all" || (readFilter === "unread") === hasUnread(chat)) &&
+        (!normalizedQuery ||
+          chat.name.toLowerCase().includes(normalizedQuery) ||
+          chat.customer_name?.toLowerCase().includes(normalizedQuery) ||
+          chat.phone.includes(normalizedQuery.replace(/\D/g, "") || normalizedQuery)),
+    )
+    // Chats with unread messages always come first; otherwise the server's order (most recent first).
+    .toSorted((a, b) => Number(hasUnread(b)) - Number(hasUnread(a)));
 
   return (
     <div>
@@ -250,6 +262,16 @@ export default function WhatsAppInbox() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {/* Each tap moves on: All → Read → Unread → All. */}
+        <button
+          type="button"
+          className={`wa-chip wa-chip--toggle wa-read-filter${readFilter !== "all" ? " wa-chip--active" : ""}`}
+          onClick={() => setReadFilter((current) => READ_FILTERS[(READ_FILTERS.indexOf(current) + 1) % READ_FILTERS.length])}
+          aria-label={`Showing ${READ_FILTER_LABELS[readFilter].toLowerCase()} chats — tap to change`}
+          title="Filter by read / unread"
+        >
+          {READ_FILTER_LABELS[readFilter]}
+        </button>
         <RefreshButton onRefresh={loadChats} />
         <button
           type="button"
@@ -317,7 +339,15 @@ export default function WhatsAppInbox() {
       {chats === null && !chatsError ? (
         <div className="items-area__empty">Loading...</div>
       ) : visibleChats.length === 0 ? (
-        <div className="items-area__empty">{normalizedQuery ? "No matching contacts" : "No contacts with a phone number"}</div>
+        <div className="items-area__empty">
+          {normalizedQuery
+            ? "No matching contacts"
+            : readFilter === "unread"
+              ? "No unread messages"
+              : readFilter === "read"
+                ? "No read chats"
+                : "No contacts with a phone number"}
+        </div>
       ) : (
         <div className="wa-list">
           {visibleChats.map((chat) => {
@@ -337,6 +367,7 @@ export default function WhatsAppInbox() {
                       {chatDisplayName(chat)}
                     </span>
                     {chat.name_source === "whatsapp" && <span className="badge wa-profile-badge">WhatsApp name</span>}
+                    {chat.customer_name && <span className="wa-list__customer">{chat.customer_name}</span>}
                     {preview && <span className="wa-list__time">{formatListTime(preview.timestamp)}</span>}
                   </span>
                   <span className="wa-list__bottom">
@@ -364,7 +395,7 @@ export default function WhatsAppInbox() {
  * and contact name, the message history scrolling in between, and the reply
  * box fixed at the bottom.
  */
-function ChatView({
+export function ChatView({
   chat,
   onBack,
   onContactChange,
@@ -566,7 +597,9 @@ function ChatView({
         <div className="wa-chat__title">
           <div className="wa-chat__name">{chatDisplayName(chat)}</div>
           {chat.name_source === "whatsapp" && <div className="wa-chat__subtitle">+{chat.phone} · WhatsApp name</div>}
-          {chat.saved && <div className="wa-chat__subtitle">+{chat.phone}</div>}
+          {chat.name_source !== "whatsapp" && (chat.saved || chat.customer_name) && (
+            <div className="wa-chat__subtitle">{chat.customer_name ? `${chat.customer_name} · +${chat.phone}` : `+${chat.phone}`}</div>
+          )}
         </div>
         <div className="wa-chat__header-actions">
           {/* Numbers that aren't a customer's: name them or link them to a customer. */}

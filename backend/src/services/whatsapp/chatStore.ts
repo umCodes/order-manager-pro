@@ -254,17 +254,21 @@ export async function saveProfileName(phone: string, name: string) {
  * Contacts saved in the app for numbers that aren't any customer's own
  * phone — the WhatsApp tab's own contact list:
  *   chats:saved  hash  wa_id -> JSON { name } (a name given to the number)
- *                                or { customer_id } (linked to a Zoho customer)
+ *                                or { customer_id, name? } (linked to a Zoho
+ *                                customer, as the person `name` there)
  * Kept without a TTL, unlike the history, so a saved number stays listed.
  */
 const SAVED_CONTACTS_KEY = "chats:saved"
 
-export type SavedContact = { name: string } | { customer_id: string }
+export type SavedContact = { name: string } | { customer_id: string; name?: string }
 
 function parseSavedContact(raw: string): SavedContact | undefined {
     try {
         const value = JSON.parse(raw)
-        if (typeof value?.customer_id === "string" && value.customer_id) return { customer_id: value.customer_id }
+        if (typeof value?.customer_id === "string" && value.customer_id) {
+            const name = typeof value.name === "string" ? value.name.trim() : ""
+            return { customer_id: value.customer_id, ...(name && { name }) }
+        }
         if (typeof value?.name === "string" && value.name.trim()) return { name: value.name.trim() }
     } catch {
         // ignore malformed entry

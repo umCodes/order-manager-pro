@@ -3030,6 +3030,9 @@ div.wa-pick-list__row {
 }
 
 .prep-page {
+  /* Ethiopic first so Amharic gets a clear, consistent face; Latin falls through to it too. */
+  font-family: "Noto Sans Ethiopic", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.35;
   --prep-green: #16a34a;
   --prep-green-bg: #dcfce7;
   --prep-amber: #b45309;
@@ -3354,6 +3357,14 @@ div.wa-pick-list__row {
   background: var(--color-gray-50);
 }
 
+.prep-line__qty {
+  flex-shrink: 0;
+  min-width: 64px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-gray-900);
+}
+
 .prep-line__name {
   flex: 1;
   min-width: 0;
@@ -3369,13 +3380,6 @@ div.wa-pick-list__row {
   font-size: 13px;
   font-weight: 400;
   color: var(--color-gray-500);
-}
-
-.prep-line__needed {
-  flex-shrink: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-gray-700);
 }
 
 .prep-line__chevron {
@@ -3460,32 +3464,25 @@ div.wa-pick-list__row {
   cursor: pointer;
 }
 
-.prep-item__totals {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
 .prep-item__needed {
-  font-size: 22px;
+  flex-shrink: 0;
+  min-width: 76px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--color-gray-900);
-  line-height: 1.1;
 }
 
-.prep-item__unit {
-  font-size: 14px;
-  font-weight: 600;
+.prep-item__customers {
+  font-weight: 400;
   color: var(--color-gray-500);
 }
 
 .prep-item__shipped {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 13px;
+  margin-top: 2px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--color-gray-500);
 }

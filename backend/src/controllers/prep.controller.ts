@@ -3,10 +3,12 @@ import type { LineItem, ZohoInvoice } from "../services/zoho/types.js";
 import { ZohoGetDrafts, ZohoGetInvoiceById } from "../services/zoho/invoices/index.js";
 import { getShipments, parseShipmentUpdates, saveShipments } from "../services/prep/shipments.js";
 import { requireAccessToken } from "../utils/requireAccessToken.js";
+import { excludeInternalLineItems } from "../utils/internalLineItems.js";
 
 /**
  * The preparers' worklist: every draft with its line items, each carrying
  * what was recorded as shipped so far (null when nothing is recorded yet).
+ * Internal lines ("###") are left out, as on the Telegram message.
  */
 export async function getPrepOrders(req: Request, res: Response) {
   try {
@@ -25,7 +27,7 @@ export async function getPrepOrders(req: Request, res: Response) {
         customer_id: String(invoice.customer_id),
         customer_name: invoice.customer_name,
         date: invoice.date,
-        line_items: invoice.line_items.map((item: LineItem) => {
+        line_items: (excludeInternalLineItems(invoice.line_items) as LineItem[]).map((item) => {
           const record = shipped[String(item.line_item_id)];
           return {
             line_item_id: String(item.line_item_id),

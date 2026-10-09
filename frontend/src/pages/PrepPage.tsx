@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { fetchPrepOrders, savePrepShipments } from "../lib/api";
 import {
+  amharicDay,
   formatDayReport,
   groupLinesByItem,
   groupOrdersByDay,
   summarizeDay,
   type ItemLine,
 } from "../lib/prep";
-import { describeScheduledDay } from "../lib/scheduledDate";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import PrepOrderCard from "../components/PrepOrderCard";
@@ -20,16 +20,15 @@ type View = "customers" | "items";
 
 type ShipmentChange = { line_item_id: string; quantity: number | null };
 
-function dayLabel(date: string | null): string {
-  return date ? describeScheduledDay(date).label : "No date";
-}
-
 /**
  * The preparers' screen (opened at /prep): the drafts for one day, either
  * per customer (loading an order) or per item (picking in the warehouse),
  * where they record what actually went out. Everything is assumed to ship in
  * full with one tap; only a shortfall needs the quantity sheet. Recording a
  * shipment never changes the invoice itself.
+ *
+ * Amharic throughout, in the Telegram message's wording; English only for
+ * short navigation / control labels where Amharic would crowd the screen.
  */
 export default function PrepPage() {
   const [orders, setOrders] = useState<PrepOrder[]>([]);
@@ -48,7 +47,7 @@ export default function PrepPage() {
         setOrders([...loaded].sort((a, b) => a.customer_name.localeCompare(b.customer_name)));
         setLoadError(null);
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't load the orders"))
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "ትዕዛዞቹን መጫን አልተቻለም"))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -92,7 +91,7 @@ export default function PrepPage() {
       .then((saved) => applyToOrder(invoiceId, (id, current) => (changed.has(id) ? (saved[id] ?? null) : current)))
       .catch((e) => {
         if (before) applyToOrder(invoiceId, (id) => before.line_items.find((l) => l.line_item_id === id)?.shipped ?? null);
-        setSaveError(`Not saved: ${e instanceof Error ? e.message : "please try again"}`);
+        setSaveError(`አልተቀመጠም — እንደገና ይሞክሩ (${e instanceof Error ? e.message : "error"})`);
       })
       .finally(() =>
         setSavingInvoiceIds((prev) => {
@@ -133,9 +132,9 @@ export default function PrepPage() {
   return (
     <div className="prep-page">
       <div className="page-header">
-        <h1 className="page-title">Prepare &amp; ship</h1>
+        <h1 className="page-title">Prepare</h1>
         <div className="page-header__actions">
-          {day && <CopyButton getText={() => formatDayReport(dayLabel(day.date), day.orders)} />}
+          {day && <CopyButton getText={() => formatDayReport(day.date, day.orders)} />}
           <RefreshButton onRefresh={loadOrders} />
         </div>
       </div>
@@ -143,23 +142,23 @@ export default function PrepPage() {
       {isLoading ? (
         <div className="prep-empty">
           <Loader2 size={22} className="refresh-button__icon--spinning" />
-          Loading orders…
+          በመጫን ላይ…
         </div>
       ) : loadError ? (
         <div className="prep-empty">
           <div className="form-error">{loadError}</div>
           <button type="button" className="prep-big-btn prep-big-btn--save" onClick={() => loadOrders()}>
-            Try again
+            Retry
           </button>
         </div>
       ) : !day || !summary ? (
-        <div className="prep-empty">No orders to prepare.</div>
+        <div className="prep-empty">ምንም ትዕዛዝ የለም</div>
       ) : (
         <>
           {days.length > 1 && (
             <div className="prep-days" role="tablist" aria-label="Day">
               {days.map((d) => {
-                const info = d.date ? describeScheduledDay(d.date) : null;
+                const info = amharicDay(d.date);
                 const isActive = d === day;
                 return (
                   <button
@@ -170,10 +169,12 @@ export default function PrepPage() {
                     className={`prep-day${isActive ? " prep-day--active" : ""}`}
                     onClick={() => setSelectedDate(d.date)}
                   >
-                    <span className="prep-day__label">{dayLabel(d.date)}</span>
+                    <span className="prep-day__label">
+                      {info.icon} ለ{info.label}
+                    </span>
                     <span className="prep-day__meta">
-                      {info ? `${info.shortDate} · ` : ""}
-                      {d.orders.length} order{d.orders.length === 1 ? "" : "s"}
+                      {info.shortDate ? `${info.shortDate} · ` : ""}
+                      {d.orders.length} ትዕዛዝ
                     </span>
                   </button>
                 );
@@ -184,9 +185,10 @@ export default function PrepPage() {
           <div className="prep-summary">
             <div className="prep-summary__main">
               <span className="prep-summary__count">
-                {summary.finishedCount} <span className="prep-summary__of">of {summary.orderCount}</span>
+                {summary.finishedCount}
+                <span className="prep-summary__of">/{summary.orderCount}</span>
               </span>
-              <span className="prep-summary__label">orders out {dayLabel(day.date).toLowerCase()}</span>
+              <span className="prep-summary__label">ትዕዛዝ ወጥቷል</span>
             </div>
             <div className="prep-progress prep-progress--summary" aria-hidden="true">
               <div
@@ -197,13 +199,13 @@ export default function PrepPage() {
             {(summary.shortLineCount > 0 || summary.notShippedLineCount > 0 || day.carriedOverCount > 0) && (
               <div className="prep-summary__chips">
                 {summary.shortLineCount > 0 && (
-                  <span className="prep-chip prep-chip--short">{summary.shortLineCount} went out short</span>
+                  <span className="prep-chip prep-chip--short">{summary.shortLineCount} ጎድሏል</span>
                 )}
                 {summary.notShippedLineCount > 0 && (
-                  <span className="prep-chip prep-chip--none">{summary.notShippedLineCount} not shipped</span>
+                  <span className="prep-chip prep-chip--none">{summary.notShippedLineCount} አልወጣም</span>
                 )}
                 {day.carriedOverCount > 0 && (
-                  <span className="prep-chip">{day.carriedOverCount} from an earlier day</span>
+                  <span className="prep-chip">{day.carriedOverCount} ያለፈ ቀን ትዕዛዝ</span>
                 )}
               </div>
             )}
@@ -217,7 +219,7 @@ export default function PrepPage() {
               className={`prep-toggle__btn${view === "customers" ? " prep-toggle__btn--active" : ""}`}
               onClick={() => setView("customers")}
             >
-              By customer
+              Customers
             </button>
             <button
               type="button"
@@ -226,7 +228,7 @@ export default function PrepPage() {
               className={`prep-toggle__btn${view === "items" ? " prep-toggle__btn--active" : ""}`}
               onClick={() => setView("items")}
             >
-              By item
+              Items
             </button>
           </div>
 
@@ -252,11 +254,11 @@ export default function PrepPage() {
                 ))
               : items.map((item) => (
                   <PrepItemCard
-                    key={item.name}
+                    key={item.label}
                     item={item}
-                    isExpanded={expandedItems.has(item.name)}
+                    isExpanded={expandedItems.has(item.label)}
                     isSaving={item.lines.some(({ order }) => savingInvoiceIds.has(order.invoice_id))}
-                    onToggleExpanded={() => toggleExpanded(item.name)}
+                    onToggleExpanded={() => toggleExpanded(item.label)}
                     onEditLine={({ order, line }) => setEditing({ invoiceId: order.invoice_id, lineItemId: line.line_item_id })}
                     onShipAll={() => shipRestOfItem(item.lines)}
                   />

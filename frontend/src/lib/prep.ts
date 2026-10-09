@@ -1,5 +1,14 @@
 import type { PrepLineItem, PrepOrder } from "../types";
-import { groupByScheduledDay } from "./scheduledDate";
+import { describeScheduledDay, groupByScheduledDay } from "./scheduledDate";
+
+/*
+ * The preparers' screen speaks the same Amharic as the Telegram message the
+ * team already reads: items by their Amharic description, weights as
+ * "10ኪሎ" / "500ግራም" (a box is 10 kilos), days as ዛሬ / ነገ / weekday.
+ */
+
+const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
+const BOX_KILOS = 10;
 
 /** Where one line stands: nothing recorded yet, all of it went out, some of it, or none of it. */
 export type LineStatus = "todo" | "full" | "short" | "none";
@@ -7,9 +16,58 @@ export type LineStatus = "todo" | "full" | "short" | "none";
 /** Where a whole order stands; "partial" means some lines are recorded and some aren't yet. */
 export type OrderStatus = "todo" | "partial" | "done" | "short";
 
+/** A line's Amharic display name: its description, as on the Telegram message and Amharic invoices. */
+export function itemLabel(line: { name: string; description: string }): string {
+  return line.description.trim() || line.name;
+}
+
+/** A line quantity in kilos: boxes are 10 kilos each, everything else is already kilos. */
+export function toKilos(quantity: number, unit: string): number {
+  return unit === "box" ? quantity * BOX_KILOS : quantity;
+}
+
+/** Kilos back into the line's own unit, for saving. */
+export function fromKilos(kilos: number, unit: string): number {
+  return unit === "box" ? kilos / BOX_KILOS : kilos;
+}
+
+/** Trims float noise ("9.000001" → "9") without forcing decimals on whole numbers. */
+export function formatQuantity(quantity: number): string {
+  return String(Math.round(quantity * 1000) / 1000);
+}
+
+/** "10ኪሎ", or "500ግራም" under a kilo — the Telegram message's weight format. */
+export function formatWeight(kilos: number): string {
+  if (kilos > 0 && kilos < 1) return `${formatQuantity(kilos * 1000)}ግራም`;
+  return `${formatQuantity(kilos)}ኪሎ`;
+}
+
+export function lineKilos(line: PrepLineItem): { needed: number; shipped: number | null } {
+  return {
+    needed: toKilos(line.quantity, line.unit),
+    shipped: line.shipped === null ? null : toKilos(line.shipped, line.unit),
+  };
+}
+
+/** A scheduled day in Amharic: ዛሬ / ነገ / ትላንት / weekday, with the Telegram message's colour icon. */
+export function amharicDay(date: string | null): { label: string; icon: string; shortDate: string } {
+  if (!date) return { label: "ቀን ያልተሰጠው", icon: "🗓️", shortDate: "" };
+  const info = describeScheduledDay(date);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const [year, month, day] = date.split("-").map(Number);
+  const asDate = new Date(year, month - 1, day);
+  const isYesterday = asDate.toDateString() === yesterday.toDateString();
+  const label =
+    info.label === "Today" ? "ዛሬ" : info.label === "Tomorrow" ? "ነገ" : isYesterday ? "ትላንት" : AMHARIC_WEEKDAYS[asDate.getDay()];
+  const icon = info.label === "Today" ? "🟢" : info.label === "Tomorrow" ? "🟡" : "🗓️";
+  return { label, icon, shortDate: info.shortDate };
+}
+
 export function lineStatus(line: PrepLineItem): LineStatus {
   if (line.shipped === null) return "todo";
-  if (line.shipped >= line.quantity) return "full";
+  // Small tolerance: kilos typed for a box line come back as a fraction of a box.
+  if (line.shipped >= line.quantity - 1e-9) return "full";
   if (line.shipped === 0) return "none";
   return "short";
 }
@@ -43,32 +101,34 @@ export function groupOrdersByDay(orders: PrepOrder[], from: Date = new Date()): 
 export type ItemLine = { order: PrepOrder; line: PrepLineItem };
 
 export type PrepItem = {
-  name: string;
-  description: string;
-  unit: string;
-  needed: number;
+  /** Amharic display name (the description). */
+  label: string;
+  /** Totals in kilos, so boxes and kilos of the same item add up. */
+  neededKilos: number;
   /** Sum of what's been recorded so far (lines not done yet count as 0). */
-  shipped: number;
+  shippedKilos: number;
   lines: ItemLine[];
 };
 
-/** The day's orders rolled up per item (case-insensitive name), each with who it's for. */
+/** The day's orders rolled up per item (by its Amharic name), each with who it's for. */
 export function groupLinesByItem(orders: PrepOrder[]): PrepItem[] {
-  const byName = new Map<string, PrepItem>();
+  const byLabel = new Map<string, PrepItem>();
   for (const order of orders) {
     for (const line of order.line_items) {
-      const key = line.name.toLowerCase();
-      let item = byName.get(key);
+      const label = itemLabel(line);
+      let item = byLabel.get(label);
       if (!item) {
-        item = { name: line.name, description: line.description, unit: line.unit, needed: 0, shipped: 0, lines: [] };
-        byName.set(key, item);
+        item = { label, neededKilos: 0, shippedKilos: 0, lines: [] };
+        byLabel.set(label, item);
       }
-      item.needed += line.quantity;
-      item.shipped += line.shipped ?? 0;
+      const kilos = lineKilos(line);
+      item.neededKilos += kilos.needed;
+      item.shippedKilos += kilos.shipped ?? 0;
       item.lines.push({ order, line });
     }
   }
-  return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  // Biggest first, the same order the Items tab copies them in.
+  return Array.from(byLabel.values()).sort((a, b) => b.neededKilos - a.neededKilos);
 }
 
 export type DaySummary = {
@@ -89,25 +149,25 @@ export function summarizeDay(orders: PrepOrder[]): DaySummary {
   };
 }
 
-/** Trims float noise ("9.000001" → "9") without forcing decimals on whole numbers. */
-export function formatQuantity(quantity: number): string {
-  return String(Math.round(quantity * 1000) / 1000);
-}
-
 /**
- * Plain-text report of a day's differences, for pasting into Telegram:
- * one block per order that went out short, listing each short or missing line.
+ * The day's differences as a Telegram-style message: the day line, then per
+ * order that went out short its number and customer, and one
+ * "{shipped} {item} (ከ{needed})" line per short or missing item.
  */
-export function formatDayReport(dayLabel: string, orders: PrepOrder[]): string {
+export function formatDayReport(date: string | null, orders: PrepOrder[]): string {
+  const day = amharicDay(date);
   const summary = summarizeDay(orders);
-  const header = `${dayLabel}: ${summary.finishedCount} of ${summary.orderCount} orders out`;
+  const header = `${day.icon} ለ${day.label} — ${summary.finishedCount}/${summary.orderCount} ትዕዛዝ ወጥቷል`;
   const blocks = orders
     .map((order) => {
       const lines = order.line_items
         .filter((line) => lineStatus(line) === "short" || lineStatus(line) === "none")
-        .map((line) => `- ${line.name}: ${formatQuantity(line.shipped ?? 0)} of ${formatQuantity(line.quantity)} ${line.unit}`);
-      return lines.length ? [`${order.customer_name} (${order.invoice_number})`, ...lines].join("\n") : null;
+        .map((line) => {
+          const kilos = lineKilos(line);
+          return `${formatWeight(kilos.shipped ?? 0)} ${itemLabel(line)} (ከ${formatWeight(kilos.needed)})`;
+        });
+      return lines.length ? [`${order.invoice_number} · ${order.customer_name}:`, ...lines].join("\n") : null;
     })
     .filter((block): block is string => block !== null);
-  return blocks.length ? [header, ...blocks].join("\n\n") : `${header}\nEverything went out in full.`;
+  return blocks.length ? [header, ...blocks].join("\n\n") : `${header}\n\n✅ ሁሉም ሙሉ ወጥቷል`;
 }

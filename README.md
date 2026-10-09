@@ -120,5 +120,9 @@ All routes are mounted under `/api`.
 - `GET /invoices/:id/returns` — per item: invoiced, already returned, returnable, credited price; plus past returns
 - `POST /invoices/:id/returns` — `{ items: [{ item_id, quantity }], reason? }` → creates the credit note, applies credit to the invoice's balance
 
+**Prepare & ship** (`backend/src/routes/prep.routes.ts`) — the preparers' screen at `/prep` in the frontend (no office tabs)
+- `GET /prep/orders` — every draft with its lines, each with what was recorded as shipped (`null` = not done yet)
+- `PUT /prep/orders/:id/shipped` — `{ lines: [{ line_item_id, quantity }] }` records what went out (`quantity: null` clears a line). Stored only in Redis (`prep:shipped:<invoice_id>` hash, 60-day TTL); the Zoho invoice is never changed by this
+
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

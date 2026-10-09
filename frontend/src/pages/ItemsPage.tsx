@@ -71,6 +71,9 @@ export default function ItemsPage() {
       <div className="page-header">
         <h1 className="page-title">Items</h1>
         <div className="page-header__actions">
+          <a className="prep-link" href="/prep" title="Open the preparers' shipping screen">
+            Prepare &amp; ship
+          </a>
           <CopyButton getText={() => formatItemsForCopy(items)} />
           <RefreshButton onRefresh={() => loadItems({ force: true })} />
         </div>

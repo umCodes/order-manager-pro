@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, PrepOrder } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -1253,4 +1253,41 @@ export async function createInvoiceReturn(
     throw new Error(body.error ?? `Failed to create the return (${response.status})`);
   }
   return response.json();
+}
+
+/** Every draft with its lines and what the preparers recorded as shipped. Never cached: it changes as they work. */
+export async function fetchPrepOrders(): Promise<PrepOrder[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/prep/orders`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load orders (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.orders;
+}
+
+/**
+ * Records what left the warehouse for some of a draft's lines (quantity null
+ * clears a line back to "not done yet"). Returns every recorded line of that
+ * draft, as line_item_id → quantity.
+ */
+export async function savePrepShipments(
+  invoiceId: string,
+  lines: { line_item_id: string; quantity: number | null }[],
+): Promise<Record<string, number>> {
+  const response = await apiFetch(`${API_BASE_URL}/api/prep/orders/${invoiceId}/shipped`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lines }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to save (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.shipped;
 }

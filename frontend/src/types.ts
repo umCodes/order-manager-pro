@@ -135,3 +135,23 @@ export type InvoiceDetail = {
   balance: number;
   line_items: InvoiceDetailLineItem[];
 };
+/** One line of a draft on the preparers' screen, with what was recorded as shipped (null = not done yet). */
+export type PrepLineItem = {
+  line_item_id: string;
+  name: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  shipped: number | null;
+  shipped_at: string | null;
+};
+
+/** A draft as the preparers see it: who it's for, when, and its lines. */
+export type PrepOrder = {
+  invoice_id: string;
+  invoice_number: string;
+  customer_id: string;
+  customer_name: string;
+  date: string;
+  line_items: PrepLineItem[];
+};

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CalendarClock, Loader2, Package, Users } from "lucide-react";
 import { fetchPrepOrders, savePrepShipments } from "../lib/api";
 import {
   amharicDay,
@@ -14,6 +14,7 @@ import CopyButton from "../components/CopyButton";
 import PrepOrderCard from "../components/PrepOrderCard";
 import PrepItemCard from "../components/PrepItemCard";
 import ShippedQuantitySheet from "../components/ShippedQuantitySheet";
+import { StatusIcon, StatusLegend } from "../components/PrepStatusIcon";
 import type { PrepOrder } from "../types";
 
 type View = "customers" | "items";
@@ -27,8 +28,9 @@ type ShipmentChange = { line_item_id: string; quantity: number | null };
  * full with one tap; only a shortfall needs the quantity sheet. Recording a
  * shipment never changes the invoice itself.
  *
- * Amharic throughout, in the Telegram message's wording; English only for
- * short navigation / control labels where Amharic would crowd the screen.
+ * Data (items, weights, days) is Amharic, in the Telegram message's wording.
+ * Controls use whichever of English or Amharic is shorter, and statuses are
+ * icons, named once in the legend, so the cards don't get crowded.
  */
 export default function PrepPage() {
   const [orders, setOrders] = useState<PrepOrder[]>([]);
@@ -47,7 +49,7 @@ export default function PrepPage() {
         setOrders([...loaded].sort((a, b) => a.customer_name.localeCompare(b.customer_name)));
         setLoadError(null);
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "ትዕዛዞቹን መጫን አልተቻለም"))
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't load orders"))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -91,7 +93,7 @@ export default function PrepPage() {
       .then((saved) => applyToOrder(invoiceId, (id, current) => (changed.has(id) ? (saved[id] ?? null) : current)))
       .catch((e) => {
         if (before) applyToOrder(invoiceId, (id) => before.line_items.find((l) => l.line_item_id === id)?.shipped ?? null);
-        setSaveError(`አልተቀመጠም — እንደገና ይሞክሩ (${e instanceof Error ? e.message : "error"})`);
+        setSaveError(`Not saved — try again (${e instanceof Error ? e.message : "error"})`);
       })
       .finally(() =>
         setSavingInvoiceIds((prev) => {
@@ -142,7 +144,7 @@ export default function PrepPage() {
       {isLoading ? (
         <div className="prep-empty">
           <Loader2 size={22} className="refresh-button__icon--spinning" />
-          በመጫን ላይ…
+          Loading…
         </div>
       ) : loadError ? (
         <div className="prep-empty">
@@ -152,7 +154,7 @@ export default function PrepPage() {
           </button>
         </div>
       ) : !day || !summary ? (
-        <div className="prep-empty">ምንም ትዕዛዝ የለም</div>
+        <div className="prep-empty">No orders</div>
       ) : (
         <>
           {days.length > 1 && (
@@ -170,11 +172,11 @@ export default function PrepPage() {
                     onClick={() => setSelectedDate(d.date)}
                   >
                     <span className="prep-day__label">
-                      {info.icon} ለ{info.label}
+                      {info.icon} {info.label}
                     </span>
                     <span className="prep-day__meta">
-                      {info.shortDate ? `${info.shortDate} · ` : ""}
-                      {d.orders.length} ትዕዛዝ
+                      {info.shortDate}
+                      <Package size={12} strokeWidth={2.5} /> {d.orders.length}
                     </span>
                   </button>
                 );
@@ -188,7 +190,7 @@ export default function PrepPage() {
                 {summary.finishedCount}
                 <span className="prep-summary__of">/{summary.orderCount}</span>
               </span>
-              <span className="prep-summary__label">ትዕዛዝ ወጥቷል</span>
+              <span className="prep-summary__label">orders out</span>
             </div>
             <div className="prep-progress prep-progress--summary" aria-hidden="true">
               <div
@@ -199,13 +201,19 @@ export default function PrepPage() {
             {(summary.shortLineCount > 0 || summary.notShippedLineCount > 0 || day.carriedOverCount > 0) && (
               <div className="prep-summary__chips">
                 {summary.shortLineCount > 0 && (
-                  <span className="prep-chip prep-chip--short">{summary.shortLineCount} ጎድሏል</span>
+                  <span className="prep-chip prep-chip--short">
+                    <StatusIcon status="short" size={14} /> {summary.shortLineCount}
+                  </span>
                 )}
                 {summary.notShippedLineCount > 0 && (
-                  <span className="prep-chip prep-chip--none">{summary.notShippedLineCount} አልወጣም</span>
+                  <span className="prep-chip prep-chip--none">
+                    <StatusIcon status="none" size={14} /> {summary.notShippedLineCount}
+                  </span>
                 )}
                 {day.carriedOverCount > 0 && (
-                  <span className="prep-chip">{day.carriedOverCount} ያለፈ ቀን ትዕዛዝ</span>
+                  <span className="prep-chip" title="From an earlier day">
+                    <CalendarClock size={14} strokeWidth={2.5} /> {day.carriedOverCount} late
+                  </span>
                 )}
               </div>
             )}
@@ -219,7 +227,7 @@ export default function PrepPage() {
               className={`prep-toggle__btn${view === "customers" ? " prep-toggle__btn--active" : ""}`}
               onClick={() => setView("customers")}
             >
-              Customers
+              <Users size={17} /> Customers
             </button>
             <button
               type="button"
@@ -228,9 +236,11 @@ export default function PrepPage() {
               className={`prep-toggle__btn${view === "items" ? " prep-toggle__btn--active" : ""}`}
               onClick={() => setView("items")}
             >
-              Items
+              <Package size={17} /> Items
             </button>
           </div>
+
+          <StatusLegend />
 
           {saveError && (
             <div className="prep-error" role="alert">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Check, Minus, Plus, X } from "lucide-react";
 import { formatQuantity, formatWeight, fromKilos, itemLabel, lineKilos } from "../lib/prep";
 import type { PrepLineItem, PrepOrder } from "../types";
 
@@ -45,7 +45,7 @@ export default function ShippedQuantitySheet({ order, line, onSave, onClose }: P
         </div>
 
         <div className="prep-sheet__needed">
-          የሚፈለገው <strong>{formatWeight(kilos.needed)}</strong>
+          Need <strong>{formatWeight(kilos.needed)}</strong>
         </div>
 
         <div className="prep-sheet__question">ምን ያህል ወጣ?</div>
@@ -74,10 +74,10 @@ export default function ShippedQuantitySheet({ order, line, onSave, onClose }: P
 
         <div className="prep-sheet__quick">
           <button type="button" className="prep-quick-btn" onClick={() => setText(formatQuantity(kilos.needed * scale))}>
-            ሙሉ ({formatWeight(kilos.needed)})
+            <Check size={18} strokeWidth={3} /> ሙሉ {formatWeight(kilos.needed)}
           </button>
           <button type="button" className="prep-quick-btn prep-quick-btn--none" onClick={() => setText("0")}>
-            ምንም አልወጣም
+            <X size={18} strokeWidth={3} /> None
           </button>
         </div>
 
@@ -91,7 +91,7 @@ export default function ShippedQuantitySheet({ order, line, onSave, onClose }: P
         </button>
         {line.shipped !== null && (
           <button type="button" className="prep-sheet__clear" onClick={() => onSave(null)}>
-            Undo · ገና አልተሰራም
+            Undo
           </button>
         )}
       </div>

@@ -1,6 +1,6 @@
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
-import { formatWeight, lineKilos, type ItemLine, type PrepItem } from "../lib/prep";
-import { ShippedBadge } from "./PrepOrderCard";
+import { Check, ChevronDown, ChevronRight, Users } from "lucide-react";
+import { formatWeight, lineKilos, type ItemLine, type LineStatus, type PrepItem } from "../lib/prep";
+import { ShippedBadge, StatusIcon } from "./PrepStatusIcon";
 
 type Props = {
   item: PrepItem;
@@ -22,6 +22,8 @@ export default function PrepItemCard({ item, isExpanded, isSaving, onToggleExpan
   const isShort = isFinished && item.shippedKilos < item.neededKilos - 1e-9;
   const progress = item.neededKilos > 0 ? Math.min(1, item.shippedKilos / item.neededKilos) : 0;
   const status = !isFinished ? (item.shippedKilos > 0 ? "partial" : "todo") : isShort ? "short" : "done";
+  const statusIcon: LineStatus =
+    status === "done" ? "full" : status !== "short" ? "todo" : item.shippedKilos > 0 ? "short" : "none";
 
   return (
     <div className={`prep-card prep-card--${status}`}>
@@ -30,16 +32,17 @@ export default function PrepItemCard({ item, isExpanded, isSaving, onToggleExpan
         <div className="prep-card__heading">
           <div className="prep-card__title">{item.label}</div>
           <div className={`prep-item__shipped prep-item__shipped--${status}`}>
-            {isFinished && !isShort ? (
-              <>
-                <Check size={14} strokeWidth={3} /> ሙሉ ወጥቷል
-              </>
-            ) : status === "todo" ? (
-              "ገና"
+            {status === "todo" ? (
+              <StatusIcon status="todo" size={12} />
             ) : (
-              `${formatWeight(item.shippedKilos)} ወጥቷል`
+              <>
+                <StatusIcon status={statusIcon} size={14} />
+                {statusIcon !== "none" && formatWeight(item.shippedKilos)}
+              </>
             )}
-            <span className="prep-item__customers"> · {item.lines.length} ደንበኛ</span>
+            <span className="prep-item__customers">
+              <Users size={13} strokeWidth={2.5} /> {item.lines.length}
+            </span>
           </div>
         </div>
         <ChevronDown size={18} className={`prep-item__chevron${isExpanded ? " prep-item__chevron--open" : ""}`} aria-hidden="true" />
@@ -73,8 +76,8 @@ export default function PrepItemCard({ item, isExpanded, isSaving, onToggleExpan
         <button type="button" className="prep-big-btn prep-big-btn--ship" disabled={isSaving} onClick={onShipAll}>
           <Check size={20} strokeWidth={3} />
           {remainingLines.length === item.lines.length
-            ? `ሁሉም ${formatWeight(item.neededKilos)} ወጥቷል`
-            : `የቀረው ወጥቷል (${remainingLines.length})`}
+            ? `All ${formatWeight(item.neededKilos)} out`
+            : `Rest out (${remainingLines.length})`}
         </button>
       )}
     </div>

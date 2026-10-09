@@ -3089,6 +3089,9 @@ div.wa-pick-list__row {
 }
 
 .prep-day__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12.5px;
   color: var(--color-gray-500);
 }
@@ -3142,6 +3145,9 @@ div.wa-pick-list__row {
 }
 
 .prep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   font-weight: 600;
   padding: 4px 10px;
@@ -3200,6 +3206,10 @@ div.wa-pick-list__row {
 }
 
 .prep-toggle__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   flex: 1;
   min-height: 44px;
   border: none;
@@ -3295,9 +3305,11 @@ div.wa-pick-list__row {
 }
 
 .prep-card__late {
-  display: inline-block;
-  margin-top: 6px;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 8px;
+  padding: 1px 7px;
   border-radius: var(--radius-sm);
   background: var(--prep-red-bg);
   color: var(--prep-red);
@@ -3306,6 +3318,9 @@ div.wa-pick-list__row {
 }
 
 .prep-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   flex-shrink: 0;
   font-size: 12.5px;
   font-weight: 600;
@@ -3392,9 +3407,10 @@ div.wa-pick-list__row {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-width: 68px;
-  padding: 5px 8px;
+  gap: 2px;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
   font-size: 13.5px;
   font-weight: 700;
@@ -3473,8 +3489,41 @@ div.wa-pick-list__row {
 }
 
 .prep-item__customers {
-  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 8px;
+  font-weight: 500;
   color: var(--color-gray-500);
+}
+
+.prep-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: -4px 0 14px;
+  font-size: 13px;
+  color: var(--color-gray-600);
+}
+
+.prep-legend__entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.prep-badge--legend {
+  min-width: 24px;
+  min-height: 22px;
+  padding: 2px 4px;
+}
+
+.prep-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .prep-item__shipped {

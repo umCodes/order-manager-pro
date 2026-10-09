@@ -1,29 +1,8 @@
-import { Check, ChevronRight } from "lucide-react";
-import { amharicDay, formatWeight, itemLabel, lineKilos, lineStatus, orderStatus, type OrderStatus } from "../lib/prep";
+import { CalendarClock, Check, ChevronRight } from "lucide-react";
+import { amharicDay, formatWeight, itemLabel, lineKilos, orderStatus } from "../lib/prep";
 import { describeScheduledDay } from "../lib/scheduledDate";
+import { ShippedBadge, StatusIcon } from "./PrepStatusIcon";
 import type { PrepLineItem, PrepOrder } from "../types";
-
-const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  todo: "ገና",
-  partial: "በሂደት ላይ",
-  done: "ሙሉ ወጥቷል",
-  short: "ጎድሏል",
-};
-
-/** What was recorded for one line, as a coloured badge: ገና, ✓, the short amount, or አልወጣም. */
-export function ShippedBadge({ line }: { line: PrepLineItem }) {
-  const status = lineStatus(line);
-  if (status === "todo") return <span className="prep-badge prep-badge--todo">ገና</span>;
-  if (status === "full") {
-    return (
-      <span className="prep-badge prep-badge--full" aria-label="ሙሉ ወጥቷል">
-        <Check size={18} strokeWidth={3} />
-      </span>
-    );
-  }
-  if (status === "none") return <span className="prep-badge prep-badge--none">አልወጣም</span>;
-  return <span className="prep-badge prep-badge--short">{formatWeight(lineKilos(line).shipped ?? 0)}</span>;
-}
 
 type Props = {
   order: PrepOrder;
@@ -36,9 +15,11 @@ type Props = {
  * One customer's order on the preparers' screen: each line is a big tap
  * target that opens the quantity sheet, and the green button records every
  * line still not done as going out in full — so a normal order is one tap.
+ * Status is shown with icons and counts, not words (see StatusLegend).
  */
 export default function PrepOrderCard({ order, isSaving, onEditLine, onShipAll }: Props) {
   const status = orderStatus(order);
+  const total = order.line_items.length;
   const remaining = order.line_items.filter((line) => line.shipped === null).length;
   const isLate = describeScheduledDay(order.date).isPast;
 
@@ -47,10 +28,20 @@ export default function PrepOrderCard({ order, isSaving, onEditLine, onShipAll }
       <div className="prep-card__header">
         <div className="prep-card__heading">
           <div className="prep-card__title">{order.customer_name}</div>
-          <div className="prep-card__subtitle">{order.invoice_number}</div>
-          {isLate && <div className="prep-card__late">የ{amharicDay(order.date).label} ትዕዛዝ</div>}
+          <div className="prep-card__subtitle">
+            {order.invoice_number}
+            {isLate && (
+              <span className="prep-card__late">
+                <CalendarClock size={13} strokeWidth={2.5} /> {amharicDay(order.date).label}
+              </span>
+            )}
+          </div>
         </div>
-        <span className={`prep-status prep-status--${status}`}>{ORDER_STATUS_LABEL[status]}</span>
+        <span className={`prep-status prep-status--${status}`}>
+          {status === "done" && <StatusIcon status="full" size={14} />}
+          {status === "short" && <StatusIcon status="short" size={14} />}
+          {total - remaining}/{total}
+        </span>
       </div>
 
       <div className="prep-lines">
@@ -67,7 +58,7 @@ export default function PrepOrderCard({ order, isSaving, onEditLine, onShipAll }
       {remaining > 0 && (
         <button type="button" className="prep-big-btn prep-big-btn--ship" disabled={isSaving} onClick={onShipAll}>
           <Check size={20} strokeWidth={3} />
-          {remaining === order.line_items.length ? "ሁሉም ወጥቷል" : `የቀረው ወጥቷል (${remaining})`}
+          {remaining === total ? "All out" : `Rest out (${remaining})`}
         </button>
       )}
     </div>

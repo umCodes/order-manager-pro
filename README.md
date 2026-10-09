@@ -120,9 +120,9 @@ All routes are mounted under `/api`.
 - `GET /invoices/:id/returns` — per item: invoiced, already returned, returnable, credited price; plus past returns
 - `POST /invoices/:id/returns` — `{ items: [{ item_id, quantity }], reason? }` → creates the credit note, applies credit to the invoice's balance
 
-**Prepare & deliver** (`backend/src/routes/prep.routes.ts`) — warehouse screens in the frontend, with none of the office tabs: `/prep` for preparers (step 1 Prepare, step 2 Send) and `/driver` for delivery drivers (Receive). Each draft line is recorded in three steps — how much was prepared, how much was sent, how much the driver received — any amount of 0 or more. A received amount that differs from what was sent is a conflict, flagged on both screens and in the copied day report
+**Preparation** (`backend/src/routes/prep.routes.ts`) — the preparers' screen at `/prep` in the frontend (none of the office tabs): today's drafts (today's and overdue, as on the Drafts tab), one card per invoice, where each line is recorded with how much was actually prepared against what was ordered. Weighed items (kg, and boxes at 10 kilos) are entered as whole kilos plus grams in steps of 50; anything else as a plain count. The storage already takes the later `sent` / `received` steps (shipping, driver), which have no screen yet
 - `GET /prep/orders` — every draft with its lines (internal `###` lines left out), each with `prepared` / `sent` / `received` (`null` = not done yet)
-- `PUT /prep/orders/:id/:step` — `step` is `prepared`, `sent` or `received`; `{ lines: [{ line_item_id, quantity }] }` (`quantity: null` clears a line). Stored only in Redis (`prep:lines:<invoice_id>` hash, one field per line and step so the preparer and driver never overwrite each other; 60-day TTL); the Zoho invoice is never changed by this
+- `PUT /prep/orders/:id/:step` — `step` is `prepared`, `sent` or `received`; `{ lines: [{ line_item_id, quantity }] }` (`quantity: null` clears a line). Stored only in Redis (`prep:lines:<invoice_id>` hash, one field per line and step; 60-day TTL); the Zoho invoice is never changed by this
 
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

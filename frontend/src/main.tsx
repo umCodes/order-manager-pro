@@ -5,14 +5,13 @@ import App from './App.tsx'
 import ServerWakeupGate from './components/ServerWakeupGate.tsx'
 import PrepApp from './PrepApp.tsx'
 
-// /prep (preparers) and /driver (delivery drivers) are the warehouse screens: none of the office tabs.
-const path = window.location.pathname.replace(/\/+$/, '')
-const warehouseRole = path === '/prep' ? 'preparer' : path === '/driver' ? 'driver' : null
+// /prep is the preparers' own screen: none of the office tabs.
+const isPrepScreen = window.location.pathname.replace(/\/+$/, '') === '/prep'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ServerWakeupGate>
-      {warehouseRole ? <PrepApp role={warehouseRole} /> : <App />}
+      {isPrepScreen ? <PrepApp /> : <App />}
     </ServerWakeupGate>
   </StrictMode>,
 )

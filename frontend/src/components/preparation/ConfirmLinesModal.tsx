@@ -4,19 +4,18 @@ import type { PrepLineItem, PrepOrder } from "../../types";
 type Props = {
   order: PrepOrder;
   title: string;
-  /** Each line with the amount it will show once confirmed (or what it showed before an undo). */
+  /** Each line with the amount it will show once confirmed. */
   lines: { line: PrepLineItem; amount: number }[];
   confirmLabel: string;
-  isDanger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 /**
- * Asks before changing a whole order at once ("all prepared" or undoing
- * it), listing every line it will change so nothing is confirmed blind.
+ * Asks before marking a whole order prepared at once, listing every line
+ * it will change so nothing is confirmed blind.
  */
-export default function ConfirmLinesModal({ order, title, lines, confirmLabel, isDanger, onConfirm, onCancel }: Props) {
+export default function ConfirmLinesModal({ order, title, lines, confirmLabel, onConfirm, onCancel }: Props) {
   return (
     <div className="prp-overlay" role="dialog" aria-modal="true" aria-label={title}>
       <div className="prp-overlay__backdrop" onClick={onCancel} />
@@ -38,7 +37,7 @@ export default function ConfirmLinesModal({ order, title, lines, confirmLabel, i
           <button type="button" className="prp-btn prp-btn--secondary" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={`prp-btn ${isDanger ? "prp-btn--danger" : "prp-btn--primary"}`} onClick={onConfirm}>
+          <button type="button" className="prp-btn prp-btn--primary" onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

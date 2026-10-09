@@ -6,8 +6,8 @@ import type { PrepLineItem, PrepOrder } from "../../types";
 type Props = {
   order: PrepOrder;
   line: PrepLineItem;
-  /** Prepared amount in the line's own unit (boxes stay boxes), or null to clear. */
-  onSave: (quantity: number | null) => void;
+  /** Prepared amount in the line's own unit (boxes stay boxes). */
+  onSave: (quantity: number) => void;
   onClose: () => void;
 };
 
@@ -157,11 +157,6 @@ export default function AmountSheet({ order, line, onSave, onClose }: Props) {
         >
           Save
         </button>
-        {line.prepared !== null && (
-          <button type="button" className="prp-sheet__undo" onClick={() => onSave(null)}>
-            Undo
-          </button>
-        )}
       </div>
     </div>
   );

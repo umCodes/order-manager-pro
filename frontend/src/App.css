@@ -3324,24 +3324,7 @@ div.wa-pick-list__row {
   cursor: pointer;
 }
 
-.prp-card__undo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 44px;
-  border: none;
-  border-top: 1px solid var(--color-gray-100);
-  background: none;
-  color: var(--color-gray-500);
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.prp-card__all:disabled,
-.prp-card__undo:disabled {
+.prp-card__all:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -3531,26 +3514,9 @@ div.wa-pick-list__row {
   color: var(--prp-red, #b91c1c);
 }
 
-.prp-btn--danger {
-  background: #b91c1c;
-  color: var(--color-white);
-}
-
 .prp-btn--big {
   min-height: 54px;
   font-size: 17px;
-}
-
-.prp-sheet__undo {
-  margin-top: 8px;
-  min-height: 44px;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 14.5px;
-  color: var(--color-gray-500);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .prp-confirm-list {

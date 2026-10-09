@@ -10,10 +10,7 @@ import ConfirmLinesModal from "../components/preparation/ConfirmLinesModal";
 import { StatusLegend } from "../components/preparation/LineBadge";
 import type { PrepLineItem, PrepOrder } from "../types";
 
-type Change = { line_item_id: string; quantity: number | null };
-
-/** The whole-order action waiting on a yes: marking the rest prepared, or undoing what's recorded. */
-type PendingConfirm = { kind: "all" | "undo"; invoiceId: string };
+type Change = { line_item_id: string; quantity: number };
 
 /**
  * The preparation screen (/prep): today's orders — today's and anything
@@ -35,7 +32,8 @@ export default function PreparationPage() {
   // Folded / unfolded by hand; without an entry a card is folded exactly when it's fully prepared.
   const [collapsedOverride, setCollapsedOverride] = useState<Map<string, boolean>>(new Map());
   const [editing, setEditing] = useState<{ invoiceId: string; lineItemId: string } | null>(null);
-  const [pending, setPending] = useState<PendingConfirm | null>(null);
+  // The order whose "All prepared" is waiting on a yes.
+  const [pendingInvoiceId, setPendingInvoiceId] = useState<string | null>(null);
 
   const loadOrders = useCallback(() => {
     return fetchPrepOrders()
@@ -58,7 +56,7 @@ export default function PreparationPage() {
   const findOrder = (invoiceId: string) => orders.find((o) => o.invoice_id === invoiceId);
   const editingOrder = editing ? findOrder(editing.invoiceId) : undefined;
   const editingLine = editingOrder?.line_items.find((l) => l.line_item_id === editing?.lineItemId);
-  const pendingOrder = pending ? findOrder(pending.invoiceId) : undefined;
+  const pendingOrder = pendingInvoiceId ? findOrder(pendingInvoiceId) : undefined;
 
   function updateLines(invoiceId: string, update: (line: PrepLineItem) => PrepLineItem) {
     setOrders((prev) =>
@@ -79,7 +77,7 @@ export default function PreparationPage() {
     if (changes.length === 0) return;
     const before = findOrder(invoiceId);
     const changed = new Map(changes.map((c) => [c.line_item_id, c.quantity]));
-    updateLines(invoiceId, (line) => (changed.has(line.line_item_id) ? { ...line, prepared: changed.get(line.line_item_id) ?? null } : line));
+    updateLines(invoiceId, (line) => (changed.has(line.line_item_id) ? { ...line, prepared: changed.get(line.line_item_id) ?? line.prepared } : line));
     // Let the card fold (or unfold) by its new status.
     unsetOverride(invoiceId);
     setSaveError(null);
@@ -108,20 +106,14 @@ export default function PreparationPage() {
       );
   }
 
-  function confirmPending() {
-    if (!pending || !pendingOrder) return;
-    if (pending.kind === "all") {
-      save(
-        pendingOrder.invoice_id,
-        pendingOrder.line_items.filter((l) => l.prepared === null).map((l) => ({ line_item_id: l.line_item_id, quantity: l.quantity })),
-      );
-    } else {
-      save(
-        pendingOrder.invoice_id,
-        pendingOrder.line_items.filter((l) => l.prepared !== null).map((l) => ({ line_item_id: l.line_item_id, quantity: null })),
-      );
-    }
-    setPending(null);
+  /** Marks every line of the order not recorded yet as fully prepared. */
+  function confirmAllPrepared() {
+    if (!pendingOrder) return;
+    save(
+      pendingOrder.invoice_id,
+      pendingOrder.line_items.filter((l) => l.prepared === null).map((l) => ({ line_item_id: l.line_item_id, quantity: l.quantity })),
+    );
+    setPendingInvoiceId(null);
   }
 
   return (
@@ -176,8 +168,7 @@ export default function PreparationPage() {
                   )
                 }
                 onEditLine={(line) => setEditing({ invoiceId: order.invoice_id, lineItemId: line.line_item_id })}
-                onConfirmAll={() => setPending({ kind: "all", invoiceId: order.invoice_id })}
-                onUndoAll={() => setPending({ kind: "undo", invoiceId: order.invoice_id })}
+                onConfirmAll={() => setPendingInvoiceId(order.invoice_id)}
               />
             ))}
           </div>
@@ -197,19 +188,14 @@ export default function PreparationPage() {
         />
       )}
 
-      {pending && pendingOrder && (
+      {pendingOrder && (
         <ConfirmLinesModal
           order={pendingOrder}
-          title={pending.kind === "all" ? "All prepared?" : "Undo preparation?"}
-          lines={
-            pending.kind === "all"
-              ? pendingOrder.line_items.filter((l) => l.prepared === null).map((line) => ({ line, amount: line.quantity }))
-              : pendingOrder.line_items.filter((l) => l.prepared !== null).map((line) => ({ line, amount: line.prepared ?? 0 }))
-          }
-          confirmLabel={pending.kind === "all" ? "Confirm" : "Undo"}
-          isDanger={pending.kind === "undo"}
-          onConfirm={confirmPending}
-          onCancel={() => setPending(null)}
+          title="All prepared?"
+          lines={pendingOrder.line_items.filter((l) => l.prepared === null).map((line) => ({ line, amount: line.quantity }))}
+          confirmLabel="Confirm"
+          onConfirm={confirmAllPrepared}
+          onCancel={() => setPendingInvoiceId(null)}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { CalendarClock, Check, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { formatAmount, isOverdue, itemLabel, orderStatus, type OrderStatus } from "../../lib/preparation";
 import { describeScheduledDay } from "../../lib/scheduledDate";
 import { LineBadge, StatusIcon } from "./LineBadge";
@@ -18,17 +18,16 @@ type Props = {
   onToggleCollapsed: () => void;
   onEditLine: (line: PrepLineItem) => void;
   onConfirmAll: () => void;
-  onUndoAll: () => void;
 };
 
 /**
  * One order to prepare. The invoice number is the main identifier, the
  * customer name sits under it; the header always shows the order's status
  * and folds the card open or closed (a fully prepared order folds itself).
- * Each line opens the amount sheet; "All prepared" and "Undo" act on the
- * whole order, and both ask first.
+ * Each line opens the amount sheet; "All prepared" acts on the whole order
+ * and asks first.
  */
-export default function PrepOrderCard({ order, isCollapsed, isSaving, onToggleCollapsed, onEditLine, onConfirmAll, onUndoAll }: Props) {
+export default function PrepOrderCard({ order, isCollapsed, isSaving, onToggleCollapsed, onEditLine, onConfirmAll }: Props) {
   const status = orderStatus(order);
   const { label, icon } = STATUS[status];
   const openCount = order.line_items.filter((line) => line.prepared === null).length;
@@ -71,11 +70,6 @@ export default function PrepOrderCard({ order, isCollapsed, isSaving, onToggleCo
           {openCount > 0 && (
             <button type="button" className="prp-card__all" disabled={isSaving} onClick={onConfirmAll}>
               <Check size={20} strokeWidth={3} /> {hasRecorded ? `Rest prepared (${openCount})` : "All prepared"}
-            </button>
-          )}
-          {hasRecorded && (
-            <button type="button" className="prp-card__undo" disabled={isSaving} onClick={onUndoAll}>
-              <RotateCcw size={14} strokeWidth={2.5} /> Undo
             </button>
           )}
         </>

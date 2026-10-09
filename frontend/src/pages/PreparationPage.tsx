@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { fetchPrepOrders, savePrepStep } from "../lib/api";
-import { isFullyPrepared, todayDate, todaysOrders } from "../lib/preparation";
+import { dayLabel, isFullyPrepared, ordersByDay } from "../lib/preparation";
 import { describeScheduledDay } from "../lib/scheduledDate";
 import RefreshButton from "../components/RefreshButton";
 import PrepOrderCard from "../components/preparation/PrepOrderCard";
@@ -13,8 +13,10 @@ import type { PrepLineItem, PrepOrder } from "../types";
 type Change = { line_item_id: string; quantity: number };
 
 /**
- * The preparation screen (/prep): today's orders — today's and anything
- * overdue, as on the Drafts tab — one card per order, where the preparer
+ * The preparation screen (/prep): one day's orders at a time, picked at the
+ * top — today's including anything overdue, as on the Drafts tab; only days
+ * that have orders get a button — one card per order, by invoice number,
+ * where the preparer
  * records how much of each item was actually prepared against what was
  * ordered. Cards start open; a fully prepared order folds down to its
  * invoice number and customer. Recording here never changes the invoice.
@@ -31,6 +33,7 @@ export default function PreparationPage() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   // Folded / unfolded by hand; without an entry a card is folded exactly when it's fully prepared.
   const [collapsedOverride, setCollapsedOverride] = useState<Map<string, boolean>>(new Map());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ invoiceId: string; lineItemId: string } | null>(null);
   // The order whose "All prepared" is waiting on a yes.
   const [pendingInvoiceId, setPendingInvoiceId] = useState<string | null>(null);
@@ -49,8 +52,11 @@ export default function PreparationPage() {
     loadOrders();
   }, [loadOrders]);
 
-  const today = useMemo(() => todaysOrders(orders), [orders]);
-  const lines = today.flatMap((order) => order.line_items);
+  const days = useMemo(() => ordersByDay(orders), [orders]);
+  // Today (the first day) until another is picked, or if the picked day has run out of orders.
+  const day = days.find((d) => d.date === selectedDate) ?? days[0];
+  const dayOrders = day?.orders ?? [];
+  const lines = dayOrders.flatMap((order) => order.line_items);
   const recordedCount = lines.filter((line) => line.prepared !== null).length;
 
   const findOrder = (invoiceId: string) => orders.find((o) => o.invoice_id === invoiceId);
@@ -137,12 +143,28 @@ export default function PreparationPage() {
             Retry
           </button>
         </div>
-      ) : today.length === 0 ? (
-        <div className="prp-empty">No orders for today</div>
+      ) : !day ? (
+        <div className="prp-empty">No orders</div>
       ) : (
         <>
+          <div className="prp-days" role="tablist" aria-label="Day">
+            {days.map((d) => (
+              <button
+                key={d.date}
+                type="button"
+                role="tab"
+                aria-selected={d === day}
+                className={`prp-day${d === day ? " prp-day--active" : ""}`}
+                onClick={() => setSelectedDate(d.date)}
+              >
+                <span className="prp-day__label">{dayLabel(d.date)}</span>
+                <span className="prp-day__date">{describeScheduledDay(d.date).shortDate}</span>
+              </button>
+            ))}
+          </div>
+
           <p className="prp-progress-text">
-            {recordedCount} of {lines.length} items prepared · ዛሬ {describeScheduledDay(todayDate()).shortDate}
+            <strong>{dayOrders.length}</strong> orders · <strong>{lines.length}</strong> items · {recordedCount} prepared
           </p>
           <StatusLegend />
 
@@ -156,7 +178,7 @@ export default function PreparationPage() {
           )}
 
           <div className="prp-list">
-            {today.map((order) => (
+            {dayOrders.map((order) => (
               <PrepOrderCard
                 key={order.invoice_id}
                 order={order}

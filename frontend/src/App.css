@@ -3067,10 +3067,62 @@ div.wa-pick-list__row {
   text-align: center;
 }
 
+.prp-days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: -6px -16px 12px;
+  padding: 0 16px 2px;
+  scrollbar-width: none;
+}
+
+.prp-day {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-full);
+  background: var(--color-white);
+  font: inherit;
+  cursor: pointer;
+}
+
+.prp-day--active {
+  border-color: var(--color-gray-900);
+  background: var(--color-gray-900);
+}
+
+.prp-day__label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.prp-day__date {
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.prp-day--active .prp-day__label {
+  color: var(--color-white);
+}
+
+.prp-day--active .prp-day__date {
+  color: var(--color-gray-300);
+}
+
 .prp-progress-text {
-  margin: -14px 0 10px;
+  margin: 0 0 10px;
   font-size: 13.5px;
   color: var(--color-gray-500);
+}
+
+.prp-progress-text strong {
+  font-weight: 600;
+  color: var(--color-gray-700);
 }
 
 .prp-legend {

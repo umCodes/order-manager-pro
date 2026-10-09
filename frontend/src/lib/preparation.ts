@@ -1,9 +1,9 @@
 import type { PrepLineItem, PrepOrder } from "../types";
-import { effectiveScheduledDate } from "./scheduledDate";
+import { describeScheduledDay, effectiveScheduledDate, groupByScheduledDay } from "./scheduledDate";
 
 /*
- * The preparation screen: today's drafts (today's and anything overdue,
- * as on the Drafts tab), each line recorded with how much was actually
+ * The preparation screen: the drafts one day at a time (today's including
+ * anything overdue, as on the Drafts tab), each line recorded with how much was actually
  * prepared against what was ordered.
  *
  * Weighed items (kilos, and boxes — 10 kilos each, as on the Telegram
@@ -91,17 +91,38 @@ export function isFullyPrepared(order: PrepOrder): boolean {
   return order.line_items.every((line) => lineStatus(line) === "full");
 }
 
-/** Today's date (YYYY-MM-DD) the way the Drafts tab reckons it: any past date maps to today. */
-export function todayDate(from: Date = new Date()): string {
-  return effectiveScheduledDate("0000-01-01", from).date;
+const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
+
+export type PrepDay = {
+  /** YYYY-MM-DD; today's group also holds anything overdue. */
+  date: string;
+  /** Sorted by invoice number. */
+  orders: PrepOrder[];
+};
+
+/**
+ * The drafts split into one group per day, the way the Drafts tab does it:
+ * anything dated before today counts as today. Only days that have orders
+ * appear, earliest first; within a day, orders go by invoice number.
+ */
+export function ordersByDay(orders: PrepOrder[], from: Date = new Date()): PrepDay[] {
+  return groupByScheduledDay(orders, (order) => order.date, from)
+    .filter((group): group is typeof group & { date: string } => group.date !== null)
+    .map((group) => ({
+      date: group.date,
+      orders: group.entries
+        .map((entry) => entry.value)
+        .sort((a, b) => a.invoice_number.localeCompare(b.invoice_number, undefined, { numeric: true })),
+    }));
 }
 
-/** Today's work: drafts dated today or earlier (overdue ones still need preparing), oldest first. */
-export function todaysOrders(orders: PrepOrder[], from: Date = new Date()): PrepOrder[] {
-  const today = todayDate(from);
-  return orders
-    .filter((order) => order.date && order.date <= today)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.invoice_number.localeCompare(b.invoice_number));
+/** A day's name as on the Telegram message: ዛሬ / ነገ / weekday. */
+export function dayLabel(date: string, from: Date = new Date()): string {
+  const { label } = describeScheduledDay(date, from);
+  if (label === "Today") return "ዛሬ";
+  if (label === "Tomorrow") return "ነገ";
+  const [year, month, day] = date.split("-").map(Number);
+  return AMHARIC_WEEKDAYS[new Date(year, month - 1, day).getDay()];
 }
 
 export function isOverdue(order: PrepOrder, from: Date = new Date()): boolean {

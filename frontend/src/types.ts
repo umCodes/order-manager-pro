@@ -135,15 +135,19 @@ export type InvoiceDetail = {
   balance: number;
   line_items: InvoiceDetailLineItem[];
 };
-/** One line of a draft on the preparers' screen, with what was recorded as shipped (null = not done yet). */
+/** The three recorded steps of a line on its way out: prepared, sent (preparer), received (driver). */
+export type PrepStep = "prepared" | "sent" | "received";
+
+/** One line of a draft on the preparers' / drivers' screen, with each step's amount (null = not done yet). */
 export type PrepLineItem = {
   line_item_id: string;
   name: string;
   description: string;
   quantity: number;
   unit: string;
-  shipped: number | null;
-  shipped_at: string | null;
+  prepared: number | null;
+  sent: number | null;
+  received: number | null;
 };
 
 /** A draft as the preparers see it: who it's for, when, and its lines. */

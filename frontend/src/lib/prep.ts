@@ -1,20 +1,30 @@
-import type { PrepLineItem, PrepOrder } from "../types";
+import type { PrepLineItem, PrepOrder, PrepStep } from "../types";
 import { describeScheduledDay, groupByScheduledDay } from "./scheduledDate";
 
 /*
- * The preparers' screen speaks the same Amharic as the Telegram message the
- * team already reads: items by their Amharic description, weights as
- * "10ኪሎ" / "500ግራም" (a box is 10 kilos), days as ዛሬ / ነገ / weekday.
+ * The preparers' and drivers' screens. Each draft line goes through three
+ * recorded steps: prepared (preparer), sent (preparer, checked against what
+ * was prepared) and received (driver, checked against what was sent). A
+ * received amount that differs from what was sent is a conflict.
+ *
+ * Data reads like the Telegram message the team already knows: items by
+ * their Amharic description, weights as "10ኪሎ" / "500ግራም" (a box is 10
+ * kilos), days as ዛሬ / ነገ / weekday.
  */
 
 const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
 const BOX_KILOS = 10;
+const EPSILON = 1e-9;
 
-/** Where one line stands: nothing recorded yet, all of it went out, some of it, or none of it. */
-export type LineStatus = "todo" | "full" | "short" | "none";
+/**
+ * Where one line stands at a step: not done yet, waiting on the step before,
+ * all of it, part of it, none of it, or (sent / received) a conflict between
+ * what the preparer sent and what the driver received.
+ */
+export type LineStatus = "todo" | "waiting" | "full" | "short" | "none" | "conflict";
 
-/** Where a whole order stands; "partial" means some lines are recorded and some aren't yet. */
-export type OrderStatus = "todo" | "partial" | "done" | "short";
+/** Where a whole order stands at a step. */
+export type OrderStatus = "waiting" | "todo" | "partial" | "done" | "short" | "conflict";
 
 /** A line's Amharic display name: its description, as on the Telegram message and Amharic invoices. */
 export function itemLabel(line: { name: string; description: string }): string {
@@ -36,17 +46,61 @@ export function formatQuantity(quantity: number): string {
   return String(Math.round(quantity * 1000) / 1000);
 }
 
-/** "10ኪሎ", or "500ግራም" under a kilo — the Telegram message's weight format. */
+/** "10ኪሎ", "2.5ኪሎ", or "500ግራም" under a kilo — the Telegram message's weight format. */
 export function formatWeight(kilos: number): string {
   if (kilos > 0 && kilos < 1) return `${formatQuantity(kilos * 1000)}ግራም`;
   return `${formatQuantity(kilos)}ኪሎ`;
 }
 
-export function lineKilos(line: PrepLineItem): { needed: number; shipped: number | null } {
-  return {
-    needed: toKilos(line.quantity, line.unit),
-    shipped: line.shipped === null ? null : toKilos(line.shipped, line.unit),
-  };
+/** The one-tap button's label per step: everything still open goes in full. */
+export const ALL_DONE_LABEL: Record<PrepStep, { all: string; rest: string }> = {
+  prepared: { all: "All ready", rest: "Rest ready" },
+  sent: { all: "All sent", rest: "Rest sent" },
+  received: { all: "All received", rest: "Rest received" },
+};
+
+/** The step before, whose amount a step is checked against (prepared is checked against the order itself). */
+const PREVIOUS_STEP: Record<PrepStep, PrepStep | null> = { prepared: null, sent: "prepared", received: "sent" };
+
+/** What a step is expected to match, in the line's unit: the ordered amount, or the previous step's amount (null if not done yet). */
+export function expectedAmount(line: PrepLineItem, step: PrepStep): number | null {
+  const previous = PREVIOUS_STEP[step];
+  return previous ? line[previous] : line.quantity;
+}
+
+export function hasConflict(line: PrepLineItem): boolean {
+  return line.sent !== null && line.received !== null && Math.abs(line.sent - line.received) > EPSILON;
+}
+
+export function lineStatus(line: PrepLineItem, step: PrepStep): LineStatus {
+  const expected = expectedAmount(line, step);
+  const value = line[step];
+  if (step !== "prepared" && hasConflict(line)) return "conflict";
+  if (expected === null) return "waiting";
+  if (value === null) return "todo";
+  if (value >= expected - EPSILON) return "full";
+  if (value <= EPSILON) return "none";
+  return "short";
+}
+
+export function orderStatus(order: PrepOrder, step: PrepStep): OrderStatus {
+  const statuses = order.line_items.map((line) => lineStatus(line, step));
+  if (statuses.includes("conflict")) return "conflict";
+  if (statuses.every((status) => status === "waiting")) return "waiting";
+  if (statuses.every((status) => status === "todo" || status === "waiting")) return "todo";
+  if (statuses.some((status) => status === "todo" || status === "waiting")) return "partial";
+  if (statuses.every((status) => status === "full")) return "done";
+  return "short";
+}
+
+/** Lines that can be recorded at this step right now (the step before is done) but aren't yet. */
+export function openLines(order: PrepOrder, step: PrepStep): PrepLineItem[] {
+  return order.line_items.filter((line) => line[step] === null && expectedAmount(line, step) !== null);
+}
+
+/** How many lines have this step recorded. */
+export function recordedCount(order: PrepOrder, step: PrepStep): number {
+  return order.line_items.filter((line) => line[step] !== null).length;
 }
 
 /** A scheduled day in Amharic: ዛሬ / ነገ / ትላንት / weekday, with the Telegram message's colour icon. */
@@ -62,22 +116,6 @@ export function amharicDay(date: string | null): { label: string; icon: string; 
     info.label === "Today" ? "ዛሬ" : info.label === "Tomorrow" ? "ነገ" : isYesterday ? "ትላንት" : AMHARIC_WEEKDAYS[asDate.getDay()];
   const icon = info.label === "Today" ? "🟢" : info.label === "Tomorrow" ? "🟡" : "🗓️";
   return { label, icon, shortDate: info.shortDate };
-}
-
-export function lineStatus(line: PrepLineItem): LineStatus {
-  if (line.shipped === null) return "todo";
-  // Small tolerance: kilos typed for a box line come back as a fraction of a box.
-  if (line.shipped >= line.quantity - 1e-9) return "full";
-  if (line.shipped === 0) return "none";
-  return "short";
-}
-
-export function orderStatus(order: PrepOrder): OrderStatus {
-  const statuses = order.line_items.map(lineStatus);
-  if (statuses.every((status) => status === "todo")) return "todo";
-  if (statuses.some((status) => status === "todo")) return "partial";
-  if (statuses.every((status) => status === "full")) return "done";
-  return "short";
 }
 
 export type PrepDay = {
@@ -103,71 +141,77 @@ export type ItemLine = { order: PrepOrder; line: PrepLineItem };
 export type PrepItem = {
   /** Amharic display name (the description). */
   label: string;
-  /** Totals in kilos, so boxes and kilos of the same item add up. */
-  neededKilos: number;
-  /** Sum of what's been recorded so far (lines not done yet count as 0). */
-  shippedKilos: number;
+  /** What this step is expected to reach, in kilos (only lines whose previous step is done). */
+  expectedKilos: number;
+  /** What's been recorded at this step so far, in kilos. */
+  doneKilos: number;
   lines: ItemLine[];
 };
 
-/** The day's orders rolled up per item (by its Amharic name), each with who it's for. */
-export function groupLinesByItem(orders: PrepOrder[]): PrepItem[] {
+/** The orders rolled up per item (by its Amharic name) for one step, each with who it's for. Totals are in kilos so boxes and kilos add up. */
+export function groupLinesByItem(orders: PrepOrder[], step: PrepStep): PrepItem[] {
   const byLabel = new Map<string, PrepItem>();
   for (const order of orders) {
     for (const line of order.line_items) {
       const label = itemLabel(line);
       let item = byLabel.get(label);
       if (!item) {
-        item = { label, neededKilos: 0, shippedKilos: 0, lines: [] };
+        item = { label, expectedKilos: 0, doneKilos: 0, lines: [] };
         byLabel.set(label, item);
       }
-      const kilos = lineKilos(line);
-      item.neededKilos += kilos.needed;
-      item.shippedKilos += kilos.shipped ?? 0;
+      item.expectedKilos += toKilos(expectedAmount(line, step) ?? 0, line.unit);
+      item.doneKilos += toKilos(line[step] ?? 0, line.unit);
       item.lines.push({ order, line });
     }
   }
   // Biggest first, the same order the Items tab copies them in.
-  return Array.from(byLabel.values()).sort((a, b) => b.neededKilos - a.neededKilos);
+  return Array.from(byLabel.values()).sort((a, b) => b.expectedKilos - a.expectedKilos);
 }
 
-export type DaySummary = {
+export type StepSummary = {
   orderCount: number;
-  /** Orders with every line recorded (in full or not). */
+  /** Orders with this step recorded on every line. */
   finishedCount: number;
   shortLineCount: number;
-  notShippedLineCount: number;
+  conflictLineCount: number;
 };
 
-export function summarizeDay(orders: PrepOrder[]): DaySummary {
+export function summarizeStep(orders: PrepOrder[], step: PrepStep): StepSummary {
   const lines = orders.flatMap((order) => order.line_items);
   return {
     orderCount: orders.length,
-    finishedCount: orders.filter((order) => order.line_items.every((line) => line.shipped !== null)).length,
-    shortLineCount: lines.filter((line) => lineStatus(line) === "short").length,
-    notShippedLineCount: lines.filter((line) => lineStatus(line) === "none").length,
+    finishedCount: orders.filter((order) => recordedCount(order, step) === order.line_items.length).length,
+    shortLineCount: lines.filter((line) => ["short", "none"].includes(lineStatus(line, step))).length,
+    conflictLineCount: lines.filter(hasConflict).length,
   };
 }
 
 /**
- * The day's differences as a Telegram-style message: the day line, then per
- * order that went out short its number and customer, and one
- * "{shipped} {item} (ከ{needed})" line per short or missing item.
+ * The day's problems as a Telegram-style message: per order, each line that
+ * was prepared short ("9ኪሎ ቲማቲም (ከ10ኪሎ)") and each conflict between what
+ * was sent and what the driver received.
  */
 export function formatDayReport(date: string | null, orders: PrepOrder[]): string {
   const day = amharicDay(date);
-  const summary = summarizeDay(orders);
-  const header = `${day.icon} ለ${day.label} — ${summary.finishedCount}/${summary.orderCount} ትዕዛዝ ወጥቷል`;
+  const sentCount = orders.filter((order) => recordedCount(order, "sent") === order.line_items.length).length;
+  const header = `${day.icon} ለ${day.label} — ${sentCount}/${orders.length} ትዕዛዝ ወጥቷል`;
   const blocks = orders
     .map((order) => {
-      const lines = order.line_items
-        .filter((line) => lineStatus(line) === "short" || lineStatus(line) === "none")
-        .map((line) => {
-          const kilos = lineKilos(line);
-          return `${formatWeight(kilos.shipped ?? 0)} ${itemLabel(line)} (ከ${formatWeight(kilos.needed)})`;
-        });
+      const lines = order.line_items.flatMap((line) => {
+        const out: string[] = [];
+        const name = itemLabel(line);
+        if (line.prepared !== null && line.prepared < line.quantity - EPSILON) {
+          out.push(`${formatWeight(toKilos(line.prepared, line.unit))} ${name} (ከ${formatWeight(toKilos(line.quantity, line.unit))})`);
+        }
+        if (hasConflict(line)) {
+          out.push(
+            `⚠️ ${name}: ወጣ ${formatWeight(toKilos(line.sent ?? 0, line.unit))} · ደረሰ ${formatWeight(toKilos(line.received ?? 0, line.unit))}`,
+          );
+        }
+        return out;
+      });
       return lines.length ? [`${order.invoice_number} · ${order.customer_name}:`, ...lines].join("\n") : null;
     })
     .filter((block): block is string => block !== null);
-  return blocks.length ? [header, ...blocks].join("\n\n") : `${header}\n\n✅ ሁሉም ሙሉ ወጥቷል`;
+  return blocks.length ? [header, ...blocks].join("\n\n") : `${header}\n\n✅ ሁሉም ሙሉ ነው`;
 }

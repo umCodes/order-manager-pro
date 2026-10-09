@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, PrepOrder } from "../types";
+import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, PrepOrder, PrepStep } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -1269,15 +1269,16 @@ export async function fetchPrepOrders(): Promise<PrepOrder[]> {
 }
 
 /**
- * Records what left the warehouse for some of a draft's lines (quantity null
- * clears a line back to "not done yet"). Returns every recorded line of that
- * draft, as line_item_id → quantity.
+ * Records one step (prepared / sent / received) for some of a draft's lines,
+ * in the line's own unit (quantity null clears a line back to "not done
+ * yet"). Returns every line's steps for that draft.
  */
-export async function savePrepShipments(
+export async function savePrepStep(
   invoiceId: string,
+  step: PrepStep,
   lines: { line_item_id: string; quantity: number | null }[],
-): Promise<Record<string, number>> {
-  const response = await apiFetch(`${API_BASE_URL}/api/prep/orders/${invoiceId}/shipped`, {
+): Promise<Record<string, Record<PrepStep, number | null>>> {
+  const response = await apiFetch(`${API_BASE_URL}/api/prep/orders/${invoiceId}/${step}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lines }),
@@ -1289,5 +1290,5 @@ export async function savePrepShipments(
   }
 
   const data = await response.json();
-  return data.shipped;
+  return data.lines;
 }

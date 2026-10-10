@@ -128,3 +128,54 @@ export function dayLabel(date: string, from: Date = new Date()): string {
 export function isOverdue(order: PrepOrder, from: Date = new Date()): boolean {
   return effectiveScheduledDate(order.date, from).isCarriedOver;
 }
+
+/** One order's line, seen from the item's side. */
+export type ItemLine = { order: PrepOrder; line: PrepLineItem };
+
+export type PrepItemGroup = {
+  /** Amharic display name. */
+  label: string;
+  /** Unit the totals are in: "kg" for weighed items (boxes counted as kilos), else the line unit. */
+  unit: string;
+  ordered: number;
+  /** Total recorded as prepared so far (lines not recorded yet count as 0). */
+  prepared: number;
+  lines: ItemLine[];
+};
+
+/**
+ * A day's orders rolled up per item (same Amharic name and kind of unit),
+ * with every order it's for — the picking list. Weighed items first,
+ * biggest first (the order the Items tab copies them in), then counted ones.
+ */
+export function itemsForDay(orders: PrepOrder[]): PrepItemGroup[] {
+  const groups = new Map<string, PrepItemGroup>();
+  for (const order of orders) {
+    for (const line of order.line_items) {
+      const weighed = isWeighed(line.unit);
+      const unit = weighed ? "kg" : line.unit;
+      const key = `${itemLabel(line)}|${unit}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { label: itemLabel(line), unit, ordered: 0, prepared: 0, lines: [] };
+        groups.set(key, group);
+      }
+      const inUnit = (quantity: number) => (weighed ? toKilos(quantity, line.unit) : quantity);
+      group.ordered += inUnit(line.quantity);
+      group.prepared += inUnit(line.prepared ?? 0);
+      group.lines.push({ order, line });
+    }
+  }
+  const weighedFirst = (group: PrepItemGroup) => (group.unit === "kg" ? 0 : 1);
+  return Array.from(groups.values()).sort(
+    (a, b) => weighedFirst(a) - weighedFirst(b) || b.ordered - a.ordered || a.label.localeCompare(b.label),
+  );
+}
+
+/** An item's overall status: ○ until every order's line is recorded, then ✓ / ↓ / ✕ for the total. */
+export function itemStatus(group: PrepItemGroup): LineStatus {
+  if (group.lines.some(({ line }) => line.prepared === null)) return "todo";
+  if (group.prepared >= group.ordered - EPSILON) return "full";
+  if (group.prepared <= EPSILON) return "none";
+  return "short";
+}

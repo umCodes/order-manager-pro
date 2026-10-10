@@ -3039,8 +3039,12 @@ div.wa-pick-list__row {
 
 /* Preparation screen (/prep) — bigger type and tap targets than the office pages */
 
-.app-frame__body--prep {
-  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+.tab-bar--prep {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tab-bar--prep .tab-bar__label {
+  font-size: 12.5px;
 }
 
 .prp-page {
@@ -3603,4 +3607,63 @@ div.wa-pick-list__row {
 
 .prp-sheet__actions .prp-btn {
   flex: 1;
+}
+
+/* Items tab: one card per item */
+
+.prp-item__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px 10px 14px;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.prp-item__total {
+  flex-shrink: 0;
+  width: 74px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-gray-900);
+}
+
+.prp-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.prp-item__name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  overflow-wrap: anywhere;
+}
+
+.prp-item__orders {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.prp-item__invoice {
+  display: block;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.prp-item__customer {
+  display: block;
+  font-size: 13px;
+  color: var(--color-gray-500);
 }

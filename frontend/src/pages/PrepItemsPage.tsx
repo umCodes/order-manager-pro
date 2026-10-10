@@ -1,8 +1,6 @@
-import { useState } from "react";
-import { itemsForDay } from "../lib/preparation";
+import { formatAmount, itemStatus, itemsForDay } from "../lib/preparation";
 import PrepDayLayout from "../components/preparation/PrepDayLayout";
-import PrepItemCard from "../components/preparation/PrepItemCard";
-import AmountSheet from "../components/preparation/AmountSheet";
+import { StatusIcon } from "../components/preparation/LineBadge";
 import type { PrepOrdersState } from "../hooks/usePrepOrders";
 
 type Props = {
@@ -12,59 +10,32 @@ type Props = {
 };
 
 /**
- * The Items tab: the selected day's orders rolled up per item — the picking
- * list — biggest first. Each item opens to the orders it's for; recording an
- * amount there is the same as on the Prepare tab.
+ * The Items tab: the selected day's total of each item across all its
+ * orders — what has to go out that day — weighed items first, biggest
+ * first. Read-only: amounts are recorded per order on the Prepare tab; the
+ * icon shows how much of the total has been prepared so far.
  */
 export default function PrepItemsPage({ prep, selectedDate, onSelectDate }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<{ invoiceId: string; lineItemId: string } | null>(null);
-
-  const editingOrder = editing ? prep.orders.find((o) => o.invoice_id === editing.invoiceId) : undefined;
-  const editingLine = editingOrder?.line_items.find((l) => l.line_item_id === editing?.lineItemId);
-
-  function toggle(key: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   return (
-    <>
-      <PrepDayLayout title="Items" prep={prep} selectedDate={selectedDate} onSelectDate={onSelectDate}>
-        {(day) => (
-          <div className="prp-list">
-            {itemsForDay(day.orders).map((item) => {
-              const key = `${item.label}|${item.unit}`;
-              return (
-                <PrepItemCard
-                  key={key}
-                  item={item}
-                  isExpanded={expanded.has(key)}
-                  onToggleExpanded={() => toggle(key)}
-                  onEditLine={({ order, line }) => setEditing({ invoiceId: order.invoice_id, lineItemId: line.line_item_id })}
-                />
-              );
-            })}
-          </div>
-        )}
-      </PrepDayLayout>
-
-      {editingOrder && editingLine && (
-        <AmountSheet
-          key={`${editingOrder.invoice_id}|${editingLine.line_item_id}`}
-          order={editingOrder}
-          line={editingLine}
-          onClose={() => setEditing(null)}
-          onSave={(quantity) => {
-            setEditing(null);
-            prep.savePrepared(editingOrder.invoice_id, [{ line_item_id: editingLine.line_item_id, quantity }]);
-          }}
-        />
+    <PrepDayLayout title="Items" prep={prep} selectedDate={selectedDate} onSelectDate={onSelectDate}>
+      {(day) => (
+        <div className="prp-card prp-totals">
+          {itemsForDay(day.orders).map((item) => {
+            const status = itemStatus(item);
+            const showPrepared = status === "short" || (status === "todo" && item.prepared > 0);
+            return (
+              <div key={`${item.label}|${item.unit}`} className="prp-totals__row">
+                <span className="prp-totals__amount">{formatAmount(item.ordered, item.unit)}</span>
+                <span className="prp-totals__name">{item.label}</span>
+                <span className={`prp-badge prp-badge--${status}`}>
+                  <StatusIcon status={status} size={status === "todo" ? 14 : 18} />
+                  {showPrepared && formatAmount(item.prepared, item.unit)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
-    </>
+    </PrepDayLayout>
   );
 }

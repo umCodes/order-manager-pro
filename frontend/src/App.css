@@ -3609,61 +3609,37 @@ div.wa-pick-list__row {
   flex: 1;
 }
 
-/* Items tab: one card per item */
+/* Items tab: one list of the day's totals per item */
 
-.prp-item__header {
+.prp-totals {
+  border-left-width: 1px;
+}
+
+.prp-totals__row {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  min-height: 64px;
-  padding: 10px 12px 10px 14px;
-  border: none;
-  background: none;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
+  min-height: 56px;
+  padding: 8px 12px 8px 14px;
 }
 
-.prp-item__total {
+.prp-totals__row + .prp-totals__row {
+  border-top: 1px solid var(--color-gray-100);
+}
+
+.prp-totals__amount {
   flex-shrink: 0;
-  width: 74px;
+  width: 84px;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
   color: var(--color-gray-900);
 }
 
-.prp-item__info {
+.prp-totals__name {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.prp-item__name {
   font-size: 17px;
-  font-weight: 600;
   color: var(--color-gray-900);
   overflow-wrap: anywhere;
-}
-
-.prp-item__orders {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--color-gray-500);
-}
-
-.prp-item__invoice {
-  display: block;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.prp-item__customer {
-  display: block;
-  font-size: 13px;
-  color: var(--color-gray-500);
 }

@@ -75,6 +75,77 @@
   z-index: 42;
 }
 
+/* Settings opens from the app header, above everything else. */
+.detail-overlay--settings {
+  z-index: 43;
+}
+
+/* App header: the app's name, and the gear that opens Settings. */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--color-white);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.app-header__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-gray-700);
+}
+
+.app-header__settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-gray-500);
+  cursor: pointer;
+}
+
+.app-header__settings:hover {
+  color: var(--color-gray-900);
+  background: var(--color-gray-100);
+}
+
+/* Settings page */
+
+.settings-group {
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  padding: 14px 14px 0;
+  margin-bottom: 16px;
+}
+
+.settings-group__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.settings-group__description {
+  font-size: 13px;
+  color: var(--color-gray-500);
+  margin: 2px 0 14px;
+}
+
+.settings-saved {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--color-green-700);
+}
+
 /* Page */
 
 .page-title {

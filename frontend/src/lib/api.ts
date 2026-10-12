@@ -1260,3 +1260,47 @@ export async function createInvoiceReturn(
   }
   return response.json();
 }
+
+/** The automatic WhatsApp notifications whose template can be chosen in Settings. */
+export type NotificationKind = "payment" | "balance";
+export type NotificationLanguage = "am" | "ar" | "en";
+
+/** A template is identified by its name plus the language it was registered in. */
+export type TemplateRef = { name: string; language: string };
+
+export type NotificationTemplateSlots = Record<NotificationKind, Partial<Record<NotificationLanguage, TemplateRef>>>;
+
+export type NotificationTemplateSettings = {
+  /** What's been chosen in Settings; an empty slot uses `defaults`. */
+  selected: NotificationTemplateSlots;
+  /** The server's env-configured templates. */
+  defaults: NotificationTemplateSlots;
+  /** Approved templates whose variables fit each notification. */
+  options: Record<NotificationKind, WhatsAppTemplate[]>;
+};
+
+export async function fetchNotificationTemplateSettings(force = false): Promise<NotificationTemplateSettings> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/notification-templates${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load template settings (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Saves the chosen templates; leave a slot out to use the default. */
+export async function saveNotificationTemplateSettings(
+  selected: NotificationTemplateSlots,
+): Promise<NotificationTemplateSlots> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/notification-templates`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(selected),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to save template settings (${response.status})`);
+  }
+  const data = await response.json();
+  return data.selected;
+}

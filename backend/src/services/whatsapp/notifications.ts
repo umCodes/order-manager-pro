@@ -1,26 +1,7 @@
-import { ENV } from "../../constants/env.js"
 import { uploadWhatsAppMedia } from "./client.js"
 import { sendWhatsAppTemplate } from "./messages.js"
+import { resolveNotificationTemplate } from "./notificationTemplates.js"
 import type { PreferredLanguage } from "../zoho/customers/index.js"
-
-const PAYMENT_NOTIFICATION_TEMPLATES: Record<PreferredLanguage, string | undefined> = {
-    am: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,
-    ar: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AR,
-    en: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_EN,
-}
-
-const BALANCE_NOTIFICATION_TEMPLATES: Record<PreferredLanguage, string | undefined> = {
-    am: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AM,
-    ar: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_AR,
-    en: ENV.WA_BALANCE_NOTIFICATION_TEMPLATE_EN,
-}
-
-/** WhatsApp template language code: Amharic templates are registered under "en" in Meta Business Manager, not "am". */
-const WA_LANGUAGE_CODES: Record<PreferredLanguage, string> = {
-    am: "en",
-    ar: "ar",
-    en: "en",
-}
 
 /** Wording for the in-app chat record of a notification — in the customer's language, the same one the template went out in. */
 const SUMMARY_LABELS: Record<
@@ -127,8 +108,8 @@ export function balanceSummary(
  * "Payment Confirmation" template: sent when a payment is made.
  * Body params: {{1}} current payment amount, {{2}} date, {{3}} the customer's
  * total remaining balance across all their invoices.
- * The same template exists per-language in Meta Business Manager; which one
- * is used depends on the customer's preferred_language.
+ * Which template is used depends on the customer's preferred_language, as
+ * chosen on the Settings page (see notificationTemplates.ts).
  */
 export async function sendPaymentNotification(
     to: string,
@@ -139,15 +120,15 @@ export async function sendPaymentNotification(
     remainingBalance: string,
 ) {
     try {
-        const templateName = PAYMENT_NOTIFICATION_TEMPLATES[preferredLanguage]
+        const template = await resolveNotificationTemplate("payment", preferredLanguage)
         console.log(
-            `[WhatsApp] payment notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}"`,
+            `[WhatsApp] payment notification: language="${preferredLanguage}" -> template="${template?.name ?? "(none configured)"}", waLanguageCode="${template?.language}"`,
         )
-        if (!templateName) throw new Error(`No payment notification template configured for language "${preferredLanguage}"`)
+        if (!template) throw new Error(`No payment notification template configured for language "${preferredLanguage}"`)
 
         return await sendWhatsAppTemplate(
             to,
-            templateName,
+            template.name,
             [
                 {
                     type: "body",
@@ -158,7 +139,7 @@ export async function sendPaymentNotification(
                     ],
                 },
             ],
-            WA_LANGUAGE_CODES[preferredLanguage],
+            template.language,
             paymentSummary(preferredLanguage, customerName, paymentAmount, date, remainingBalance),
         )
     } catch (error) {
@@ -186,18 +167,18 @@ export async function sendBalanceNotification(
     balanceAfterInvoice: string,
 ) {
     try {
-        const templateName = BALANCE_NOTIFICATION_TEMPLATES[preferredLanguage]
+        const template = await resolveNotificationTemplate("balance", preferredLanguage)
         console.log(
-            `[WhatsApp] balance notification: language="${preferredLanguage}" -> template="${templateName ?? "(none configured)"}", waLanguageCode="${WA_LANGUAGE_CODES[preferredLanguage]}", pdfFilename="${pdfFilename}", pdfBytes=${pdf.length}`,
+            `[WhatsApp] balance notification: language="${preferredLanguage}" -> template="${template?.name ?? "(none configured)"}", waLanguageCode="${template?.language}", pdfFilename="${pdfFilename}", pdfBytes=${pdf.length}`,
         )
-        if (!templateName) throw new Error(`No balance notification template configured for language "${preferredLanguage}"`)
+        if (!template) throw new Error(`No balance notification template configured for language "${preferredLanguage}"`)
 
         const mediaId = await uploadWhatsAppMedia(pdf, pdfFilename, "application/pdf")
         console.log(`[WhatsApp] balance notification: uploaded PDF media id="${mediaId}"`)
 
         return await sendWhatsAppTemplate(
             to,
-            templateName,
+            template.name,
             [
                 {
                     type: "header",
@@ -216,7 +197,7 @@ export async function sendBalanceNotification(
                     ],
                 },
             ],
-            WA_LANGUAGE_CODES[preferredLanguage],
+            template.language,
             balanceSummary(
                 preferredLanguage,
                 customerName,

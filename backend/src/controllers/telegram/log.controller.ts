@@ -6,8 +6,8 @@ import {
 } from '../../services/telegram/index.js';
 
 /**
- * Lists every message sent to the Telegram channel through this app (kept
- * permanently, newest first). The Bot API has no way to retrieve a channel's full history, so
+ * Lists every message sent to the Telegram channel through this app in the
+ * last week, newest first. The Bot API has no way to retrieve a channel's full history, so
  * this can only ever cover messages the app itself sent, edited, or deleted
  * — not messages posted by anyone else.
  */
@@ -44,15 +44,19 @@ export async function editMessage(req: Request, res: Response) {
     }
 }
 
-/** Deletes a message from the channel and drops it from the log. */
+/**
+ * Deletes a message from the channel and drops it from the log. Succeeds as
+ * long as the log entry is gone: when Telegram refuses the channel delete,
+ * `deleted_from_telegram` is false and `telegram_error` says why.
+ */
 export async function deleteMessage(req: Request, res: Response) {
     try {
         const messageId = req.params.messageId;
 
         if (!messageId) throw new Error("messageId not provided")
 
-        await TelegramDeleteMessage(Number(messageId));
-        res.status(200).json({ ok: true });
+        const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId));
+        res.status(200).json({ ok: true, deleted_from_telegram: deletedFromTelegram, telegram_error: error });
         return
     } catch (error) {
         if (error instanceof Error)

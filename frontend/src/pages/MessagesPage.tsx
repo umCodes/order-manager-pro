@@ -20,7 +20,7 @@ type Channel = "telegram" | "whatsapp";
  * Messages, split by channel via the toggle at the top. The Telegram tab is
  * a free-text message composer, optionally scoped as a reply to a
  * specific draft invoice, plus a log of every message sent through this app
- * to the channel (kept permanently). The Bot API has no way to fetch a
+ * to the channel in the last week. The Bot API has no way to fetch a
  * channel's full history, so the log only ever covers messages this app
  * itself sent (invoice notices included) — not ones posted by anyone else.
  * The WhatsApp tab lists contacts and their conversations (see WhatsAppInbox).
@@ -47,6 +47,7 @@ export default function MessagesPage() {
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDraftInvoices().then(setDrafts).catch(() => setDrafts([]));
@@ -114,8 +115,16 @@ export default function MessagesPage() {
     if (deletingMessageId === null) return;
     setIsDeleting(true);
     setDeleteError(null);
+    setDeleteNotice(null);
     deleteTelegramMessage(deletingMessageId)
-      .then(() => {
+      .then((result) => {
+        if (!result.deleted_from_telegram) {
+          setDeleteNotice(
+            `Removed from the history, but Telegram couldn't delete it from the channel${
+              result.telegram_error ? ` (${result.telegram_error})` : ""
+            } — remove it there by hand if needed.`,
+          );
+        }
         setDeletingMessageId(null);
         loadMessages();
       })
@@ -199,9 +208,10 @@ export default function MessagesPage() {
               Recent Messages
             </h2>
           </div>
-          <p className="page-subtitle">Everything sent through this app</p>
+          <p className="page-subtitle">Everything sent through this app in the last week</p>
 
           {logError && <div className="form-error">{logError}</div>}
+          {deleteNotice && <div className="form-error">{deleteNotice}</div>}
 
           {isLoadingLog ? (
             <div className="items-area__empty">Loading…</div>
@@ -283,7 +293,7 @@ export default function MessagesPage() {
       {deletingMessageId !== null && (
         <ConfirmModal
           title="Delete message"
-          message="Delete this message from the Telegram channel? This can't be undone."
+          message="Delete this message from the Telegram channel and the history? This can't be undone."
           confirmLabel={isDeleting ? "Deleting..." : "Delete"}
           error={deleteError}
           isConfirming={isDeleting}

@@ -48,7 +48,7 @@ export async function replyWithAddedInvoiceItemsTelegramMessage(
     try {
         await TelegramDeleteMessage(messageId);
     } catch (error) {
-        console.error('Error deleting previous invoice message after reply:', error);
+        console.error('Error dropping previous invoice message from the log after reply:', error);
     }
 
     return message;
@@ -87,9 +87,11 @@ export async function updateInvoiceDateTelegramMessage(
 
 /**
  * Removes an invoice's channel message once it's no longer pending
- * fulfillment (marked as sent, or paid directly from draft) — a no-op if it
- * never had one. Best-effort: a failed delete is logged, not thrown, since
- * the invoice's own state change in Zoho is what actually matters.
+ * fulfillment (marked as sent, or paid) — a no-op if it never had one. The
+ * invoice's message id and log entry are forgotten even when Telegram refuses
+ * the delete, so a stale message never lingers in the app. Best-effort: a
+ * failure is logged, not thrown, since the invoice's own state change in Zoho
+ * is what actually matters.
  */
 export async function deleteInvoiceTelegramMessage(invoiceId: string) {
     try {

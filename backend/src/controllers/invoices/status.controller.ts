@@ -35,9 +35,9 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     deleteCache("customers");
     await addToCollectedToday(Number(amount));
 
-    // A draft leaves "pending fulfillment" the moment any payment is recorded
-    // against it, so its channel message no longer applies.
-    if (wasDraft) await deleteInvoiceTelegramMessage(id);
+    // Once any payment is recorded the invoice is no longer pending
+    // fulfillment, so its channel message (if one is still around) no longer applies.
+    await deleteInvoiceTelegramMessage(id);
 
     let notified = { balance: false, payment: false };
     if (notify) {

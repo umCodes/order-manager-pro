@@ -53,6 +53,17 @@ function fill(text: string | undefined, values: Record<string, string> | undefin
   return (text ?? "").replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (whole, key) => values?.[key]?.trim() || whole);
 }
 
+/**
+ * Renders WhatsApp's bold formatting: text between single asterisks
+ * (`*like this*`) shows bold, without the asterisks. As in WhatsApp, the
+ * asterisks must hug the text — `* not bold *` stays as typed.
+ */
+function withBold(text: string) {
+  return text.split(/\*([^*\s](?:[^*\n]*[^*\s])?)\*/g).map((piece, index) =>
+    index % 2 === 1 ? <strong key={index}>{piece}</strong> : piece,
+  );
+}
+
 function languageLabel(code: string) {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
 }
@@ -175,10 +186,10 @@ function TemplatePreview({ template, values }: { template: WhatsAppTemplate; val
             {values?.header_media?.filename ?? MEDIA_FORMATS[header.format as MediaFormat]?.label ?? header.format.toLowerCase()}
           </div>
         ) : (
-          <div className="wa-template__preview-header">{fill(header.text, values?.header)}</div>
+          <div className="wa-template__preview-header">{withBold(fill(header.text, values?.header))}</div>
         ))}
-      <div className="wa-template__preview-body">{fill(body?.text, values?.body)}</div>
-      {footer?.text && <div className="wa-template__preview-footer">{footer.text}</div>}
+      <div className="wa-template__preview-body">{withBold(fill(body?.text, values?.body))}</div>
+      {footer?.text && <div className="wa-template__preview-footer">{withBold(footer.text)}</div>}
       {buttons.length > 0 && (
         <div className="wa-template__preview-buttons">
           {buttons.map((button, index) => (
@@ -220,6 +231,7 @@ export default function WhatsAppTemplates({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [languageFilter, setLanguageFilter] = useState<string | null>(null);
   const [showRejected, setShowRejected] = useState(false);
   // Templates start collapsed (name and status only); tapping one shows the rest.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -282,7 +294,22 @@ export default function WhatsAppTemplates({
   const sortedTemplates = (templates ?? []).toSorted((a, b) => statusRank(a.status) - statusRank(b.status));
   const rejectedCount = sortedTemplates.filter(isHiddenByDefault).length;
   const allTemplates = showRejected ? sortedTemplates : sortedTemplates.filter((t) => !isHiddenByDefault(t));
-  const visibleTemplates = categoryFilter ? allTemplates.filter((t) => t.category === categoryFilter) : allTemplates;
+  // The languages templates actually exist in, in the create form's order (others after).
+  const languageOrder = (code: string) => {
+    const index = LANGUAGES.findIndex((l) => l.code === code);
+    return index === -1 ? LANGUAGES.length : index;
+  };
+  const templateLanguages = [...new Set(sortedTemplates.map((t) => t.language))].sort(
+    (a, b) => languageOrder(a) - languageOrder(b) || a.localeCompare(b),
+  );
+  // A language whose last template was deleted no longer filters anything out.
+  const activeLanguage = languageFilter && templateLanguages.length > 1 && templateLanguages.includes(languageFilter) ? languageFilter : null;
+  const inCategory = (t: WhatsAppTemplate) => !categoryFilter || t.category === categoryFilter;
+  const inLanguage = (t: WhatsAppTemplate) => !activeLanguage || t.language === activeLanguage;
+  const visibleTemplates = allTemplates.filter((t) => inCategory(t) && inLanguage(t));
+  // Each row of chips counts within the other row's filter.
+  const languageMatches = allTemplates.filter(inLanguage);
+  const categoryMatches = allTemplates.filter(inCategory);
 
   return (
     <div>
@@ -303,12 +330,12 @@ export default function WhatsAppTemplates({
 
       {sortedTemplates.length > 0 && (
         <div className="wa-chips" role="group" aria-label="Filter by category">
-          <FilterChip label="All" count={allTemplates.length} active={categoryFilter === null} onClick={() => setCategoryFilter(null)} />
+          <FilterChip label="All" count={languageMatches.length} active={categoryFilter === null} onClick={() => setCategoryFilter(null)} />
           {CATEGORIES.map((c) => (
             <FilterChip
               key={c.value}
               label={c.label}
-              count={allTemplates.filter((t) => t.category === c.value).length}
+              count={languageMatches.filter((t) => t.category === c.value).length}
               active={categoryFilter === c.value}
               onClick={() => setCategoryFilter(c.value)}
             />
@@ -327,11 +354,26 @@ export default function WhatsAppTemplates({
         </div>
       )}
 
+      {templateLanguages.length > 1 && (
+        <div className="wa-chips" role="group" aria-label="Filter by language">
+          <FilterChip label="All languages" count={categoryMatches.length} active={activeLanguage === null} onClick={() => setLanguageFilter(null)} />
+          {templateLanguages.map((code) => (
+            <FilterChip
+              key={code}
+              label={languageLabel(code)}
+              count={categoryMatches.filter((t) => t.language === code).length}
+              active={activeLanguage === code}
+              onClick={() => setLanguageFilter(code)}
+            />
+          ))}
+        </div>
+      )}
+
       {templates === null && !error ? (
         <div className="items-area__empty">Loading...</div>
       ) : visibleTemplates.length === 0 ? (
-        <div className="items-area__empty">{categoryFilter
-            ? "No templates in this category"
+        <div className="items-area__empty">{categoryFilter || activeLanguage
+            ? "No templates match these filters"
             : rejectedCount > 0 && !showRejected
               ? "No approved or in-review templates"
               : "No templates yet"}</div>

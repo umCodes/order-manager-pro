@@ -520,8 +520,7 @@ export type TelegramLogMessage = {
 };
 
 /**
- * Messages sent through this app to the Telegram channel in the last 72
- * hours. There's no way for a bot to fetch a channel's full history, so
+ * Messages sent through this app to the Telegram channel in the last week. There's no way for a bot to fetch a channel's full history, so
  * this list only ever covers messages this app itself sent.
  */
 export async function fetchTelegramMessages(): Promise<TelegramLogMessage[]> {
@@ -553,7 +552,14 @@ export async function editTelegramMessage(messageId: number, text: string) {
   return response.json();
 }
 
-export async function deleteTelegramMessage(messageId: number) {
+/**
+ * Removes a message from the history, and from the channel when Telegram
+ * allows it — `deleted_from_telegram` is false (with `telegram_error`) when
+ * the channel copy couldn't be deleted, e.g. it's older than 48 hours.
+ */
+export async function deleteTelegramMessage(
+  messageId: number,
+): Promise<{ ok: true; deleted_from_telegram: boolean; telegram_error?: string }> {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}`, {
     method: "DELETE",
   });

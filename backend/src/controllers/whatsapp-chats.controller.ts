@@ -20,6 +20,7 @@ import {
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import { notificationTemplateNames } from '../services/whatsapp/notificationTemplates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -573,7 +574,7 @@ export async function createWhatsAppTemplate(req: Request, res: Response) {
 /** Deletes a message template from the WhatsApp Business Account. */
 export async function deleteWhatsAppTemplate(req: Request, res: Response) {
     try {
-        await deleteTemplate(String(req.params.id ?? ""))
+        await deleteTemplate(String(req.params.id ?? ""), await notificationTemplateNames())
         res.status(200).json({ ok: true })
     } catch (error) {
         console.error('Error deleting WhatsApp template:', error);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Settings } from "lucide-react";
 import "./App.css";
 import TabBar from "./components/TabBar";
 import { startUnreadWatcher } from "./lib/unread";
@@ -9,6 +10,7 @@ import InvoiceDetailsPage from "./pages/InvoiceDetailsPage";
 import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
+import SettingsPage from "./pages/SettingsPage";
 import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
 
 /**
@@ -20,7 +22,8 @@ import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
  * back doesn't reset the list to the top. Both overlays can be open at once,
  * stacked by z-index: normally the invoice is on top (opened from a
  * customer's detail view), but a customer opened from an invoice goes above
- * it, so going back from the customer returns to that invoice.
+ * it, so going back from the customer returns to that invoice. Settings,
+ * opened from the gear in the header, overlays everything.
  */
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("invoices");
@@ -32,6 +35,7 @@ function App() {
   const [invoiceScheduledDate, setInvoiceScheduledDate] = useState<ScheduledDate>(null);
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => startUnreadWatcher(), []);
 
@@ -57,6 +61,18 @@ function App() {
 
   return (
     <div className="app-frame">
+      <header className="app-header">
+        <span className="app-header__title">Order Manager Pro</span>
+        <button
+          type="button"
+          className="app-header__settings"
+          aria-label="Settings"
+          title="Settings"
+          onClick={() => setIsSettingsOpen(true)}
+        >
+          <Settings size={18} />
+        </button>
+      </header>
       <div className="app-frame__body">
         {activeTab === "invoices" && (
           <NewInvoicePage
@@ -102,6 +118,14 @@ function App() {
               onBack={() => setSelectedInvoiceId(null)}
               onSelectCustomer={openCustomerFromInvoice}
             />
+          </div>
+        </div>
+      )}
+
+      {isSettingsOpen && (
+        <div className="detail-overlay detail-overlay--settings">
+          <div className="app-frame__body">
+            <SettingsPage onBack={() => setIsSettingsOpen(false)} />
           </div>
         </div>
       )}

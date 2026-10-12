@@ -2805,12 +2805,24 @@
 }
 
 .wa-template__preview-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 4px 10px;
   border: 1px solid var(--color-gray-200);
   border-radius: 999px;
   background: var(--color-white);
   font-size: 12.5px;
   color: var(--color-blue-600);
+}
+
+.wa-template__name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.wa-template__name-prefix {
+  flex: 0 0 88px;
 }
 
 .wa-template__button-row {

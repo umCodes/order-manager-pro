@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Paperclip, Plus, Search, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Copy, FileText, Globe, Mail, Paperclip, Phone, Plus, Reply, Search, SendHorizontal, Trash2 } from "lucide-react";
 import {
   createWhatsAppTemplate,
   deleteWhatsAppTemplate,
@@ -19,12 +19,46 @@ import RefreshButton from "./RefreshButton";
 import FilterChip from "./FilterChip";
 import ConfirmModal from "./ConfirmModal";
 
+/** The WhatsApp languages new templates are registered in. */
 const LANGUAGES = [
   { code: "en", label: "English" },
-  { code: "en_US", label: "English (US)" },
   { code: "ar", label: "Arabic" },
-  { code: "am", label: "Amharic" },
 ];
+
+/**
+ * The language a new template's text is written in, which starts its name
+ * (am_…, ar_…, en_…), and the WhatsApp language it's registered under —
+ * WhatsApp has no Amharic, so Amharic templates go under English.
+ */
+const NAME_PREFIXES = [
+  { code: "am", label: "AM", whatsappLanguage: "en" },
+  { code: "ar", label: "AR", whatsappLanguage: "ar" },
+  { code: "en", label: "EN", whatsappLanguage: "en" },
+] as const;
+type NamePrefix = (typeof NAME_PREFIXES)[number]["code"];
+
+const whatsappLanguageFor = (prefix: NamePrefix) => NAME_PREFIXES.find((p) => p.code === prefix)!.whatsappLanguage;
+
+/** Splits a name into its language prefix (if it has one of ours) and the rest. */
+function splitName(name: string): { prefix?: NamePrefix; rest: string } {
+  const match = /^(am|ar|en)_(.*)$/.exec(name);
+  return match ? { prefix: match[1] as NamePrefix, rest: match[2] } : { rest: name };
+}
+
+/**
+ * The language a template's text is written in, by its letters. Amharic and
+ * Arabic messages often carry English words (ETB, invoice numbers), so any
+ * Ethiopic or Arabic letters decide it — whichever there's more of — and
+ * it's English only when every letter is Latin. Variables like {{1}} don't
+ * count. Undefined while there are no letters.
+ */
+function detectNamePrefix(text: string): NamePrefix | undefined {
+  const letters = text.replace(/\{\{[^}]*\}\}/g, "");
+  const ethiopic = (letters.match(/[\u1200-\u139F\u2D80-\u2DDF\uAB00-\uAB2F]/g) ?? []).length;
+  const arabic = (letters.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g) ?? []).length;
+  if (ethiopic || arabic) return ethiopic >= arabic ? "am" : "ar";
+  return /[A-Za-z]/.test(letters) ? "en" : undefined;
+}
 
 const CATEGORIES = [
   { value: "UTILITY", label: "Utility", hint: "Order updates, invoices, payment confirmations" },
@@ -65,7 +99,12 @@ function withBold(text: string) {
 }
 
 function languageLabel(code: string) {
-  return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+  const known = LANGUAGES.find((l) => l.code === code)?.label;
+  if (known) return known;
+  // Templates registered before the list was trimmed (am, en_US, …).
+  const [base, region] = code.split("_");
+  const name = NAME_LANGUAGES[base];
+  return name ? (region ? `${name} (${region})` : name) : code;
 }
 
 /** Language names for the prefix our template names start with (am_…, ar_…, en_…). */
@@ -171,6 +210,16 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`badge wa-template__status wa-template__status--${tone}`}>{STATUS_LABELS[status] ?? status}</span>;
 }
 
+/** What a template button does, as an icon: website, email, call, quick reply or copy code. */
+function ButtonIcon({ button }: { button: { type: string; url?: string } }) {
+  const props = { size: 13, "aria-hidden": true } as const;
+  if (button.type === "URL") return button.url?.toLowerCase().startsWith("mailto:") ? <Mail {...props} /> : <Globe {...props} />;
+  if (button.type === "PHONE_NUMBER") return <Phone {...props} />;
+  if (button.type === "QUICK_REPLY") return <Reply {...props} />;
+  if (button.type === "COPY_CODE") return <Copy {...props} />;
+  return null;
+}
+
 /** How a template reads, with any filled-in values substituted. */
 function TemplatePreview({ template, values }: { template: WhatsAppTemplate; values?: WhatsAppTemplateValues }) {
   const header = part(template, "HEADER");
@@ -194,6 +243,7 @@ function TemplatePreview({ template, values }: { template: WhatsAppTemplate; val
         <div className="wa-template__preview-buttons">
           {buttons.map((button, index) => (
             <span key={index} className="wa-template__preview-button">
+              <ButtonIcon button={button} />
               {button.text}
             </span>
           ))}
@@ -846,9 +896,14 @@ function CreateTemplateForm({
   onCreated: (name: string, status: string) => void;
 }) {
   const [initial] = useState<Draft>(() => (source ? draftFrom(source) : BLANK_DRAFT));
-  const [name, setName] = useState(initial.name);
+  // The name is its language prefix (am_/ar_/en_) plus the rest, typed separately.
+  const [namePrefix, setNamePrefix] = useState<NamePrefix>(
+    () => splitName(initial.name).prefix ?? (initial.language === "ar" ? "ar" : "en"),
+  );
+  const [nameRest, setNameRest] = useState(() => splitName(initial.name).rest);
+  const name = nameRest ? `${namePrefix}_${nameRest}` : "";
   const [category, setCategory] = useState<NewWhatsAppTemplate["category"]>(initial.category);
-  const [language, setLanguage] = useState(initial.language);
+  const [language, setLanguage] = useState(() => (LANGUAGES.some((l) => l.code === initial.language) ? initial.language : whatsappLanguageFor(namePrefix)));
   const [headerChoice, setHeaderChoice] = useState<HeaderChoice>(initial.headerChoice);
   const [header, setHeader] = useState(initial.header);
   const [headerExample, setHeaderExample] = useState(initial.headerExample);
@@ -864,6 +919,23 @@ function CreateTemplateForm({
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const sampleInputRef = useRef<HTMLInputElement>(null);
   const mediaChoice = headerChoice in MEDIA_FORMATS ? (headerChoice as MediaFormat) : undefined;
+
+  /** Sets the name prefix and the WhatsApp language that goes with it. */
+  function chooseNamePrefix(prefix: NamePrefix) {
+    setNamePrefix(prefix);
+    setLanguage(whatsappLanguageFor(prefix));
+  }
+
+  /**
+   * Typing in the header, message or footer re-detects the language from all
+   * three and updates both dropdowns — they can still be changed by hand
+   * afterwards, until the text changes again.
+   */
+  function detectLanguage(texts: { header?: string; body?: string; footer?: string }) {
+    const all = [texts.header ?? header, texts.body ?? body, texts.footer ?? footer].join(" ");
+    const detected = detectNamePrefix(all);
+    if (detected) chooseNamePrefix(detected);
+  }
 
   function chooseHeader(choice: HeaderChoice) {
     setHeaderChoice(choice);
@@ -944,15 +1016,33 @@ function CreateTemplateForm({
         <label className="field-label" htmlFor="tpl-name">
           Name
         </label>
-        <input
-          id="tpl-name"
-          type="text"
-          className="input"
-          placeholder="e.g. order_ready"
-          value={name}
-          // Meta only accepts lowercase letters, numbers and underscores.
-          onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""))}
-        />
+        <div className="wa-template__name-row">
+          <div className="select-wrap wa-template__name-prefix">
+            <select
+              className="select"
+              aria-label="Language of the text"
+              value={namePrefix}
+              onChange={(e) => chooseNamePrefix(e.target.value as NamePrefix)}
+            >
+              {NAME_PREFIXES.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="select-wrap__chevron" size={16} />
+          </div>
+          <input
+            id="tpl-name"
+            type="text"
+            className="input"
+            placeholder="e.g. order_ready"
+            value={nameRest}
+            // Meta only accepts lowercase letters, numbers and underscores.
+            onChange={(e) => setNameRest(e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""))}
+          />
+        </div>
+        <div className="wa-template__hint">Saved as {name || `${namePrefix}_…`} — picked automatically from the text you write.</div>
       </div>
 
       <div className="field">
@@ -1012,7 +1102,10 @@ function CreateTemplateForm({
             maxLength={60}
             placeholder="Bold first line, up to 60 characters"
             value={header}
-            onChange={(e) => setHeader(e.target.value)}
+            onChange={(e) => {
+              setHeader(e.target.value);
+              detectLanguage({ header: e.target.value });
+            }}
           />
         )}
         {mediaChoice && (
@@ -1071,7 +1164,10 @@ function CreateTemplateForm({
           maxLength={1024}
           placeholder={"e.g. Hello {{1}}, your order {{2}} is ready for pickup."}
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => {
+            setBody(e.target.value);
+            detectLanguage({ body: e.target.value });
+          }}
         />
         <div className="wa-template__hint">
           Variables like {"{{1}}"} are filled in each time you send. WhatsApp needs an example value for each.
@@ -1101,7 +1197,10 @@ function CreateTemplateForm({
           maxLength={60}
           placeholder="Small grey text, up to 60 characters"
           value={footer}
-          onChange={(e) => setFooter(e.target.value)}
+          onChange={(e) => {
+            setFooter(e.target.value);
+            detectLanguage({ footer: e.target.value });
+          }}
         />
       </div>
 

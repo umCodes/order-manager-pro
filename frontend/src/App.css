@@ -101,6 +101,25 @@
   color: var(--color-gray-700);
 }
 
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-header__usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-gray-100);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-gray-600);
+  font-variant-numeric: tabular-nums;
+}
+
 .app-header__settings {
   display: inline-flex;
   align-items: center;

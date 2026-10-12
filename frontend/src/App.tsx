@@ -11,6 +11,7 @@ import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
 import SettingsPage from "./pages/SettingsPage";
+import ZohoUsageBadge from "./components/ZohoUsageBadge";
 import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
 
 /**
@@ -63,15 +64,18 @@ function App() {
     <div className="app-frame">
       <header className="app-header">
         <span className="app-header__title">Order Manager Pro</span>
-        <button
-          type="button"
-          className="app-header__settings"
-          aria-label="Settings"
-          title="Settings"
-          onClick={() => setIsSettingsOpen(true)}
-        >
-          <Settings size={18} />
-        </button>
+        <div className="app-header__actions">
+          <ZohoUsageBadge refreshKey={activeTab} />
+          <button
+            type="button"
+            className="app-header__settings"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setIsSettingsOpen(true)}
+          >
+            <Settings size={18} />
+          </button>
+        </div>
       </header>
       <div className="app-frame__body">
         {activeTab === "invoices" && (

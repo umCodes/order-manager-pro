@@ -11,7 +11,6 @@ import {
   fetchCustomers,
   fetchInvoiceById,
   fetchItems,
-  fetchZohoUsage,
 } from "../lib/api";
 import type {
   CatalogItem,
@@ -79,7 +78,6 @@ export default function NewInvoicePage({
   const [itemToOpen, setItemToOpen] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [zohoRequestCount, setZohoRequestCount] = useState<number | null>(null);
   const [customerDrafts, setCustomerDrafts] = useState<DraftInvoice[]>([]);
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [isLoadingDraftItems, setIsLoadingDraftItems] = useState(false);
@@ -93,7 +91,6 @@ export default function NewInvoicePage({
   useEffect(() => {
     fetchCustomers().then(setContacts);
     fetchItems().then(setCatalogItems);
-    fetchZohoUsage().then((usage) => setZohoRequestCount(usage.count)).catch(() => {});
   }, []);
 
   const lineItems: InvoiceLineItem[] = useMemo(() => {
@@ -231,11 +228,6 @@ export default function NewInvoicePage({
     <div>
       <div className="page-header">
         <h1 className="page-title">New Invoice</h1>
-        {zohoRequestCount !== null && (
-          <span className="badge" title="Zoho API requests used today">
-            {zohoRequestCount} Zoho req{zohoRequestCount === 1 ? "" : "s"} today
-          </span>
-        )}
       </div>
 
       <div className="mode-toggle">

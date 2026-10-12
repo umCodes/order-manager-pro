@@ -53,6 +53,17 @@ function fill(text: string | undefined, values: Record<string, string> | undefin
   return (text ?? "").replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (whole, key) => values?.[key]?.trim() || whole);
 }
 
+/**
+ * Renders WhatsApp's bold formatting: text between single asterisks
+ * (`*like this*`) shows bold, without the asterisks. As in WhatsApp, the
+ * asterisks must hug the text — `* not bold *` stays as typed.
+ */
+function withBold(text: string) {
+  return text.split(/\*([^*\s](?:[^*\n]*[^*\s])?)\*/g).map((piece, index) =>
+    index % 2 === 1 ? <strong key={index}>{piece}</strong> : piece,
+  );
+}
+
 function languageLabel(code: string) {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
 }
@@ -175,10 +186,10 @@ function TemplatePreview({ template, values }: { template: WhatsAppTemplate; val
             {values?.header_media?.filename ?? MEDIA_FORMATS[header.format as MediaFormat]?.label ?? header.format.toLowerCase()}
           </div>
         ) : (
-          <div className="wa-template__preview-header">{fill(header.text, values?.header)}</div>
+          <div className="wa-template__preview-header">{withBold(fill(header.text, values?.header))}</div>
         ))}
-      <div className="wa-template__preview-body">{fill(body?.text, values?.body)}</div>
-      {footer?.text && <div className="wa-template__preview-footer">{footer.text}</div>}
+      <div className="wa-template__preview-body">{withBold(fill(body?.text, values?.body))}</div>
+      {footer?.text && <div className="wa-template__preview-footer">{withBold(footer.text)}</div>}
       {buttons.length > 0 && (
         <div className="wa-template__preview-buttons">
           {buttons.map((button, index) => (

@@ -17,6 +17,8 @@ import {
 import { chatDisplayName } from "../lib/whatsappStore";
 import RefreshButton from "./RefreshButton";
 import FilterChip from "./FilterChip";
+import SortRow from "./SortRow";
+import { useSortState, type SortDirection } from "../hooks/useSortState";
 import ConfirmModal from "./ConfirmModal";
 
 /** The WhatsApp languages new templates are registered in. */
@@ -193,11 +195,35 @@ function unsendableReason(template: WhatsAppTemplate): string | undefined {
   return undefined;
 }
 
-/** List order: approved first, then ones still in review, then paused, then rejected / disabled. */
-const STATUS_ORDER: Record<string, number> = { APPROVED: 0, PENDING: 1, IN_APPEAL: 1, PAUSED: 2, REJECTED: 3, DISABLED: 3 };
+type TemplateSortKey = "name" | "language";
 
-function statusRank(status: string) {
-  return STATUS_ORDER[status] ?? 2;
+const TEMPLATE_SORT_OPTIONS: { key: TemplateSortKey; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "language", label: "Language" },
+];
+
+/** The language a template's text is in, from its name prefix (am_ → "Amharic"); "" when the name has none. */
+function prefixLanguage(template: WhatsAppTemplate) {
+  return displayName(template.name).language ?? "";
+}
+
+/**
+ * Orders templates by their name after the language prefix (so am_payment
+ * and en_payment sit together), or by prefix language and then that name.
+ * Names without a prefix come last when sorting by language.
+ */
+function compareTemplates(a: WhatsAppTemplate, b: WhatsAppTemplate, key: TemplateSortKey, direction: SortDirection) {
+  const sign = direction === "asc" ? 1 : -1;
+  const byName = displayName(a.name).title.localeCompare(displayName(b.name).title);
+  const languageA = prefixLanguage(a);
+  const languageB = prefixLanguage(b);
+  if (key === "name") return sign * byName || languageA.localeCompare(languageB);
+  if (languageA !== languageB) {
+    if (!languageA) return 1;
+    if (!languageB) return -1;
+    return sign * languageA.localeCompare(languageB);
+  }
+  return byName;
 }
 
 /** Rejected and disabled templates are hidden unless asked for — they can't be sent. */
@@ -281,7 +307,9 @@ export default function WhatsAppTemplates({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  // A prefix language ("Amharic"), "" for names without one, or null for all.
   const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const { sortKey, sortDirection, toggleSort } = useSortState<TemplateSortKey>("name");
   const [showRejected, setShowRejected] = useState(false);
   // Templates start collapsed (name and status only); tapping one shows the rest.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -341,21 +369,18 @@ export default function WhatsAppTemplates({
     );
   }
 
-  const sortedTemplates = (templates ?? []).toSorted((a, b) => statusRank(a.status) - statusRank(b.status));
+  const sortedTemplates = (templates ?? []).toSorted((a, b) => compareTemplates(a, b, sortKey, sortDirection));
   const rejectedCount = sortedTemplates.filter(isHiddenByDefault).length;
   const allTemplates = showRejected ? sortedTemplates : sortedTemplates.filter((t) => !isHiddenByDefault(t));
-  // The languages templates actually exist in, in the create form's order (others after).
-  const languageOrder = (code: string) => {
-    const index = LANGUAGES.findIndex((l) => l.code === code);
-    return index === -1 ? LANGUAGES.length : index;
-  };
-  const templateLanguages = [...new Set(sortedTemplates.map((t) => t.language))].sort(
-    (a, b) => languageOrder(a) - languageOrder(b) || a.localeCompare(b),
+  // The languages the templates' names say their text is in ("" = no prefix), named languages first.
+  const templateLanguages = [...new Set(sortedTemplates.map(prefixLanguage))].sort(
+    (a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b),
   );
   // A language whose last template was deleted no longer filters anything out.
-  const activeLanguage = languageFilter && templateLanguages.length > 1 && templateLanguages.includes(languageFilter) ? languageFilter : null;
+  const activeLanguage =
+    languageFilter !== null && templateLanguages.length > 1 && templateLanguages.includes(languageFilter) ? languageFilter : null;
   const inCategory = (t: WhatsAppTemplate) => !categoryFilter || t.category === categoryFilter;
-  const inLanguage = (t: WhatsAppTemplate) => !activeLanguage || t.language === activeLanguage;
+  const inLanguage = (t: WhatsAppTemplate) => activeLanguage === null || prefixLanguage(t) === activeLanguage;
   const visibleTemplates = allTemplates.filter((t) => inCategory(t) && inLanguage(t));
   // Each row of chips counts within the other row's filter.
   const languageMatches = allTemplates.filter(inLanguage);
@@ -407,22 +432,26 @@ export default function WhatsAppTemplates({
       {templateLanguages.length > 1 && (
         <div className="wa-chips" role="group" aria-label="Filter by language">
           <FilterChip label="All languages" count={categoryMatches.length} active={activeLanguage === null} onClick={() => setLanguageFilter(null)} />
-          {templateLanguages.map((code) => (
+          {templateLanguages.map((language) => (
             <FilterChip
-              key={code}
-              label={languageLabel(code)}
-              count={categoryMatches.filter((t) => t.language === code).length}
-              active={activeLanguage === code}
-              onClick={() => setLanguageFilter(code)}
+              key={language || "none"}
+              label={language || "No prefix"}
+              count={categoryMatches.filter((t) => prefixLanguage(t) === language).length}
+              active={activeLanguage === language}
+              onClick={() => setLanguageFilter(language)}
             />
           ))}
         </div>
       )}
 
+      {sortedTemplates.length > 1 && (
+        <SortRow options={TEMPLATE_SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
+      )}
+
       {templates === null && !error ? (
         <div className="items-area__empty">Loading...</div>
       ) : visibleTemplates.length === 0 ? (
-        <div className="items-area__empty">{categoryFilter || activeLanguage
+        <div className="items-area__empty">{categoryFilter || activeLanguage !== null
             ? "No templates match these filters"
             : rejectedCount > 0 && !showRejected
               ? "No approved or in-review templates"

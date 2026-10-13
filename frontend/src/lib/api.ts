@@ -751,6 +751,21 @@ export async function markInvoiceAsSent(
   return response.json();
 }
 
+/** Voids an invoice. Zoho refuses ones with payments or credits still applied; its reason comes back as the error. */
+export async function voidInvoice(invoiceId: string): Promise<{ invoice: InvoiceDetail }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/void`, { method: "POST" });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to void invoice (${response.status})`);
+  }
+
+  // A voided draft leaves the drafts list, and the cached copy of this invoice is stale.
+  invalidateCache(invoiceCacheKey(invoiceId));
+  invalidateCache("draftInvoices");
+  return response.json();
+}
+
 /**
  * Re-sends just the WhatsApp notification for an invoice — never repeats
  * the payment or status change that triggered it the first time, so it's

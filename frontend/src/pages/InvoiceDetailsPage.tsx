@@ -6,6 +6,7 @@ import {
   fetchCustomers,
   refreshCachedCustomer,
   markInvoiceAsSent,
+  voidInvoice,
   recordInvoicePayment,
   resendInvoiceNotification,
   splitInvoiceToSelectedItems,
@@ -96,6 +97,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isMarkingSent, setIsMarkingSent] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSplitConfirmOpen, setIsSplitConfirmOpen] = useState(false);
+  const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
+  const [isVoiding, setIsVoiding] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
   const [markSentNotifyStep, setMarkSentNotifyStep] = useState<MarkSentNotifyStep>("closed");
   const [sendOnWhatsAppStep, setSendOnWhatsAppStep] = useState<SendOnWhatsAppStep>("closed");
   const [isSendingOnWhatsApp, setIsSendingOnWhatsApp] = useState(false);
@@ -430,6 +434,19 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       })
       .catch((e) => setPaymentError(e instanceof Error ? e.message : "Failed to record payment"))
       .finally(() => setIsRecordingPayment(false));
+  }
+
+  function handleVoidConfirm() {
+    if (!invoice || isVoiding) return;
+    setIsVoiding(true);
+    setVoidError(null);
+    voidInvoice(invoice.invoice_id)
+      .then(() => {
+        setIsVoidConfirmOpen(false);
+        return reloadInvoiceAndCustomer();
+      })
+      .catch((e) => setVoidError(e instanceof Error ? e.message : "Failed to void invoice"))
+      .finally(() => setIsVoiding(false));
   }
 
   function handleMarkAsSentClick() {
@@ -873,6 +890,21 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               Return Invoice
             </button>
           )}
+
+          {invoice.status !== "void" && (
+            <button
+              type="button"
+              className="btn btn--secondary btn--full btn--danger-text invoice-details__return"
+              onClick={() => {
+                setVoidError(null);
+                setIsVoidConfirmOpen(true);
+              }}
+              disabled={isLineItemsDirty}
+              title={isLineItemsDirty ? "Save your item changes first" : undefined}
+            >
+              Void Invoice
+            </button>
+          )}
         </>
       )}
 
@@ -907,6 +939,18 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           onCommitItem={handlePickerCommit}
           onRemoveItem={handlePickerRemove}
           showExcludeFromTelegram={false}
+        />
+      )}
+
+      {isVoidConfirmOpen && invoice && (
+        <ConfirmModal
+          title="Void Invoice?"
+          message={`Void ${invoice.invoice_number}? Its balance is cancelled and it no longer counts toward the customer's balance due. Invoices with payments recorded can't be voided until those payments are removed.`}
+          confirmLabel={isVoiding ? "Voiding..." : "Void invoice"}
+          error={voidError}
+          isConfirming={isVoiding}
+          onConfirm={handleVoidConfirm}
+          onCancel={() => setIsVoidConfirmOpen(false)}
         />
       )}
 

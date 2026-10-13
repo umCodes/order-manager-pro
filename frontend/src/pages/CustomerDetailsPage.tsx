@@ -95,6 +95,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [isConfirmingInactive, setIsConfirmingInactive] = useState(false);
   const [payments, setPayments] = useState<CustomerPayment[] | null>(null);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
   const [sendingPayment, setSendingPayment] = useState<CustomerPayment | null>(null);
@@ -253,12 +254,23 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       .finally(() => setIsSavingContact(false));
   }
 
+  /** Marking inactive asks first (it hides the customer from the default list); marking active doesn't. */
   function handleToggleStatus() {
+    if (!customer || isTogglingStatus) return;
+    setStatusError(null);
+    if (customer.status === "active") setIsConfirmingInactive(true);
+    else runToggleStatus();
+  }
+
+  function runToggleStatus() {
     if (!customer || isTogglingStatus) return;
     setIsTogglingStatus(true);
     setStatusError(null);
     setCustomerActive(customer.contact_id, customer.status !== "active")
-      .then(setCustomer)
+      .then((updated) => {
+        setCustomer(updated);
+        setIsConfirmingInactive(false);
+      })
       .catch((e) => setStatusError(e instanceof Error ? e.message : "Failed to update customer status"))
       .finally(() => setIsTogglingStatus(false));
   }
@@ -332,7 +344,22 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
       </div>
 
       {error && <div className="form-error">{error}</div>}
-      {statusError && <div className="form-error">{statusError}</div>}
+      {statusError && !isConfirmingInactive && <div className="form-error">{statusError}</div>}
+
+      {customer && isConfirmingInactive && (
+        <ConfirmModal
+          title="Mark Inactive?"
+          message={`Mark ${customer.contact_name || customer.company_name} as inactive? They'll be hidden from the active customers list until marked active again.`}
+          confirmLabel={isTogglingStatus ? "Saving..." : "Mark inactive"}
+          error={statusError}
+          isConfirming={isTogglingStatus}
+          onConfirm={runToggleStatus}
+          onCancel={() => {
+            setIsConfirmingInactive(false);
+            setStatusError(null);
+          }}
+        />
+      )}
 
       {!customer && !error && <div className="items-area__empty">Loading...</div>}
 

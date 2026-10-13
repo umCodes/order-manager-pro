@@ -45,3 +45,20 @@ export async function ZohoMarkInvoiceAsSent(headers: string, id: string){
         throw error;
     }
 }
+
+/**
+ * Voids an invoice in Zoho, which zeroes its balance and drops it from the
+ * customer's receivables. Zoho refuses invoices that still have payments or
+ * credits applied; its message is passed on so the user knows why.
+ */
+export async function ZohoMarkInvoiceAsVoid(headers: string, id: string){
+
+    try {
+        const response = await ZohoApi(`invoices/${id}/status/void`, headers, "POST")
+        if (response.code !== 0) throw new Error(response.message ?? "Zoho could not void this invoice")
+        return response;
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}

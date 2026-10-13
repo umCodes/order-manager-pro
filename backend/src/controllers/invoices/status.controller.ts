@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   ZohoGetInvoiceById,
   ZohoMarkInvoiceAsSent,
+  ZohoMarkInvoiceAsVoid,
   recordInvoicePayment,
 } from "../../services/zoho/invoices/index.js";
 import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsapp/invoices.js";
@@ -88,6 +89,32 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     console.error(error);
     res.status(400).json({
       error: error instanceof Error ? error.message : "Failed to mark invoice as sent",
+    });
+  }
+}
+
+/**
+ * Voids an invoice. It's no longer pending fulfillment either, so its
+ * channel thread is cleared like a paid or sent invoice's.
+ */
+export async function voidInvoice(req: Request, res: Response) {
+  const id = req.params.id as string;
+
+  try {
+    const access_token = requireAccessToken(req, "A problem occured voiding the invoice");
+    if (!id) throw new Error("id not provided");
+
+    await ZohoMarkInvoiceAsVoid(access_token, id);
+    // A voided invoice no longer counts toward the customer's balance due in the cached list.
+    deleteCache("customers");
+    await deleteInvoiceTelegramMessage(id);
+    const invoice = await ZohoGetInvoiceById(access_token, id);
+
+    res.status(200).json({ invoice });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Failed to void invoice",
     });
   }
 }

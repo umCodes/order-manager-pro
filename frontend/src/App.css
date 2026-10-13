@@ -1532,6 +1532,11 @@
   margin-top: 10px;
 }
 
+/* Destructive secondary action (Void Invoice): outlined like the others, red text. */
+.btn--danger-text {
+  color: var(--color-danger, #d92d20);
+}
+
 /* Return Invoice review */
 .return-review__lines {
   margin: 12px 0 10px;

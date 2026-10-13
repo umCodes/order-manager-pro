@@ -7,6 +7,7 @@ import {
 import { redisClient } from "../../config/redis.js";
 import { excludeInternalLineItems, stripInternalMarker } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 import { oneMonthFromTodayInBusinessTimezone } from "../../utils/businessDate.js";
 
 /**
@@ -17,7 +18,8 @@ import { oneMonthFromTodayInBusinessTimezone } from "../../utils/businessDate.js
  * Either way the fulfillment channel is notified: a new invoice gets a fresh
  * message, an updated draft replies to its existing one so the thread holds a
  * single current version. Pass `skip_telegram` to write to Zoho only and
- * leave the channel untouched.
+ * leave the channel untouched. Line items are sorted by category priority,
+ * then name, before either sees them.
  */
 export async function createInvoice(req: Request, res: Response) {
   const { contact_id, line_items, date, invoice_id, skip_telegram } = req.body ?? {};
@@ -28,11 +30,12 @@ export async function createInvoice(req: Request, res: Response) {
     });
   }
 
-  const telegramLineItems = excludeInternalLineItems(line_items);
-  const zohoLineItems = stripInternalMarker(line_items);
-
   try {
     const access_token = requireAccessToken(req, "A problem occured getting items");
+
+    const sortedLineItems = await sortLineItemsByCategory(access_token, line_items);
+    const telegramLineItems = excludeInternalLineItems(sortedLineItems);
+    const zohoLineItems = stripInternalMarker(sortedLineItems);
 
     if (invoice_id) {
       await ZohoUpdateInvoice(access_token, String(invoice_id), {

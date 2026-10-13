@@ -5,6 +5,7 @@ import { redisClient } from "../../config/redis.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 
 /**
@@ -27,7 +28,8 @@ export async function resendInvoiceTelegramMessage(req: Request, res: Response) 
 
     if (!date) invoice.date = undefined
 
-    const telegramLineItems = excludeInternalLineItems(invoice.line_items);
+    // Invoices created before category sorting may be in any order.
+    const telegramLineItems = excludeInternalLineItems(await sortLineItemsByCategory(access_token, invoice.line_items));
 
     const telegramMessage = await sendInvoiceTelegramMessage(invoice, telegramLineItems);
     await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));

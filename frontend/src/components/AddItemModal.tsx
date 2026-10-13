@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { fetchItemCategorySettings, fetchItems } from "../lib/api";
 import { groupItemsByCategory } from "../lib/itemSummary";
 import AddItemRow, { type DraftForm } from "./AddItemRow";
@@ -69,6 +69,28 @@ export default function AddItemModal({
   );
 }
 
+const COLLAPSED_CATEGORIES_KEY = "addItem:collapsedCategories";
+/** Key for the "Uncategorized" group in the collapsed set. */
+const UNCATEGORIZED_KEY = "";
+
+/** Categories the user collapsed last time, remembered on this device only. */
+function loadCollapsedCategories(): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLLAPSED_CATEGORIES_KEY) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((name) => typeof name === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedCategories(collapsed: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSED_CATEGORIES_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // Storage unavailable (e.g. private mode) — collapsing still works for this session.
+  }
+}
+
 const EMPTY_FORM: DraftForm = {
   description: "",
   quantity: "1",
@@ -94,6 +116,7 @@ function SheetContent({
   const [form, setForm] = useState<DraftForm>(EMPTY_FORM);
   const [query, setQuery] = useState("");
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(loadCollapsedCategories);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -144,6 +167,25 @@ function SheetContent({
         : [{ category: null, items: filteredItems }],
     [filteredItems, categoryOrder, showCategories],
   );
+
+  function toggleCategory(key: string) {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedCategories(next);
+      return next;
+    });
+  }
+
+  // While searching every match shows, and the item the sheet opened on is never hidden.
+  const isSearching = query.trim() !== "";
+  const initialCategoryKey = initialItemId
+    ? items.find((item) => item.item_id === initialItemId)?.category ?? UNCATEGORIZED_KEY
+    : null;
+  function isCategoryCollapsed(key: string) {
+    return !isSearching && key !== initialCategoryKey && collapsedCategories.has(key);
+  }
 
   function toggleExpand(item: CatalogItem) {
     if (expandedId === item.item_id) {
@@ -210,32 +252,53 @@ function SheetContent({
       </div>
 
       <div className="sheet__list">
-        {categoryGroups.map((group) => (
-          <div key={group.category ?? ""}>
-            {showCategories && (
-              <div className="sheet__category">
-                <span>{group.category ?? "Uncategorized"}</span>
-                <span className="sheet__category-count">{group.items.length}</span>
-              </div>
-            )}
-            {group.items.map((item) => (
-              <AddItemRow
-                key={item.item_id}
-                ref={(el) => { rowRefs.current[item.item_id] = el; }}
-                item={item}
-                inCart={cart[item.item_id]}
-                isExpanded={expandedId === item.item_id}
-                form={form}
-                onToggleExpand={() => toggleExpand(item)}
-                onFormChange={setForm}
-                onCommit={() => commit(item)}
-                onRemove={() => remove(item)}
-                showExcludeFromTelegram={showExcludeFromTelegram && !returnItems}
-                maxQuantity={returnItems?.maxQuantity[item.item_id]}
-              />
-            ))}
-          </div>
-        ))}
+        {categoryGroups.map((group) => {
+          const key = group.category ?? UNCATEGORIZED_KEY;
+          const isCollapsed = showCategories && isCategoryCollapsed(key);
+          const addedCount = group.items.filter((item) => cart[item.item_id]).length;
+          return (
+            <div key={key}>
+              {showCategories && (
+                <button
+                  type="button"
+                  className="sheet__category"
+                  aria-expanded={!isCollapsed}
+                  onClick={() => toggleCategory(key)}
+                  disabled={isSearching}
+                >
+                  <span className="sheet__category-title">
+                    <ChevronDown
+                      size={14}
+                      className={`sheet__category-chevron${isCollapsed ? " sheet__category-chevron--collapsed" : ""}`}
+                    />
+                    {group.category ?? "Uncategorized"}
+                  </span>
+                  <span className="sheet__category-count">
+                    {addedCount > 0 && <span className="sheet__category-added">{addedCount} added · </span>}
+                    {group.items.length}
+                  </span>
+                </button>
+              )}
+              {!isCollapsed &&
+                group.items.map((item) => (
+                  <AddItemRow
+                    key={item.item_id}
+                    ref={(el) => { rowRefs.current[item.item_id] = el; }}
+                    item={item}
+                    inCart={cart[item.item_id]}
+                    isExpanded={expandedId === item.item_id}
+                    form={form}
+                    onToggleExpand={() => toggleExpand(item)}
+                    onFormChange={setForm}
+                    onCommit={() => commit(item)}
+                    onRemove={() => remove(item)}
+                    showExcludeFromTelegram={showExcludeFromTelegram && !returnItems}
+                    maxQuantity={returnItems?.maxQuantity[item.item_id]}
+                  />
+                ))}
+            </div>
+          );
+        })}
       </div>
     </>
   );

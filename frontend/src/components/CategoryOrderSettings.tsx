@@ -75,9 +75,16 @@ export default function CategoryOrderSettings() {
 
       {loadError && <div className="form-error">{loadError}</div>}
 
+      {settings?.source === "invoice" && (
+        <div className="form-error">
+          Couldn't reach Zoho Inventory, so items have no categories right now. Check that the Zoho
+          connection has Inventory access, then refresh.
+        </div>
+      )}
+
       {!settings && !loadError && <div className="items-area__empty">Loading…</div>}
 
-      {settings && list.length === 0 && (
+      {settings && settings.source !== "invoice" && list.length === 0 && (
         <div className="items-area__empty">No categories on your Zoho Inventory items yet</div>
       )}
 

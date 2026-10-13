@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import type { ZohoInvoice } from '../services/zoho/types.js';
-import { getCatalogItems } from '../services/zoho/items.js';
+import { getCatalog, getCatalogItems } from '../services/zoho/items.js';
 import { ZohoGetInvoiceById, ZohoGetDrafts} from '../services/zoho/invoices/index.js'
 import { combineItems } from '../utils/combineItems.js';
 
@@ -40,14 +40,18 @@ export async function getAllLineItems(req: Request, res: Response) {
 
 
 
-/** The item catalog (from Zoho Inventory, with each item's category), cached in memory for 12 hours. */
+/**
+ * The item catalog (from Zoho Inventory, with each item's category), cached
+ * in memory. `source` says whether it came from Inventory or the
+ * category-less Zoho Invoice fallback. `?refresh=1` refetches from Zoho.
+ */
 export async function getItems(req: Request, res: Response) {
   
   const access_token = req.headers["Authorization"]
   try {
     if (!access_token || access_token instanceof Array) throw "A problem occured getting items"
-    const items = await getCatalogItems(access_token)
-    res.status(200).json({items})
+    const { items, source } = await getCatalog(access_token, req.query.refresh === "1")
+    res.status(200).json({ items, source })
     return
   } catch (error) {
     res.status(500).json({

@@ -1,27 +1,54 @@
 import { getAppliedInvoices } from "../../../utils/getAppliedInvoices.js";
 import { todayInBusinessTimezone } from "../../../utils/businessDate.js";
 import { ZohoApi } from "../client.js"
-import { ZohoGetInvoices } from "../invoices/index.js";
+import { ZohoGetInvoices, applyCustomerDiscount, removeInvoiceDiscounts } from "../invoices/index.js";
 
 type PaymentMode = "cash" | "creditcard" | "banktransfer"
+
+/** Open invoices a customer-level payment or discount can go on, oldest first. */
+function openInvoicesOldestFirst(invoices: any[]) {
+    return invoices
+        .filter((inv) => inv.status !== "draft" && inv.status !== "paid" && inv.status !== "void")
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
 
 /**
  * Records a payment against the customer as a whole, spreading the amount
  * across their open invoices oldest-first (see getAppliedInvoices) rather
- * than against one specific invoice.
+ * than against one specific invoice. An optional discount is placed first
+ * (see applyCustomerDiscount), so the payment lands on the reduced balances;
+ * if the payment then fails, the discount is taken back off. An amount of 0
+ * with a discount records the discount alone, and `payment` is null.
  */
-export async function recordCustomerPayment(headers: string, customerId: string, amount: number, paymentMode: PaymentMode = "cash"){
+export async function recordCustomerPayment(headers: string, customerId: string, amount: number, paymentMode: PaymentMode = "cash", discount?: number){
 
     try {
-        const invoices = await ZohoGetInvoices(headers, { customer_id: customerId })
-        const response = await ZohoApi("customerpayments", headers, "POST", {
-            customer_id: customerId,
-            payment_mode: paymentMode,
-            date: todayInBusinessTimezone(),
-            amount,
-            invoices: getAppliedInvoices(invoices, amount)
-        })
-        return response.payment;
+        const discounts = discount
+            ? await applyCustomerDiscount(
+                headers,
+                openInvoicesOldestFirst(await ZohoGetInvoices(headers, { customer_id: customerId })),
+                discount,
+            )
+            : []
+
+        if (!amount) return { payment: null, discounts }
+
+        try {
+            // Fetched after the discount so the payment sees the reduced balances.
+            const invoices = await ZohoGetInvoices(headers, { customer_id: customerId })
+            const response = await ZohoApi("customerpayments", headers, "POST", {
+                customer_id: customerId,
+                payment_mode: paymentMode,
+                date: todayInBusinessTimezone(),
+                amount,
+                invoices: getAppliedInvoices(invoices, amount)
+            })
+            if (!response.payment) throw new Error(response.message ?? "Failed to record payment")
+            return { payment: response.payment, discounts };
+        } catch (error) {
+            await removeInvoiceDiscounts(headers, discounts)
+            throw error
+        }
     } catch (error) {
         console.error(error);
         throw error;

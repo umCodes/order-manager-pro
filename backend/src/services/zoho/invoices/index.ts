@@ -6,4 +6,5 @@ export * from "./queries.js";
 export * from "./mutations.js";
 export * from "./split.js";
 export * from "./payments.js";
+export * from "./discounts.js";
 export * from "./draftSummaries.js";

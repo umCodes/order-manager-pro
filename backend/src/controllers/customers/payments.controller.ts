@@ -14,7 +14,9 @@ import { deleteCache } from '../../utils/cache.js';
 
 /**
  * Records a payment against the customer as a whole, spread across their open
- * invoices oldest-first. The optional WhatsApp confirmation is best-effort
+ * invoices oldest-first, with an optional discount placed on those invoices
+ * first (oldest invoice that can take it whole, else spread oldest-first).
+ * A discount with an amount of 0 records just the discount. The optional WhatsApp confirmation is best-effort
  * and can go to one or more contacts: a failure there is logged and reported
  * as `notified: false`, never rolled back onto the payment that already
  * went through.
@@ -25,20 +27,24 @@ export async function payCustomerBalance(req: Request, res: Response){
     try {
         const access_token = requireAccessToken(req, "A problem occured recording payment")
         if (!id) throw new Error("Customer id is required")
-        const { amount, payment_mode, notify, notify_contact_ids } = req.body;
+        const { payment_mode, notify, notify_contact_ids } = req.body;
+        const amount = Number(req.body.amount) || 0
+        const discount = Number(req.body.discount) || 0
 
-        if(!amount) throw new Error("Amount not provided")
+        if (amount < 0 || discount < 0) throw new Error("Amount and discount can't be negative")
+        if (!amount && !discount) throw new Error("Amount not provided")
 
-        const payment = await recordCustomerPayment(access_token, id as string, amount, payment_mode)
+        const { payment, discounts } = await recordCustomerPayment(access_token, id as string, amount, payment_mode, discount || undefined)
         // The cached customer list carries each customer's balance due.
         deleteCache("customers")
-        await addToCollectedToday(Number(amount))
+        if (amount) await addToCollectedToday(amount)
 
-        const notified = notify
-            ? await notifyCustomerPayment(access_token, id as string, Number(amount), payment.date ?? todayInBusinessTimezone(), notify_contact_ids)
+        // A discount on its own isn't a payment to confirm to the customer.
+        const notified = notify && payment
+            ? await notifyCustomerPayment(access_token, id as string, amount, payment.date ?? todayInBusinessTimezone(), notify_contact_ids)
             : false
 
-        res.status(201).json({payment, notified})
+        res.status(201).json({payment, discounts, notified})
         return
     } catch (error) {
         if (error instanceof Error)

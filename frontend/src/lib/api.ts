@@ -249,12 +249,21 @@ export async function fetchCustomerDraftInvoices(customerId: string): Promise<Dr
   return data.drafts;
 }
 
+/** Where a customer-level discount landed: one entry per invoice it went on. */
+export type CustomerPaymentDiscount = { invoice_id: string; invoice_number: string; amount: number };
+
+/**
+ * Records a payment against the customer's open invoices. An optional
+ * discount is placed on those invoices first; with an amount of 0 only the
+ * discount is recorded (and `payment` comes back null).
+ */
 export async function recordCustomerPayment(
   customerId: string,
   amount: number,
+  discount?: number,
   notify?: boolean,
   notifyContactIds?: string[],
-) {
+): Promise<{ payment: Record<string, unknown> | null; discounts: CustomerPaymentDiscount[]; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/payments`, {
     method: "POST",
     headers: {
@@ -262,6 +271,7 @@ export async function recordCustomerPayment(
     },
     body: JSON.stringify({
       amount,
+      ...(discount ? { discount } : {}),
       notify: !!notify,
       ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
     }),

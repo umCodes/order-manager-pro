@@ -101,6 +101,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [sendPaymentStep, setSendPaymentStep] = useState<SendPaymentStep>("closed");
   const [isSendingPayment, setIsSendingPayment] = useState(false);
   const [notifyBanner, setNotifyBanner] = useState<"success" | "failed" | null>(null);
+  // Where the last payment's discount landed, e.g. "Discount applied: 500 on INV-102."
+  const [discountSummary, setDiscountSummary] = useState<string | null>(null);
   const [notifyRetry, setNotifyRetry] = useState<(() => void) | null>(null);
 
   useEffect(() => {
@@ -135,16 +137,22 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
 
   function handleSubmitPayment(
     amount: number,
-    _discount?: number,
+    discount?: number,
     _createNewDraft?: boolean,
     notify?: boolean,
     notifyContactIds?: string[],
   ) {
     if (!customer) return;
     setIsRecordingPayment(true);
-    recordCustomerPayment(customer.contact_id, amount, notify, notifyContactIds)
-      .then(() => {
+    setDiscountSummary(null);
+    recordCustomerPayment(customer.contact_id, amount, discount, notify, notifyContactIds)
+      .then((result) => {
         setIsPaymentModalOpen(false);
+        if (result.discounts?.length) {
+          setDiscountSummary(
+            `Discount applied: ${result.discounts.map((d) => `${currency(d.amount)} on ${d.invoice_number}`).join(", ")}.`,
+          );
+        }
         fetchCustomerPayments(customerId)
           .then((list) => {
             setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
@@ -490,6 +498,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             )}
           </div>
 
+          {discountSummary && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              {discountSummary}
+            </div>
+          )}
+
           {notifyBanner === "success" && (
             <div className="notify-banner notify-banner--success">
               <CheckCircle2 className="notify-banner__icon" size={14} />
@@ -569,6 +584,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
           title={customer.contact_name || customer.company_name}
           outstandingBalance={customer.outstanding_receivable_amount}
           prefillAmount={false}
+          allowDiscount
+          allowDiscountOnly
           isSaving={isRecordingPayment}
           submitError={paymentError}
           customer={customer}

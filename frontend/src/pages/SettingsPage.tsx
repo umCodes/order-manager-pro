@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import RefreshButton from "../components/RefreshButton";
+import CategoryOrderSettings from "../components/CategoryOrderSettings";
 import {
   fetchNotificationTemplateSettings,
   saveNotificationTemplateSettings,
@@ -44,9 +45,9 @@ function parseRefKey(key: string): TemplateRef | undefined {
 }
 
 /**
- * App-wide settings, opened from the gear in the header. For now: which
- * WhatsApp template each automatic notification goes out with, per customer
- * language. Only approved templates whose variables match what the
+ * App-wide settings, opened from the gear in the header: the Items tab's
+ * category priority, and which WhatsApp template each automatic
+ * notification goes out with, per customer language. Only approved templates whose variables match what the
  * notification fills in are offered; "Default" uses the server's configured one.
  */
 export default function SettingsPage({ onBack }: Props) {
@@ -112,6 +113,8 @@ export default function SettingsPage({ onBack }: Props) {
       <h1 className="page-title" style={{ marginTop: 12 }}>
         Settings
       </h1>
+
+      <CategoryOrderSettings />
 
       <div className="page-header">
         <h2 className="page-title" style={{ fontSize: 16 }}>

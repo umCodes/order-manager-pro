@@ -72,6 +72,7 @@ export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Da
           name: item.name,
           description: item.description,
           unit: item.unit,
+          category: item.category,
           quantity: entry.quantity,
           breakdown: [breakdownEntry],
         });
@@ -80,4 +81,37 @@ export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Da
 
     return { date: group.date, items: Array.from(byName.values()), carriedOverDraftCount: carriedOverDrafts.size };
   });
+}
+
+export type ItemCategoryGroup = {
+  /** The category name, or null for items without one. */
+  category: string | null;
+  items: DraftLineItemSummary[];
+};
+
+/**
+ * Splits items into one group per category: categories in `order` first (as
+ * set in Settings), then any others alphabetically, then uncategorized items.
+ * Items keep their relative order within a group.
+ */
+export function groupItemsByCategory(items: DraftLineItemSummary[], order: string[] = []): ItemCategoryGroup[] {
+  const byCategory = new Map<string | null, DraftLineItemSummary[]>();
+  for (const item of items) {
+    const category = item.category ?? null;
+    const group = byCategory.get(category);
+    if (group) group.push(item);
+    else byCategory.set(category, [item]);
+  }
+
+  const rank = new Map(order.map((name, index) => [name, index]));
+  const sortedCategories = [...byCategory.keys()].sort((a, b) => {
+    if (a === null) return 1;
+    if (b === null) return -1;
+    const rankA = rank.get(a) ?? Infinity;
+    const rankB = rank.get(b) ?? Infinity;
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b);
+  });
+
+  return sortedCategories.map((category) => ({ category, items: byCategory.get(category)! }));
 }

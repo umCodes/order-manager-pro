@@ -15,15 +15,32 @@ export type CombinedItem = {
   quantity: number;
   unit: string;
   description: string;
+  /** The item's Zoho Inventory category, or null when it has none (or isn't in the catalog). */
+  category: string | null;
   breakdown: ItemBreakdownEntry[];
 };
+
+/** What's needed from a catalog item to find a line item's category. */
+type CategorizedItem = { item_id?: string | number; name?: string; category: string | null };
 
 /**
  * Rolls every invoice's line items up into one list per item name
  * (case-insensitive), summing quantities and keeping a per-invoice
- * breakdown of where each part of the total came from. Sorted by name.
+ * breakdown of where each part of the total came from. Each item gets its
+ * category from the catalog, matched by item id, else by name. Sorted by name.
  */
-export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
+export function combineItems(invoices: ZohoInvoice[], catalog: CategorizedItem[] = []): CombinedItem[] {
+
+    const categoryById = new Map<string, string | null>();
+    const categoryByName = new Map<string, string | null>();
+    for (const entry of catalog) {
+      if (entry.item_id != null) categoryById.set(String(entry.item_id), entry.category);
+      if (entry.name) categoryByName.set(entry.name.toLowerCase(), entry.category);
+    }
+    const categoryOf = (item: LineItem) =>
+      (item.item_id ? categoryById.get(String(item.item_id)) : undefined) ??
+      categoryByName.get(item.name.toLowerCase()) ??
+      null;
 
     // Flatten all line items from all invoices into a single array,
     // tagging each with which draft/customer it came from
@@ -33,6 +50,7 @@ export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
           quantity: item.quantity,
           unit: item.unit,
           description: item.description,
+          category: categoryOf(item),
           invoice_id: inv.invoice_id,
           invoice_number: inv.invoice_number,
           customer_name: inv.customer_name,
@@ -60,12 +78,14 @@ export function combineItems(invoices: ZohoInvoice[]): CombinedItem[] {
         const existing = combinedMap.get(key)!;
         existing.quantity += item.quantity;
         existing.breakdown.push(breakdownEntry);
+        existing.category ??= item.category;
       } else {
         combinedMap.set(key, {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
           description: item.description,
+          category: item.category,
           breakdown: [breakdownEntry],
         });
       }

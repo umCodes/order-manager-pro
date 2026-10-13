@@ -42,6 +42,25 @@ export async function ZohoApi(endPoint: string, headers: string, method: Methods
     }
 }
 
+/**
+ * Calls the Zoho Inventory API (same organization, same token) and returns
+ * the parsed JSON body. Used for the item catalog, since Inventory items
+ * carry a category and Invoice items don't. Counted like any other Zoho call.
+ */
+export async function ZohoInventoryApi(endPoint: string, headers: string) {
+    const separator = endPoint.includes("?") ? "&" : "?"
+    const response = await fetch(`https://www.zohoapis.com/inventory/v1/${endPoint}${separator}organization_id=${ENV.ORGANIZATION_ID}`, {
+        method: "GET",
+        headers: { "Authorization": headers },
+    })
+    const data = await response.json()
+    await incrementZohoRequestCount()
+    if (!response.ok || (typeof data?.code === "number" && data.code !== 0)) {
+        throw new Error(data?.message ?? `Zoho Inventory request failed (${response.status})`)
+    }
+    return data
+}
+
 /** For endpoints returning a binary body (e.g. `?accept=pdf`) instead of JSON. */
 export async function ZohoApiRaw(endPoint: string, headers: string) {
     try {

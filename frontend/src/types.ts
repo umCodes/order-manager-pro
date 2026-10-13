@@ -36,6 +36,8 @@ export type CatalogItem = {
   description: string;
   unit: string;
   rate: number;
+  /** The item's Zoho Inventory category, or null when it has none. */
+  category?: string | null;
 };
 
 export type CartLine = {
@@ -119,6 +121,8 @@ export type DraftLineItemSummary = {
   description: string;
   quantity: number;
   unit: string;
+  /** The item's Zoho Inventory category, or null when it has none. */
+  category: string | null;
   breakdown: DraftItemBreakdownEntry[];
 };
 

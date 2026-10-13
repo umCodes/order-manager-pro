@@ -1304,3 +1304,40 @@ export async function saveNotificationTemplateSettings(
   const data = await response.json();
   return data.selected;
 }
+
+export type ItemCategorySettings = {
+  /** Category names in the order the Items tab lists them, highest priority first. */
+  order: string[];
+  /** Every category in the item catalog. */
+  categories: string[];
+};
+
+async function fetchItemCategorySettingsUncached(): Promise<ItemCategorySettings> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/item-categories`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load item categories (${response.status})`);
+  }
+  return response.json();
+}
+
+export function fetchItemCategorySettings(options?: { force?: boolean }): Promise<ItemCategorySettings> {
+  if (options?.force) invalidateCache("itemCategories");
+  return cachedFetch("itemCategories", fetchItemCategorySettingsUncached);
+}
+
+/** Saves the Items tab's category order, highest priority first. */
+export async function saveItemCategoryOrder(order: string[]): Promise<string[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/item-categories`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to save category order (${response.status})`);
+  }
+  const data = await response.json();
+  updateCachedValue<ItemCategorySettings>("itemCategories", (settings) => ({ ...settings, order: data.order }));
+  return data.order;
+}

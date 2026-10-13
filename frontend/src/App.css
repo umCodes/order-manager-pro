@@ -80,12 +80,14 @@
   z-index: 43;
 }
 
-/* App header: the app's name, and the gear that opens Settings. */
+/* App header: the app's name, and the gear that opens Settings. Stacked above
+   page content (dropdowns are 10) but below every sheet (20), modal (30) and
+   overlay (40+), so full-screen views and their back buttons aren't covered. */
 
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 15;
   display: flex;
   align-items: center;
   justify-content: space-between;

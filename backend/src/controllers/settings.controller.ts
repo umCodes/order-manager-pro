@@ -6,7 +6,7 @@ import {
     saveNotificationTemplateSettings,
 } from '../services/whatsapp/notificationTemplates.js';
 import { getItemCategoryOrder, saveItemCategoryOrder } from '../services/itemCategoryOrder.js';
-import { catalogCategories, getCatalogItems } from '../services/zoho/items.js';
+import { catalogCategories, getCatalog } from '../services/zoho/items.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -40,13 +40,15 @@ export async function updateNotificationTemplates(req: Request, res: Response) {
 /**
  * The Items tab's category order (`order`, highest priority first) and every
  * category in the item catalog (`categories`) so new ones can be placed.
+ * `source` is "invoice" when Zoho Inventory couldn't be reached, in which
+ * case there are no categories.
  */
 export async function getItemCategories(req: Request, res: Response) {
     const access_token = req.headers["Authorization"]
     try {
         if (!access_token || access_token instanceof Array) throw new Error("Missing Zoho access token")
-        const [order, catalog] = await Promise.all([getItemCategoryOrder(), getCatalogItems(access_token)])
-        res.status(200).json({ order, categories: catalogCategories(catalog) });
+        const [order, catalog] = await Promise.all([getItemCategoryOrder(), getCatalog(access_token, req.query.refresh === "1")])
+        res.status(200).json({ order, categories: catalogCategories(catalog.items), source: catalog.source });
     } catch (error) {
         console.error('Error loading item categories:', error);
         res.status(502).json({ error: error instanceof Error ? error.message : 'Failed to load item categories' });

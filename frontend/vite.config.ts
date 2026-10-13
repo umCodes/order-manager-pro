@@ -55,9 +55,12 @@ export default defineConfig({
             urlPattern: ({ url }: { url: URL }) => {
               return url.pathname.startsWith('/api/items')
             },
-            handler: 'CacheFirst' as const,
+            // Shows the saved catalog instantly and refreshes it in the background,
+            // so catalog changes (e.g. categories) show up on the next open.
+            // A new cache name drops the old never-refreshed CacheFirst copy.
+            handler: 'StaleWhileRevalidate' as const,
             options: {
-              cacheName: 'api-cache',
+              cacheName: 'items-cache',
               cacheableResponse: {
                 statuses: [0, 200],
               },

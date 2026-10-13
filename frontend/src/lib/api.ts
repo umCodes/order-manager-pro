@@ -34,8 +34,8 @@ export async function fetchServerHealth(): Promise<void> {
   if (!response.ok) throw new Error(`Server health check failed (${response.status})`);
 }
 
-async function fetchItemsUncached(): Promise<CatalogItem[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/items`);
+async function fetchItemsUncached(refresh = false): Promise<CatalogItem[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/items${refresh ? "?refresh=1" : ""}`);
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -47,14 +47,15 @@ async function fetchItemsUncached(): Promise<CatalogItem[]> {
 }
 
 /**
- * Clears the PWA service worker's copy of the items list. `/api/items` is
- * served CacheFirst from the "api-cache" cache (see vite.config.ts), so
- * without this a forced refetch would still get the stale cached catalog.
+ * Clears the PWA service worker's copy of the items list (the "items-cache"
+ * cache, see vite.config.ts) so a forced refetch gets the live catalog.
+ * Also drops "api-cache", where older app versions kept a copy forever.
  */
 async function clearItemsServiceWorkerCache(): Promise<void> {
   if (typeof caches === "undefined") return;
   try {
-    const cache = await caches.open("api-cache");
+    await caches.delete("api-cache");
+    const cache = await caches.open("items-cache");
     const keys = await cache.keys();
     await Promise.all(
       keys.filter((request) => new URL(request.url).pathname.startsWith("/api/items")).map((request) => cache.delete(request)),
@@ -67,9 +68,9 @@ async function clearItemsServiceWorkerCache(): Promise<void> {
 export function fetchItems(options?: { force?: boolean }): Promise<CatalogItem[]> {
   if (options?.force) {
     invalidateCache("items");
-    return cachedFetch("items", () => clearItemsServiceWorkerCache().then(fetchItemsUncached));
+    return cachedFetch("items", () => clearItemsServiceWorkerCache().then(() => fetchItemsUncached(true)));
   }
-  return cachedFetch("items", fetchItemsUncached);
+  return cachedFetch("items", () => fetchItemsUncached());
 }
 
 async function fetchCustomersUncached(): Promise<Contact[]> {
@@ -1310,10 +1311,12 @@ export type ItemCategorySettings = {
   order: string[];
   /** Every category in the item catalog. */
   categories: string[];
+  /** "invoice" when Zoho Inventory couldn't be reached, so there are no categories. */
+  source?: "inventory" | "invoice";
 };
 
-async function fetchItemCategorySettingsUncached(): Promise<ItemCategorySettings> {
-  const response = await apiFetch(`${API_BASE_URL}/api/settings/item-categories`);
+async function fetchItemCategorySettingsUncached(refresh = false): Promise<ItemCategorySettings> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/item-categories${refresh ? "?refresh=1" : ""}`);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to load item categories (${response.status})`);
@@ -1323,7 +1326,7 @@ async function fetchItemCategorySettingsUncached(): Promise<ItemCategorySettings
 
 export function fetchItemCategorySettings(options?: { force?: boolean }): Promise<ItemCategorySettings> {
   if (options?.force) invalidateCache("itemCategories");
-  return cachedFetch("itemCategories", fetchItemCategorySettingsUncached);
+  return cachedFetch("itemCategories", () => fetchItemCategorySettingsUncached(options?.force));
 }
 
 /** Saves the Items tab's category order, highest priority first. */

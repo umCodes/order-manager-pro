@@ -10,7 +10,7 @@ export const EDITED_NOTICE_AMHARIC = "⚠️ ይህ መልእክት ተቀይሯ
 /** Marks a message that has since been superseded by a reply listing the changes. */
 export const HAS_CHANGES_BELOW_NOTICE_AMHARIC = "➕";
 /** Heads a changes reply that only adds to the order (new items or higher quantities). */
-export const ITEMS_ADDED_NOTICE_AMHARIC = "የተጨመሩት እቃዎች";
+export const ITEMS_ADDED_NOTICE_AMHARIC = "➕ የተጨመሩት እቃዎች";
 /** Heads a changes reply that also lowers quantities or removes items. */
 export const ORDER_CHANGED_NOTICE_AMHARIC = "🔄 ይህ ትዕዛዝ ተቀይሯል";
 const REMOVED_ITEM_AMHARIC = "ቀርቷል";

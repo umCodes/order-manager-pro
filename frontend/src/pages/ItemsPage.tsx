@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchDraftLineItems } from "../lib/api";
-import { formatItemsForCopy, groupItemsByScheduledDay } from "../lib/itemSummary";
+import { fetchDraftLineItems, fetchItemCategorySettings } from "../lib/api";
+import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import SortRow from "../components/SortRow";
 import ItemBreakdownRow from "../components/ItemBreakdownRow";
@@ -19,15 +19,21 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 /**
  * Aggregated view of every line item across all draft invoices, split into
  * one section per scheduled day (past-due drafts count toward today, as on
- * the Drafts tab), with a per-item source breakdown.
+ * the Drafts tab), with a per-item source breakdown. Within a day, items are
+ * grouped by their Zoho Inventory category, in the order set in Settings.
  */
 export default function ItemsPage() {
   const [items, setItems] = useState<DraftLineItemSummary[]>([]);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("quantity", "desc");
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const loadItems = useCallback((options?: { force?: boolean }) => {
+    // The category order only affects how items are arranged; without it they still list.
+    fetchItemCategorySettings(options)
+      .then((settings) => setCategoryOrder(settings.order))
+      .catch(() => setCategoryOrder([]));
     return fetchDraftLineItems(options).then(setItems).catch(() => setItems([]));
   }, []);
 
@@ -57,14 +63,17 @@ export default function ItemsPage() {
 
   const dayGroups = useMemo(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
-    return groupItemsByScheduledDay(items).map((group) => ({
-      ...group,
-      items: [...group.items].sort((a, b) => {
+    return groupItemsByScheduledDay(items).map((group) => {
+      const sorted = [...group.items].sort((a, b) => {
         if (sortKey === "quantity") return direction * (a.quantity - b.quantity);
         return direction * a.name.localeCompare(b.name);
-      }),
-    }));
-  }, [items, sortKey, sortDirection]);
+      });
+      return { ...group, items: sorted, categories: groupItemsByCategory(sorted, categoryOrder) };
+    });
+  }, [items, sortKey, sortDirection, categoryOrder]);
+
+  // Category headings only help once items actually have categories.
+  const hasCategories = items.some((item) => item.category);
 
   return (
     <div>
@@ -95,21 +104,34 @@ export default function ItemsPage() {
               carriedOverCount={group.carriedOverDraftCount}
               actions={<CopyButton getText={() => formatItemsForCopy(group.items)} />}
             />
-            <div className="line-items day-group__line-items">
-              {group.items.map((item) => {
-                const rowKey = `${group.date ?? ""}|${item.name}`;
-                return (
-                  <ItemBreakdownRow
-                    key={rowKey}
-                    item={item}
-                    isChecked={checkedItems.has(rowKey)}
-                    isExpanded={expandedItems.has(rowKey)}
-                    onToggleChecked={() => toggleChecked(rowKey)}
-                    onToggleExpanded={() => toggleExpanded(rowKey)}
-                  />
-                );
-              })}
-            </div>
+            {group.categories.map((categoryGroup) => (
+              <div key={categoryGroup.category ?? ""} className="category-group">
+                {hasCategories && (
+                  <div className="category-group__header">
+                    <span className="category-group__label">{categoryGroup.category ?? "Uncategorized"}</span>
+                    <span className="category-group__meta">
+                      <span className="category-group__count">{categoryGroup.items.length}</span>
+                      <CopyButton getText={() => formatItemsForCopy(categoryGroup.items)} />
+                    </span>
+                  </div>
+                )}
+                <div className="line-items day-group__line-items">
+                  {categoryGroup.items.map((item) => {
+                    const rowKey = `${group.date ?? ""}|${item.name}`;
+                    return (
+                      <ItemBreakdownRow
+                        key={rowKey}
+                        item={item}
+                        isChecked={checkedItems.has(rowKey)}
+                        isExpanded={expandedItems.has(rowKey)}
+                        onToggleChecked={() => toggleChecked(rowKey)}
+                        onToggleExpanded={() => toggleExpanded(rowKey)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </section>
         ))
       )}

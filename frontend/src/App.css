@@ -1714,11 +1714,16 @@
   -ms-overflow-style: none;
 }
 
-/* Category heading in the add-item sheet; sticks to the top while its items scroll. */
+/* Category heading in the add-item sheet; sticks to the top while its items scroll, tap to collapse. */
 .sheet__category {
   position: sticky;
   top: 0;
   z-index: 1;
+  width: 100%;
+  border: none;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1729,6 +1734,30 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--color-gray-600);
+}
+
+.sheet__category:disabled {
+  cursor: default;
+}
+
+.sheet__category-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sheet__category-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.sheet__category-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.sheet__category-added {
   color: var(--color-gray-600);
 }
 

@@ -83,10 +83,10 @@ export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Da
   });
 }
 
-export type ItemCategoryGroup = {
+export type ItemCategoryGroup<T> = {
   /** The category name, or null for items without one. */
   category: string | null;
-  items: DraftLineItemSummary[];
+  items: T[];
 };
 
 /**
@@ -94,8 +94,11 @@ export type ItemCategoryGroup = {
  * set in Settings), then any others alphabetically, then uncategorized items.
  * Items keep their relative order within a group.
  */
-export function groupItemsByCategory(items: DraftLineItemSummary[], order: string[] = []): ItemCategoryGroup[] {
-  const byCategory = new Map<string | null, DraftLineItemSummary[]>();
+export function groupItemsByCategory<T extends { category?: string | null }>(
+  items: T[],
+  order: string[] = [],
+): ItemCategoryGroup<T>[] {
+  const byCategory = new Map<string | null, T[]>();
   for (const item of items) {
     const category = item.category ?? null;
     const group = byCategory.get(category);

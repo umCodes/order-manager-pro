@@ -77,7 +77,7 @@ export async function replyWithInvoiceChangesTelegramMessage(
 
     try {
         const previousText = await loggedText(messageId)
-        if (previousText && !previousText.includes(HAS_CHANGES_BELOW_NOTICE_AMHARIC)) {
+        if (previousText && !previousText.endsWith(`\n\n${HAS_CHANGES_BELOW_NOTICE_AMHARIC}`)) {
             await TelegramEditMessage(`${previousText}\n\n${HAS_CHANGES_BELOW_NOTICE_AMHARIC}`, messageId)
         }
     } catch (error) {

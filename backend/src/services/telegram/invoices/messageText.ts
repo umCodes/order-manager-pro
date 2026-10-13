@@ -8,12 +8,12 @@ const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐ�
 /** Notices added to invoice messages when an order changes after it was posted. */
 export const EDITED_NOTICE_AMHARIC = "⚠️ ይህ መልእክት ተቀይሯል";
 /** Marks a message that has since been superseded by a reply listing the changes. */
-export const HAS_CHANGES_BELOW_NOTICE_AMHARIC = "🔄 ይህ ትዕዛዝ ተቀይሯል፤ ከታች ያለውን መልእክት ይመልከቱ";
+export const HAS_CHANGES_BELOW_NOTICE_AMHARIC = "➕";
 /** Heads a changes reply that only adds to the order (new items or higher quantities). */
 export const ITEMS_ADDED_NOTICE_AMHARIC = "➕ ወደዚህ ትዕዛዝ የተጨመሩ እቃዎች";
 /** Heads a changes reply that also lowers quantities or removes items. */
 export const ORDER_CHANGED_NOTICE_AMHARIC = "🔄 ይህ ትዕዛዝ ተቀይሯል";
-const REMOVED_ITEM_AMHARIC = "ተሰርዟል";
+const REMOVED_ITEM_AMHARIC = "ቀርቷል";
 
 const DAY_LINE_PATTERN = /^(?:🟢|🟡|🗓️) ለ.*$/m;
 const DAY_LINE_BLOCK_PATTERN = /\n\n(?:🟢|🟡|🗓️) ለ.*$/m;

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { ZohoCreateInvoice, ZohoGetInvoiceById, ZohoUpdateInvoice } from "../../services/zoho/invoices/index.js";
 import {
-  replyWithAddedInvoiceItemsTelegramMessage,
+  replyWithInvoiceChangesTelegramMessage,
   sendInvoiceTelegramMessage,
 } from "../../services/telegram/invoices/index.js";
 import { redisClient } from "../../config/redis.js";
@@ -16,8 +16,8 @@ import { oneMonthFromTodayInBusinessTimezone } from "../../utils/businessDate.js
  * "Update Draft" mode always sends the full desired set, never a delta).
  *
  * Either way the fulfillment channel is notified: a new invoice gets a fresh
- * message, an updated draft replies to its existing one so the thread holds a
- * single current version. Pass `skip_telegram` to write to Zoho only and
+ * message, an updated draft replies to its existing one with only what
+ * changed (and marks that one as changed, leaving it otherwise as posted). Pass `skip_telegram` to write to Zoho only and
  * leave the channel untouched. Line items are sorted by category priority,
  * then name, before either sees them.
  */
@@ -38,6 +38,10 @@ export async function createInvoice(req: Request, res: Response) {
     const zohoLineItems = stripInternalMarker(sortedLineItems);
 
     if (invoice_id) {
+      // The channel thread is told only what changed, so it needs the items as they were.
+      const existingMessageId = skip_telegram ? null : await redisClient.get(String(invoice_id));
+      const previousInvoice = existingMessageId ? await ZohoGetInvoiceById(access_token, String(invoice_id)) : null;
+
       await ZohoUpdateInvoice(access_token, String(invoice_id), {
         ...(date ? { date } : {}),
         line_items: zohoLineItems,
@@ -48,13 +52,19 @@ export async function createInvoice(req: Request, res: Response) {
       if (!skip_telegram) {
         const allTelegramLineItems = excludeInternalLineItems(invoice.line_items);
 
-        const existingMessageId = await redisClient.get(String(invoice.invoice_id));
-
-        const telegramMessage = existingMessageId
-          ? await replyWithAddedInvoiceItemsTelegramMessage(invoice, allTelegramLineItems, Number(existingMessageId))
+        const telegramMessage = existingMessageId && previousInvoice
+          ? await replyWithInvoiceChangesTelegramMessage(
+              invoice,
+              excludeInternalLineItems(previousInvoice.line_items),
+              allTelegramLineItems,
+              Number(existingMessageId),
+            )
           : await sendInvoiceTelegramMessage(invoice, allTelegramLineItems);
 
-        await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+        // No message means the items didn't change — the current one still stands.
+        if (telegramMessage) {
+          await redisClient.set(String(invoice.invoice_id), String(telegramMessage.message_id));
+        }
       }
 
       res.status(200).json({ invoice, merged: true });

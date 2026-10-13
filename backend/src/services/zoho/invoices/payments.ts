@@ -1,46 +1,46 @@
 import { ZohoApi } from "../client.js"
 import { ZohoGetInvoiceById } from "./queries.js"
-import { ZohoUpdateInvoice } from "./mutations.js"
-import { invoiceUpdateReason } from "../../../utils/invoiceUpdateReason.js"
+import { addInvoiceDiscount, removeInvoiceDiscounts } from "./discounts.js"
 
 type PaymentMode = "check" | "cash" | "creditcard" | "banktransfer" | "bankremittance" | "autotransaction" | "others"
 
 /**
  * Records a payment against one specific invoice. An optional discount is
- * applied to the invoice first (as an entity-level Zoho discount), so the
- * balance the payment is checked against is the post-discount one.
+ * added to the invoice first (on top of any discount it already has), so the
+ * balance the payment is checked against is the post-discount one. If the
+ * payment then fails, the discount is taken back off.
  */
 export async function recordInvoicePayment(headers: string, invoiceId: string, amount: number, paymentMode: PaymentMode = "cash", discount?: number){
 
     try {
-        if (discount) {
-            const discounted = await ZohoUpdateInvoice(headers, invoiceId, {
+        const applied = discount
+            ? await addInvoiceDiscount(
+                headers,
+                await ZohoGetInvoiceById(headers, invoiceId),
                 discount,
-                discount_type: "entity_level",
-                // Required once the invoice is no longer a draft.
-                reason: invoiceUpdateReason(undefined, `Discount of ${discount} applied with a payment of ${amount}`),
-            })
-            // Zoho can return 200 with the invoice unchanged instead of
-            // rejecting the update outright (seen on non-draft invoices) — so
-            // a successful call alone doesn't prove the discount took effect.
-            if (Number(discounted.discount) !== Number(discount)) {
-                throw new Error("Zoho did not apply the discount to this invoice — the payment was not recorded.")
+                `Discount of ${discount} applied with a payment of ${amount}`,
+            )
+            : null
+
+        try {
+            const invoice = await ZohoGetInvoiceById(headers, invoiceId)
+            if (amount > invoice.balance) {
+                throw new Error("Payment amount exceeds the invoice's outstanding balance");
             }
-        }
 
-        const invoice = await ZohoGetInvoiceById(headers, invoiceId)
-        if (amount > invoice.balance) {
-            throw new Error("Payment amount exceeds the invoice's outstanding balance");
+            const response = await ZohoApi("customerpayments", headers, "POST", {
+                customer_id: invoice.customer_id,
+                payment_mode: paymentMode,
+                amount,
+                // date: new Date().toISOString().slice(0, 10),
+                invoices: [{ invoice_id: invoiceId, amount_applied: amount }]
+            })
+            if (!response.payment) throw new Error(response.message ?? "Failed to record payment")
+            return response.payment;
+        } catch (error) {
+            if (applied) await removeInvoiceDiscounts(headers, [applied])
+            throw error
         }
-
-        const response = await ZohoApi("customerpayments", headers, "POST", {
-            customer_id: invoice.customer_id,
-            payment_mode: paymentMode,
-            amount,
-            // date: new Date().toISOString().slice(0, 10),
-            invoices: [{ invoice_id: invoiceId, amount_applied: amount }]
-        })
-        return response.payment;
     } catch (error) {
         console.error(error);
         throw error;

@@ -23,8 +23,13 @@ type Props = {
   isSaving: boolean;
   /** Error from the last submit attempt (e.g. API failure), shown below the input. */
   submitError?: string | null;
-  /** Whether to show the collapsible discount field (invoice-level payments only). */
+  /** Whether to show the collapsible discount field. */
   allowDiscount?: boolean;
+  /**
+   * Whether a discount can be saved with an amount of 0 — recording just the
+   * discount. The WhatsApp step is skipped then, as there's no payment to confirm.
+   */
+  allowDiscountOnly?: boolean;
   /**
    * Number of items that would be split into a new draft if the user opts
    * in, when only some of the invoice's items are selected. Omit/0 to hide
@@ -67,6 +72,7 @@ export default function PaymentModal({
   isSaving,
   submitError,
   allowDiscount,
+  allowDiscountOnly,
   itemsToSplitCount,
   customer,
   onCancel,
@@ -83,8 +89,11 @@ export default function PaymentModal({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [step, setStep] = useState<NotifyStep>("amount");
 
+  const isDiscountOnly = !!allowDiscountOnly && (Number(discount) || 0) > 0 && !Number(amount);
+
   const { isArmed, isCoolingDown, trigger, disarm } = useConfirmArmedAction(() => {
-    setStep("confirmNotify");
+    if (isDiscountOnly) submitPayment(false);
+    else setStep("confirmNotify");
   });
 
   const parsedDiscountValue = Number(discount) || 0;
@@ -95,12 +104,16 @@ export default function PaymentModal({
   function handleConfirmClick() {
     if (isSaving) return;
     const parsed = Number(amount);
-    if (!parsed || parsed <= 0) {
-      setValidationError("Enter a valid amount");
+    if (!isDiscountOnly && (!parsed || parsed <= 0)) {
+      setValidationError(allowDiscountOnly ? "Enter an amount or a discount" : "Enter a valid amount");
       return;
     }
     if (discount && (Number(discount) < 0 || Number.isNaN(Number(discount)))) {
       setValidationError("Enter a valid discount");
+      return;
+    }
+    if (Number(discount) > outstandingBalance) {
+      setValidationError(`Discount cannot exceed ${currency(outstandingBalance)}`);
       return;
     }
     if (parsed > maxPayable) {
@@ -114,7 +127,7 @@ export default function PaymentModal({
   function submitPayment(notify: boolean, notifyContactIds?: string[]) {
     const parsedDiscount = Number(discount);
     onSubmit(
-      Number(amount),
+      Number(amount) || 0,
       parsedDiscount > 0 ? parsedDiscount : undefined,
       !!itemsToSplitCount && createNewDraft,
       notify,
@@ -276,7 +289,9 @@ export default function PaymentModal({
                 ? "Wait..."
                 : isArmed
                   ? "Click again to confirm"
-                  : "Save"}
+                  : isDiscountOnly
+                    ? "Save discount"
+                    : "Save"}
           </button>
         </div>
       </div>

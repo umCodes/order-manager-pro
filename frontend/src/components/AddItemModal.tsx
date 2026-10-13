@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { fetchItems } from "../lib/api";
+import { fetchItemCategorySettings, fetchItems } from "../lib/api";
+import { groupItemsByCategory } from "../lib/itemSummary";
 import AddItemRow, { type DraftForm } from "./AddItemRow";
 import RefreshButton from "./RefreshButton";
 import type { Cart, CatalogItem } from "../types";
@@ -28,7 +29,8 @@ type Props = {
 };
 
 /**
- * Bottom-sheet catalog browser for adding/editing invoice line items.
+ * Bottom-sheet catalog browser for adding/editing invoice line items,
+ * grouped by Zoho Inventory category in the priority order set in Settings.
  * Remounted (via `key`) each time it opens so its search/expand state
  * always starts fresh.
  */
@@ -91,10 +93,15 @@ function SheetContent({
   const [expandedId, setExpandedId] = useState<string | null>(initialItemId ?? null);
   const [form, setForm] = useState<DraftForm>(EMPTY_FORM);
   const [query, setQuery] = useState("");
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     if (returnItems) return; // fixed list: the invoice's own items
+    // The category order only arranges the list; without it items still show.
+    fetchItemCategorySettings()
+      .then((settings) => setCategoryOrder(settings.order))
+      .catch(() => setCategoryOrder([]));
     fetchItems().then((fetchedItems) => {
       setItems(fetchedItems);
       if (initialItemId) {
@@ -127,6 +134,16 @@ function SheetContent({
       (item) => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q),
     );
   }, [items, query]);
+
+  // Category headings only help once catalog items actually have categories.
+  const showCategories = !returnItems && filteredItems.some((item) => item.category);
+  const categoryGroups = useMemo(
+    () =>
+      showCategories
+        ? groupItemsByCategory(filteredItems, categoryOrder)
+        : [{ category: null, items: filteredItems }],
+    [filteredItems, categoryOrder, showCategories],
+  );
 
   function toggleExpand(item: CatalogItem) {
     if (expandedId === item.item_id) {
@@ -193,21 +210,31 @@ function SheetContent({
       </div>
 
       <div className="sheet__list">
-        {filteredItems.map((item) => (
-          <AddItemRow
-            key={item.item_id}
-            ref={(el) => { rowRefs.current[item.item_id] = el; }}
-            item={item}
-            inCart={cart[item.item_id]}
-            isExpanded={expandedId === item.item_id}
-            form={form}
-            onToggleExpand={() => toggleExpand(item)}
-            onFormChange={setForm}
-            onCommit={() => commit(item)}
-            onRemove={() => remove(item)}
-            showExcludeFromTelegram={showExcludeFromTelegram && !returnItems}
-            maxQuantity={returnItems?.maxQuantity[item.item_id]}
-          />
+        {categoryGroups.map((group) => (
+          <div key={group.category ?? ""}>
+            {showCategories && (
+              <div className="sheet__category">
+                <span>{group.category ?? "Uncategorized"}</span>
+                <span className="sheet__category-count">{group.items.length}</span>
+              </div>
+            )}
+            {group.items.map((item) => (
+              <AddItemRow
+                key={item.item_id}
+                ref={(el) => { rowRefs.current[item.item_id] = el; }}
+                item={item}
+                inCart={cart[item.item_id]}
+                isExpanded={expandedId === item.item_id}
+                form={form}
+                onToggleExpand={() => toggleExpand(item)}
+                onFormChange={setForm}
+                onCommit={() => commit(item)}
+                onRemove={() => remove(item)}
+                showExcludeFromTelegram={showExcludeFromTelegram && !returnItems}
+                maxQuantity={returnItems?.maxQuantity[item.item_id]}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </>

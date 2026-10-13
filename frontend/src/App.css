@@ -1714,6 +1714,30 @@
   -ms-overflow-style: none;
 }
 
+/* Category heading in the add-item sheet; sticks to the top while its items scroll. */
+.sheet__category {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px 6px;
+  background: var(--color-gray-50);
+  border-bottom: 1px solid var(--color-gray-200);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-gray-600);
+}
+
+.sheet__category-count {
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--color-gray-400);
+}
+
 .sheet__list::-webkit-scrollbar {
   display: none;
 }

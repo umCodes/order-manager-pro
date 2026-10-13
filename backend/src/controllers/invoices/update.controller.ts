@@ -14,6 +14,7 @@ import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
+import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
@@ -68,7 +69,8 @@ export async function updateInvoiceDate(req: Request, res: Response) {
  * current set of line items, not just the edited ones. Deliberately has no
  * Telegram/Redis side effects, unlike createInvoice's update path — this is a
  * quiet correction, not a re-send. `reason` is forwarded to Zoho, which
- * requires it once the invoice is no longer a draft.
+ * requires it once the invoice is no longer a draft. Line items are sorted
+ * by category priority, then name.
  */
 export async function updateInvoiceLineItems(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -82,7 +84,8 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
       throw new Error("line_items (non-empty array) is required");
     }
 
-    const zohoLineItems = line_items.map((item: any) => ({
+    const sortedLineItems = await sortLineItemsByCategory(access_token, line_items);
+    const zohoLineItems = sortedLineItems.map((item: any) => ({
       item_id: item.item_id,
       description: item.description,
       quantity: item.quantity,

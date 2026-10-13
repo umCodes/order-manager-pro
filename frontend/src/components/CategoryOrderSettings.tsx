@@ -10,8 +10,8 @@ function initialList(settings: ItemCategorySettings): string[] {
 }
 
 /**
- * Settings section for the Items tab's category priority: the order
- * categories are listed in under each day, top first. Categories come from
+ * Settings section for category priority: the order categories appear in
+ * the add-item sheet and under each day on the Items tab, top first. Categories come from
  * the Zoho Inventory item catalog; ones added later go to the bottom until
  * they're placed.
  */
@@ -71,7 +71,7 @@ export default function CategoryOrderSettings() {
         </h2>
         <RefreshButton onRefresh={() => load(true)} />
       </div>
-      <p className="page-subtitle">The order categories are listed in on the Items tab, top first.</p>
+      <p className="page-subtitle">The order categories appear in when adding items to an invoice and on the Items tab, top first.</p>
 
       {loadError && <div className="form-error">{loadError}</div>}
 

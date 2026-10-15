@@ -21,7 +21,9 @@ export function createApp() {
     app.use(cors({
         origin: IS_PRODUCTION
             ? [FRONTEND_URL, CUSTOMER_MANAGER_URL].filter((url): url is string => !!url)
-            : [/^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/, /^http:\/\/localhost:\d+$/]
+            : [/^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/, /^http:\/\/localhost:\d+$/],
+        // Lets the frontend save downloaded PDFs under the name the backend picked.
+        exposedHeaders: ["Content-Disposition"],
     }));
 
     app.get("/health", (_req, res) => {

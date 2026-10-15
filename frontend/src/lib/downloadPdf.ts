@@ -13,14 +13,20 @@
  * navigating to the API URL with `?download=1`, which makes the backend
  * respond with `Content-Disposition: attachment` so the browser still saves
  * the file rather than displaying it.
+ *
+ * The file is saved under the name the backend gives it in
+ * Content-Disposition (e.g. the customer's company name for invoices),
+ * falling back to `filename`.
  */
 export async function downloadPdfUrl(url: string, filename: string): Promise<void> {
   let blobUrl: string;
+  let savedName: string;
   try {
     // Matches apiFetch's header (frontend/src/lib/api.ts) so this request
     // isn't intercepted by ngrok's browser-warning interstitial in dev.
     const response = await fetch(url, { headers: { "ngrok-skip-browser-warning": "true" } });
     if (!response.ok) throw new Error(`Failed to load PDF (${response.status})`);
+    savedName = filenameFromDisposition(response.headers.get("Content-Disposition")) ?? filename;
     const blob = await response.blob();
     blobUrl = URL.createObjectURL(blob);
   } catch {
@@ -32,7 +38,7 @@ export async function downloadPdfUrl(url: string, filename: string): Promise<voi
 
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = filename;
+  link.download = savedName;
   link.style.display = "none";
   document.body.appendChild(link);
   link.click();
@@ -41,4 +47,18 @@ export async function downloadPdfUrl(url: string, filename: string): Promise<voi
   // Revoking immediately can cancel the download in some browsers, so give
   // it a moment to start first.
   setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
+/** The file name in a Content-Disposition header, preferring the UTF-8 `filename*` form. */
+function filenameFromDisposition(header: string | null): string | undefined {
+  if (!header) return undefined;
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.trim());
+    } catch {
+      // Malformed encoding: fall through to the plain form.
+    }
+  }
+  return /filename\s*=\s*"([^"]*)"/i.exec(header)?.[1] || undefined;
 }

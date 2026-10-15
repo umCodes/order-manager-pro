@@ -19,10 +19,11 @@ import {
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
-import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample, type TemplateValues } from '../services/whatsapp/templates.js';
 import { notificationTemplateNames } from '../services/whatsapp/notificationTemplates.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
+import { customerPdfFilename } from '../utils/pdfFilename.js';
 
 /** WhatsApp only accepts free-form (non-template) messages within 24h of the customer's last message. */
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -583,7 +584,28 @@ export async function deleteWhatsAppTemplate(req: Request, res: Response) {
 }
 
 /**
+ * The name a PDF sent to `phone` goes out under: the matching customer's
+ * company name, else their contact name (or the name the number was saved
+ * under), else the file's own name.
+ */
+async function recipientPdfFilename(accessToken: string, phone: string, uploadedName: string) {
+    const fallback = uploadedName.replace(/\.pdf$/i, "")
+    try {
+        const match = await findCustomerByPhone(accessToken, phone)
+        if (match) return customerPdfFilename(match.contact, fallback)
+        const saved = (await getSavedContacts())[phone]
+        if (saved && "customer_id" in saved)
+            return customerPdfFilename(await ZohoGetCustomerById(accessToken, saved.customer_id), saved.name || fallback)
+        if (saved) return customerPdfFilename({ contact_name: saved.name }, fallback)
+    } catch (error) {
+        console.error(`Failed to resolve the customer for ${phone} to name the PDF:`, error)
+    }
+    return customerPdfFilename(undefined, fallback)
+}
+
+/**
  * Sends an approved template to a contact, with its variables filled in.
+ * A PDF in a document header is renamed after the recipient (see recipientPdfFilename).
  * Unlike free-text replies this works outside the 24-hour window — that's
  * what templates are for — so it can start a conversation.
  */
@@ -594,7 +616,14 @@ export async function sendWhatsAppChatTemplate(req: Request, res: Response) {
         const language = String(req.body?.language ?? "")
         const template = (await listTemplates()).find((t) => t.name === name && t.language === language)
         if (!template) throw new Error("Template not found")
-        const { components, summary } = buildTemplateSend(template, req.body?.values ?? {})
+        const values: TemplateValues = req.body?.values ?? {}
+        const media = values.header_media
+        const isPdfHeader = template.components.some((c) => c.type === "HEADER" && c.format === "DOCUMENT")
+        if (media?.id && isPdfHeader && (!media.filename || /\.pdf$/i.test(media.filename))) {
+            const accessToken = requireAccessToken(req, "A problem occured sending the template")
+            values.header_media = { ...media, filename: await recipientPdfFilename(accessToken, phone, media.filename ?? "") }
+        }
+        const { components, summary } = buildTemplateSend(template, values)
 
         try {
             await sendWhatsAppTemplate(phone, template.name, components, template.language, summary)

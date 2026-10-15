@@ -4,6 +4,7 @@ import { ZohoGetCustomerById, ZohoGetCustomersCached, getContactPreferredLanguag
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { businessDayKey } from "../../utils/businessDate.js";
+import { contentDisposition, customerPdfFilename } from "../../utils/pdfFilename.js";
 import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyTotals.js";
 
 /**
@@ -128,7 +129,8 @@ export async function getInvoiceById(req: Request, res: Response) {
  * Streams the invoice PDF (same classic template used for the WhatsApp
  * notification) inline by default. Pass `?download=1` to get it as an
  * attachment instead, so a plain navigation to this URL saves the file
- * rather than displaying it. Falls back to "am" if the invoice has no linked
+ * rather than displaying it. The file is named after the customer's company
+ * (else contact name). Falls back to "am" if the invoice has no linked
  * customer to resolve a preferred language from.
  */
 export async function getInvoicePdf(req: Request, res: Response) {
@@ -140,15 +142,15 @@ export async function getInvoicePdf(req: Request, res: Response) {
 
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
-    const preferredLanguage = invoice.customer_id
-      ? getContactPreferredLanguage(await ZohoGetCustomerById(access_token, String(invoice.customer_id)))
-      : "am";
+    const customer = invoice.customer_id ? await ZohoGetCustomerById(access_token, String(invoice.customer_id)) : undefined;
+    const preferredLanguage = customer ? getContactPreferredLanguage(customer) : "am";
 
     const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage);
 
     res.setHeader("Content-Type", "application/pdf");
     const disposition = req.query.download === "1" ? "attachment" : "inline";
-    res.setHeader("Content-Disposition", `${disposition}; filename="${invoice.invoice_number}.pdf"`);
+    const filename = customerPdfFilename(customer ?? { contact_name: invoice.customer_name }, invoice.invoice_number);
+    res.setHeader("Content-Disposition", contentDisposition(disposition, filename));
     res.status(200).send(pdf);
   } catch (error) {
     console.error(error);

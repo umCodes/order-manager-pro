@@ -1,4 +1,4 @@
-import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
+import { ZohoGetCustomerById, getContactDisplayName, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
 import { sendPaymentNotification } from "./notifications.js"
 
 /**
@@ -24,7 +24,7 @@ export async function notifyCustomerPayment(
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${customerId}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
-        const customerName = contact.contact_name || contact.company_name || ""
+        const customerName = getContactDisplayName(contact)
         console.log(`[WhatsApp] notifyCustomerPayment: resolved preferred_language="${preferredLanguage}" for customer=${customerId}`)
         const remainingBalance = String(contact.outstanding_receivable_amount)
         let allSucceeded = true

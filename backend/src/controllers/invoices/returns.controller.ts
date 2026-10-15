@@ -62,10 +62,9 @@ export async function getInvoiceReturnPdf(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured getting the return notice");
     if (!id || !creditNoteId) throw new Error("id not provided");
     const { invoice, creditNote, balanceAfter } = await getInvoiceReturn(access_token, id, creditNoteId);
-    const language = invoice.customer_id
-      ? getContactPreferredLanguage(await ZohoGetCustomerById(access_token, String(invoice.customer_id)))
-      : "am";
-    const pdf = await createReturnNoticePdfBuffer(toReturnNoticePdfData(creditNote, invoice, balanceAfter), language);
+    const customer = invoice.customer_id ? await ZohoGetCustomerById(access_token, String(invoice.customer_id)) : undefined;
+    const language = customer ? getContactPreferredLanguage(customer) : "am";
+    const pdf = await createReturnNoticePdfBuffer(toReturnNoticePdfData(creditNote, invoice, balanceAfter, customer), language);
 
     res.setHeader("Content-Type", "application/pdf");
     const disposition = req.query.download === "1" ? "attachment" : "inline";

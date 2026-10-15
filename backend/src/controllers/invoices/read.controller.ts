@@ -140,11 +140,10 @@ export async function getInvoicePdf(req: Request, res: Response) {
 
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
-    const preferredLanguage = invoice.customer_id
-      ? getContactPreferredLanguage(await ZohoGetCustomerById(access_token, String(invoice.customer_id)))
-      : "am";
+    const customer = invoice.customer_id ? await ZohoGetCustomerById(access_token, String(invoice.customer_id)) : undefined;
+    const preferredLanguage = customer ? getContactPreferredLanguage(customer) : "am";
 
-    const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage);
+    const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, customer), preferredLanguage);
 
     res.setHeader("Content-Type", "application/pdf");
     const disposition = req.query.download === "1" ? "attachment" : "inline";

@@ -2,12 +2,18 @@ import type { ZohoInvoice, LineItem } from "../services/zoho/types.js";
 import type { ZohoCreditNote } from "../services/zoho/creditNotes.js";
 import type { InvoicePdfData } from "./types.js";
 import { INTERNAL_ITEM_MARKER } from "../utils/internalLineItems.js";
+import { getContactDisplayName } from "../services/zoho/customers/index.js";
 
-/** Maps a raw Zoho invoice to the PDF generator's input shape, filtering out internal/admin-only ("###") lines. */
-export function toInvoicePdfData(invoice: ZohoInvoice): InvoicePdfData {
+/** The customer named on the PDF: company name, else contact name (from `customer`, the fetched Zoho contact), else the invoice's own customer name. */
+function pdfCustomerName(invoice: ZohoInvoice, customer?: unknown) {
+  return getContactDisplayName(customer) || invoice.customer_name;
+}
+
+/** Maps a raw Zoho invoice (and its customer, when fetched) to the PDF generator's input shape, filtering out internal/admin-only ("###") lines. */
+export function toInvoicePdfData(invoice: ZohoInvoice, customer?: unknown): InvoicePdfData {
   return {
     invoiceNumber: invoice.invoice_number,
-    customerName: invoice.customer_name,
+    customerName: pdfCustomerName(invoice, customer),
     date: invoice.date,
     lineItems: invoice.line_items
       .filter((item: LineItem) => !item.description.includes(INTERNAL_ITEM_MARKER))
@@ -30,12 +36,12 @@ export function toInvoicePdfData(invoice: ZohoInvoice): InvoicePdfData {
 /**
  * Maps a return (Zoho credit note) and the invoice it's from to the PDF
  * generator's input, as a return notice. `balanceDue` is the customer's
- * total balance after the return.
+ * total balance after the return. `customer` is as in toInvoicePdfData.
  */
-export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoInvoice, balanceDue?: number): InvoicePdfData {
+export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoInvoice, balanceDue?: number, customer?: unknown): InvoicePdfData {
   return {
     invoiceNumber: creditNote.creditnote_number,
-    customerName: invoice.customer_name,
+    customerName: pdfCustomerName(invoice, customer),
     date: creditNote.date,
     lineItems: creditNote.line_items.map((item) => ({
       description: item.description ?? "",

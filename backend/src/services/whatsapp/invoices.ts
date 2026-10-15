@@ -1,4 +1,4 @@
-import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
+import { ZohoGetCustomerById, getContactDisplayName, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js"
 import type { ZohoInvoice } from "../zoho/types.js"
@@ -33,7 +33,7 @@ export async function notifyPaymentRecorded(
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
-        const customerName = contact.contact_name || contact.company_name || ""
+        const customerName = getContactDisplayName(contact)
         console.log(`[WhatsApp] notifyPaymentRecorded: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
         const remainingBalance = String(contact.outstanding_receivable_amount)
         let allSucceeded = true
@@ -71,9 +71,9 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         if (phones.length === 0) throw new Error(`No phone number on file for customer ${invoice.customer_id}`)
 
         const preferredLanguage = getContactPreferredLanguage(contact)
-        const customerName = contact.contact_name || contact.company_name || ""
+        const customerName = getContactDisplayName(contact)
         console.log(`[WhatsApp] notifyInvoiceSent: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
-        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice), preferredLanguage)
+        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, contact), preferredLanguage)
         console.log(`[WhatsApp] notifyInvoiceSent: generated PDF, bytes=${pdf.length}`)
         const paidAmountFromInvoice = invoice.total - invoice.balance
         const balanceAfter = contact.outstanding_receivable_amount

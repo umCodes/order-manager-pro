@@ -59,6 +59,11 @@ export function getContactPhonesByIds(contact: any, contactPersonIds?: string[])
     return Array.from(new Set(phones))
 }
 
+/** The name a customer is addressed by on invoices and messages to them: company name, else contact name. */
+export function getContactDisplayName(contact: any): string {
+    return contact?.company_name || contact?.contact_name || ""
+}
+
 /** Reads the "preferred_language" custom field off a fetched Zoho contact, falling back to Amharic if unset/invalid. */
 export function getContactPreferredLanguage(contact: any): PreferredLanguage {
     const field = contact?.custom_fields?.find(

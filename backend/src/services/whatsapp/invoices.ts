@@ -2,7 +2,6 @@ import { ZohoGetCustomerById, getContactPreferredLanguage, getContactPhonesByIds
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
 import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js"
 import type { ZohoInvoice } from "../zoho/types.js"
-import { customerPdfFilename } from "../../utils/pdfFilename.js"
 
 /**
  * Resolves the invoice's customer phone/language from Zoho and sends the
@@ -88,7 +87,7 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
                     customerName,
                     preferredLanguage,
                     pdf,
-                    customerPdfFilename(contact, invoice.invoice_number),
+                    `${invoice.invoice_number}.pdf`,
                     invoice.invoice_number,
                     String(invoice.total),
                     String(paidAmountFromInvoice),

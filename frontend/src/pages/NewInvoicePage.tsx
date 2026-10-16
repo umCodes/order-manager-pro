@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, Pause, Play, Trash2 } from "lucide-react";
 import AddItemModal from "../components/AddItemModal";
+import ConfirmModal from "../components/ConfirmModal";
 import CustomerCombobox from "../components/CustomerCombobox";
 import DraftPicker from "../components/DraftPicker";
 import SchedulePicker from "../components/SchedulePicker";
@@ -12,6 +13,8 @@ import {
   fetchInvoiceById,
   fetchItems,
 } from "../lib/api";
+import { currency } from "../lib/currency";
+import type { HungInvoice } from "../lib/hungInvoice";
 import type {
   CatalogItem,
   Cart,
@@ -51,6 +54,9 @@ type Props = {
   onModeChange: (mode: InvoiceMode) => void;
   draftId: string | null;
   onDraftIdChange: (draftId: string | null) => void;
+  /** The invoice put aside with "Hang", if any (a single slot). */
+  hungInvoice: HungInvoice | null;
+  onHungInvoiceChange: (invoice: HungInvoice | null) => void;
 };
 
 /**
@@ -59,6 +65,10 @@ type Props = {
  * posts a brand-new invoice, cart starts empty) and "Update Draft" (a second
  * dropdown lets you pick which of the customer's existing drafts, by invoice
  * number, to load and update).
+ *
+ * "Hang" puts the whole form (either mode) aside into a single slot and
+ * clears it for the next order; "Resume" brings it back, swapping with
+ * whatever is on the form at the time so nothing is lost.
  */
 export default function NewInvoicePage({
   cart,
@@ -71,6 +81,8 @@ export default function NewInvoicePage({
   onModeChange: setMode,
   draftId,
   onDraftIdChange: setDraftId,
+  hungInvoice,
+  onHungInvoiceChange,
 }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -85,6 +97,7 @@ export default function NewInvoicePage({
   // submission, and resets back to checked after each one so skipping it
   // is always a deliberate choice, never a leftover setting.
   const [notifyTelegram, setNotifyTelegram] = useState(true);
+  const [hungConfirm, setHungConfirm] = useState<"replace" | "remove" | null>(null);
   const draftsFetchIdRef = useRef(0);
   const draftItemsFetchIdRef = useRef(0);
 
@@ -221,6 +234,53 @@ export default function NewInvoicePage({
   }
 
   const isLoadingItems = isLoadingDraftItems;
+  const hasWork = !!selectedContactId || lineItems.length > 0 || !!scheduledDate || !!draftId;
+
+  /** Loads an invoice into the form, cancelling any draft fetch still in flight for the previous one. */
+  function loadIntoForm(invoice: Omit<HungInvoice, "hungAt"> | null) {
+    draftItemsFetchIdRef.current++;
+    setIsLoadingDraftItems(false);
+    onCartChange(invoice?.cart ?? {});
+    setSelectedContactId(invoice?.contactId ?? "");
+    setScheduledDate(invoice?.scheduledDate ?? null);
+    setMode(invoice?.mode ?? "new");
+    setDraftId(invoice?.draftId ?? null);
+    setSubmitError(null);
+    if (invoice?.contactId) {
+      loadDraftsForCustomer(invoice.contactId);
+    } else {
+      draftsFetchIdRef.current++;
+      setIsLoadingDrafts(false);
+      setCustomerDrafts([]);
+    }
+  }
+
+  function currentInvoice(): HungInvoice {
+    return { cart, contactId: selectedContactId, scheduledDate, mode, draftId, hungAt: Date.now() };
+  }
+
+  function hangInvoice() {
+    onHungInvoiceChange(currentInvoice());
+    loadIntoForm(null);
+    setHungConfirm(null);
+  }
+
+  function resumeHungInvoice() {
+    if (!hungInvoice) return;
+    onHungInvoiceChange(hasWork ? currentInvoice() : null);
+    loadIntoForm(hungInvoice);
+  }
+
+  const hungSummary = useMemo(() => {
+    if (!hungInvoice) return null;
+    const contact = contacts.find((c) => c.contact_id === hungInvoice.contactId);
+    const lines = Object.values(hungInvoice.cart);
+    return {
+      name: contact ? contact.company_name || contact.contact_name : hungInvoice.contactId ? "Customer" : "No customer yet",
+      itemCount: lines.length,
+      total: lines.reduce((sum, line) => sum + line.rate * line.quantity, 0),
+    };
+  }, [hungInvoice, contacts]);
   const canSubmit =
     !!selectedContactId && lineItems.length > 0 && !isSubmitting && !isLoadingItems && (mode === "new" || !!draftId);
 
@@ -228,7 +288,49 @@ export default function NewInvoicePage({
     <div>
       <div className="page-header">
         <h1 className="page-title">New Invoice</h1>
+        <div className="page-header__actions">
+          <button
+            type="button"
+            className="btn btn--secondary hang-button"
+            disabled={!hasWork || isLoadingItems || isSubmitting}
+            onClick={() => (hungInvoice ? setHungConfirm("replace") : hangInvoice())}
+            title="Put this invoice aside to finish later"
+          >
+            <Pause size={14} /> Hang
+          </button>
+        </div>
       </div>
+
+      {hungInvoice && hungSummary && (
+        <div className="hung-invoice" role="status">
+          <div className="hung-invoice__text">
+            <div className="hung-invoice__title">Hung invoice waiting{hungInvoice.mode === "update" ? " (draft update)" : ""}</div>
+            <div className="hung-invoice__detail">
+              {hungSummary.name} · {hungSummary.itemCount} {hungSummary.itemCount === 1 ? "item" : "items"} · {currency(hungSummary.total)}
+            </div>
+          </div>
+          <div className="hung-invoice__actions">
+            <button
+              type="button"
+              className="btn hung-invoice__resume"
+              disabled={isLoadingItems || isSubmitting}
+              onClick={resumeHungInvoice}
+              title={hasWork ? "Resume it — the invoice on screen is hung in its place" : "Resume it"}
+            >
+              <Play size={14} /> Resume
+            </button>
+            <button
+              type="button"
+              className="hung-invoice__remove"
+              aria-label="Remove hung invoice"
+              title="Remove hung invoice"
+              onClick={() => setHungConfirm("remove")}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mode-toggle">
         <button
@@ -330,6 +432,28 @@ export default function NewInvoicePage({
         onRemoveItem={removeItem}
         onItemsRefreshed={setCatalogItems}
       />
+
+      {hungConfirm === "replace" && (
+        <ConfirmModal
+          title="Replace hung invoice?"
+          message={`There's already a hung invoice (${hungSummary?.name ?? "invoice"}). Hanging this one throws that one away.`}
+          confirmLabel="Replace"
+          onConfirm={hangInvoice}
+          onCancel={() => setHungConfirm(null)}
+        />
+      )}
+      {hungConfirm === "remove" && (
+        <ConfirmModal
+          title="Remove hung invoice?"
+          message={`The hung invoice (${hungSummary?.name ?? "invoice"}) will be thrown away. This can't be undone.`}
+          confirmLabel="Remove"
+          onConfirm={() => {
+            onHungInvoiceChange(null);
+            setHungConfirm(null);
+          }}
+          onCancel={() => setHungConfirm(null)}
+        />
+      )}
     </div>
   );
 }

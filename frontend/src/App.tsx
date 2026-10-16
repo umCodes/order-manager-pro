@@ -12,6 +12,7 @@ import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
 import SettingsPage from "./pages/SettingsPage";
 import ZohoUsageBadge from "./components/ZohoUsageBadge";
+import { loadHungInvoice, saveHungInvoice, type HungInvoice } from "./lib/hungInvoice";
 import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
 
 /**
@@ -37,6 +38,12 @@ function App() {
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hungInvoice, setHungInvoice] = useState<HungInvoice | null>(loadHungInvoice);
+
+  function changeHungInvoice(invoice: HungInvoice | null) {
+    setHungInvoice(invoice);
+    saveHungInvoice(invoice);
+  }
 
   useEffect(() => startUnreadWatcher(), []);
 
@@ -90,6 +97,8 @@ function App() {
             onModeChange={setInvoiceMode}
             draftId={invoiceDraftId}
             onDraftIdChange={setInvoiceDraftId}
+            hungInvoice={hungInvoice}
+            onHungInvoiceChange={changeHungInvoice}
           />
         )}
         {activeTab === "messages" && <MessagesPage />}
@@ -97,7 +106,7 @@ function App() {
         {activeTab === "items" && <ItemsPage />}
         {activeTab === "customers" && <CustomersPage onSelectCustomer={openCustomerFromList} />}
       </div>
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar active={activeTab} onChange={setActiveTab} hasHungInvoice={!!hungInvoice} />
 
       {selectedCustomerId && (
         <div className={`detail-overlay${isCustomerOnTop ? " detail-overlay--top" : ""}`}>

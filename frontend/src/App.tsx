@@ -12,7 +12,7 @@ import ItemsPage from "./pages/ItemsPage";
 import CustomersPage from "./pages/CustomersPage";
 import SettingsPage from "./pages/SettingsPage";
 import ZohoUsageBadge from "./components/ZohoUsageBadge";
-import { loadHungInvoice, saveHungInvoice, type HungInvoice } from "./lib/hungInvoice";
+import { loadHeldInvoice, saveHeldInvoice, type HeldInvoice } from "./lib/heldInvoice";
 import type { Cart, InvoiceMode, ScheduledDate, TabKey } from "./types";
 
 /**
@@ -38,11 +38,11 @@ function App() {
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("new");
   const [invoiceDraftId, setInvoiceDraftId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [hungInvoice, setHungInvoice] = useState<HungInvoice | null>(loadHungInvoice);
+  const [heldInvoice, setHeldInvoice] = useState<HeldInvoice | null>(loadHeldInvoice);
 
-  function changeHungInvoice(invoice: HungInvoice | null) {
-    setHungInvoice(invoice);
-    saveHungInvoice(invoice);
+  function changeHeldInvoice(invoice: HeldInvoice | null) {
+    setHeldInvoice(invoice);
+    saveHeldInvoice(invoice);
   }
 
   useEffect(() => startUnreadWatcher(), []);
@@ -97,8 +97,8 @@ function App() {
             onModeChange={setInvoiceMode}
             draftId={invoiceDraftId}
             onDraftIdChange={setInvoiceDraftId}
-            hungInvoice={hungInvoice}
-            onHungInvoiceChange={changeHungInvoice}
+            heldInvoice={heldInvoice}
+            onHeldInvoiceChange={changeHeldInvoice}
           />
         )}
         {activeTab === "messages" && <MessagesPage />}
@@ -106,7 +106,7 @@ function App() {
         {activeTab === "items" && <ItemsPage />}
         {activeTab === "customers" && <CustomersPage onSelectCustomer={openCustomerFromList} />}
       </div>
-      <TabBar active={activeTab} onChange={setActiveTab} hasHungInvoice={!!hungInvoice} />
+      <TabBar active={activeTab} onChange={setActiveTab} hasHeldInvoice={!!heldInvoice} />
 
       {selectedCustomerId && (
         <div className={`detail-overlay${isCustomerOnTop ? " detail-overlay--top" : ""}`}>

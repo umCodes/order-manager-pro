@@ -13,12 +13,12 @@ const TABS: { key: TabKey; label: string; icon: typeof FileText }[] = [
 type Props = {
   active: TabKey;
   onChange: (tab: TabKey) => void;
-  /** Shows a red dot on the Invoice tab while an invoice is hung, so it isn't forgotten. */
-  hasHungInvoice?: boolean;
+  /** Shows a red dot on the Invoice tab while an invoice is on hold, so it isn't forgotten. */
+  hasHeldInvoice?: boolean;
 };
 
 /** Bottom navigation bar for switching between the app's top-level pages. */
-export default function TabBar({ active, onChange, hasHungInvoice }: Props) {
+export default function TabBar({ active, onChange, hasHeldInvoice }: Props) {
   const unread = useUnread();
   return (
     <nav className="tab-bar">
@@ -33,8 +33,8 @@ export default function TabBar({ active, onChange, hasHungInvoice }: Props) {
           >
             <span className="tab-bar__icon">
               <Icon size={21} />
-              {key === "invoices" && hasHungInvoice && (
-                <span className="hung-dot" role="img" aria-label="An invoice is hung" title="An invoice is hung" />
+              {key === "invoices" && hasHeldInvoice && (
+                <span className="held-dot" role="img" aria-label="An invoice is on hold" title="An invoice is on hold" />
               )}
               {key === "messages" && unread.total > 0 && (
                 <span className="unread-badge unread-badge--tab" aria-label={`${unread.total} unread WhatsApp messages`}>

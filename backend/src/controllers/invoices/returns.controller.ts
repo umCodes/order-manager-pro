@@ -10,6 +10,7 @@ import {
 } from "../../services/returns/invoiceReturns.js";
 import { ZohoGetCustomerById, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
 import { createReturnNoticePdfBuffer, toReturnNoticePdfData } from "../../pdf/index.js";
+import { notifyInvoiceReturn } from "../../services/whatsapp/customers.js";
 
 const MAX_REASON_LENGTH = 500;
 
@@ -86,5 +87,24 @@ export async function getInvoiceReturnList(req: Request, res: Response) {
   } catch (error) {
     console.error(error);
     res.status(400).json({ error: error instanceof Error ? error.message : "Failed to load returns" });
+  }
+}
+
+/**
+ * Sends a return's "Return Notice" WhatsApp message, with its PDF, to the
+ * customer (body: `{ notify_contact_ids? }`). Only sends the message —
+ * asked for right after a return is made, or later from the Returns list.
+ */
+export async function sendInvoiceReturnNotification(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const creditNoteId = req.params.creditnoteId as string;
+  try {
+    const access_token = requireAccessToken(req, "A problem occured sending the return notice");
+    if (!id || !creditNoteId) throw new Error("id not provided");
+    const notified = await notifyInvoiceReturn(access_token, id, creditNoteId, req.body?.notify_contact_ids);
+    res.status(200).json({ notified });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ error: error instanceof Error ? error.message : "Failed to send the return notice" });
   }
 }

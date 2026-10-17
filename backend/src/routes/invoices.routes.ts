@@ -19,6 +19,7 @@ import {
   createInvoiceReturnHandler,
   getInvoiceReturnPdf,
   getInvoiceReturnList,
+  sendInvoiceReturnNotification,
 } from "../controllers/invoices/index.js";
 
 export const invoicesRouter = Router();
@@ -42,3 +43,4 @@ invoicesRouter.get("/invoices/:id/returns", getInvoiceReturns);
 invoicesRouter.post("/invoices/:id/returns", createInvoiceReturnHandler);
 invoicesRouter.get("/invoices/:id/returns/list", getInvoiceReturnList);
 invoicesRouter.get("/invoices/:id/returns/:creditnoteId/pdf", getInvoiceReturnPdf);
+invoicesRouter.post("/invoices/:id/returns/:creditnoteId/notify", sendInvoiceReturnNotification);

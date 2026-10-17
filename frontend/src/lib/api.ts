@@ -299,6 +299,83 @@ export async function fetchCustomerPayments(customerId: string): Promise<Custome
 }
 
 /** Sends the WhatsApp payment confirmation for one of the customer's existing payments. */
+async function postJson<T>(url: string, method: "POST" | "PATCH" | "DELETE", body: unknown, fallbackError: string): Promise<T> {
+  const response = await apiFetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error ?? `${fallbackError} (${response.status})`);
+  }
+  return response.json();
+}
+
+const notifyBody = (notify: boolean, notifyContactIds?: string[]) => ({
+  notify,
+  ...(notify && notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+});
+
+/** Corrects a payment's amount; `notify` sends the "payment correction" WhatsApp message. */
+export function updateCustomerPayment(
+  customerId: string,
+  paymentId: string,
+  amount: number,
+  notify: boolean,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  return postJson(
+    `${API_BASE_URL}/api/customers/${customerId}/payments/${paymentId}`,
+    "PATCH",
+    { amount, ...notifyBody(notify, notifyContactIds) },
+    "Failed to update the payment",
+  );
+}
+
+/** Deletes a payment; `notify` sends the "payment deletion" WhatsApp message. */
+export function deleteCustomerPayment(
+  customerId: string,
+  paymentId: string,
+  notify: boolean,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  return postJson(
+    `${API_BASE_URL}/api/customers/${customerId}/payments/${paymentId}`,
+    "DELETE",
+    notifyBody(notify, notifyContactIds),
+    "Failed to delete the payment",
+  );
+}
+
+/** Re-sends the WhatsApp message for a payment's last correction or deletion. */
+export function resendPaymentChangeNotification(
+  customerId: string,
+  paymentId: string,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  return postJson(
+    `${API_BASE_URL}/api/customers/${customerId}/payments/${paymentId}/notify-change`,
+    "POST",
+    notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {},
+    "Failed to send notification",
+  );
+}
+
+/** Sends a return's "Return Notice" WhatsApp message (with its PDF) to the customer. */
+export function sendInvoiceReturnNotification(
+  invoiceId: string,
+  creditNoteId: string,
+  notifyContactIds?: string[],
+): Promise<{ notified: boolean }> {
+  return postJson(
+    `${API_BASE_URL}/api/invoices/${invoiceId}/returns/${creditNoteId}/notify`,
+    "POST",
+    notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {},
+    "Failed to send the return notice",
+  );
+}
+
 export async function sendCustomerPaymentNotification(
   customerId: string,
   paymentId: string,
@@ -1307,7 +1384,7 @@ export async function createInvoiceReturn(
 }
 
 /** The automatic WhatsApp notifications whose template can be chosen in Settings. */
-export type NotificationKind = "payment" | "balance";
+export type NotificationKind = "payment" | "balance" | "return" | "payment_correction" | "payment_deletion";
 export type NotificationLanguage = "am" | "ar" | "en";
 
 /** A template is identified by its name plus the language it was registered in. */

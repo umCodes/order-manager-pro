@@ -60,3 +60,19 @@ export async function addToCollectedToday(amount: number): Promise<void> {
         console.error("Failed to update today's collected total", error);
     }
 }
+
+/**
+ * Moves today's collected total by `delta` (negative when a payment made
+ * today is lowered or deleted), never below 0. Best-effort, never throws.
+ */
+export async function adjustCollectedToday(delta: number): Promise<void> {
+    if (!Number.isFinite(delta) || delta === 0) return;
+    if (delta > 0) return addToCollectedToday(delta);
+    try {
+        const key = collectedKey(businessDayKey());
+        const current = await getCollectedToday();
+        await redisClient.set(key, String(Math.max(0, Math.round((current + delta) * 100) / 100)), { EX: secondsUntilNextBusinessDay() });
+    } catch (error) {
+        console.error("Failed to update today's collected total", error);
+    }
+}

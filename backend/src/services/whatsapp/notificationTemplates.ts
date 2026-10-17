@@ -12,8 +12,14 @@ import { listTemplates, placeholdersIn, type MetaTemplate } from "./templates.js
  * - `payment`: sent when a payment is recorded.
  * - `balance`: sent when an invoice is marked as sent (or paid from draft),
  *   with the invoice PDF attached.
+ * - `return`: sent after a return on a sent invoice, with the Return Notice PDF.
+ * - `payment_correction`: sent when a payment's amount is changed.
+ * - `payment_deletion`: sent when a payment is deleted.
+ *
+ * The last three have no env default: they only go out once a template is
+ * chosen for them in Settings.
  */
-export const NOTIFICATION_KINDS = ["payment", "balance"] as const
+export const NOTIFICATION_KINDS = ["payment", "balance", "return", "payment_correction", "payment_deletion"] as const
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 
 /** A template is identified by its name plus the language it was registered in. */
@@ -23,7 +29,7 @@ export type NotificationTemplateSettings = Record<NotificationKind, Partial<Reco
 
 const SETTINGS_KEY = "settings:notification-templates"
 
-const ENV_DEFAULTS: Record<NotificationKind, Record<PreferredLanguage, string | undefined>> = {
+const ENV_DEFAULTS: Partial<Record<NotificationKind, Record<PreferredLanguage, string | undefined>>> = {
     payment: {
         am: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AM,
         ar: ENV.WA_PAYMENT_NOTIFICATION_TEMPLATE_AR,
@@ -43,12 +49,17 @@ const ENV_DEFAULT_LANGUAGE_CODES: Record<PreferredLanguage, string> = {
     en: "en",
 }
 
+/** One empty slot set per notification kind. */
+function emptySettings(): NotificationTemplateSettings {
+    return Object.fromEntries(NOTIFICATION_KINDS.map((kind) => [kind, {}])) as NotificationTemplateSettings
+}
+
 /** The template each slot falls back to when nothing is chosen in Settings. */
 export function defaultNotificationTemplates(): NotificationTemplateSettings {
-    const defaults: NotificationTemplateSettings = { payment: {}, balance: {} }
+    const defaults = emptySettings()
     for (const kind of NOTIFICATION_KINDS) {
         for (const language of PREFERRED_LANGUAGES) {
-            const name = ENV_DEFAULTS[kind][language]
+            const name = ENV_DEFAULTS[kind]?.[language]
             if (name) defaults[kind][language] = { name, language: ENV_DEFAULT_LANGUAGE_CODES[language] }
         }
     }
@@ -59,7 +70,9 @@ export function defaultNotificationTemplates(): NotificationTemplateSettings {
 export async function getNotificationTemplateSettings(): Promise<NotificationTemplateSettings> {
     const raw = await redisClient.get(SETTINGS_KEY)
     const saved = raw ? (JSON.parse(raw) as Partial<NotificationTemplateSettings>) : {}
-    return { payment: saved.payment ?? {}, balance: saved.balance ?? {} }
+    const settings = emptySettings()
+    for (const kind of NOTIFICATION_KINDS) settings[kind] = saved[kind] ?? {}
+    return settings
 }
 
 /** The template to send a notification with: the Settings choice, else the env default. */
@@ -86,12 +99,31 @@ export async function notificationTemplateNames(): Promise<Set<string>> {
 }
 
 /**
- * Whether a template has the shape a notification fills in: positional
- * placeholders, and exactly the variables the app sends — payment: {{1}}
- * amount, {{2}} date, {{3}} remaining balance; balance: a document header
- * for the invoice PDF plus {{1}} invoice number, {{2}} amount, {{3}} paid,
- * {{4}} balance before, {{5}} balance after. No other variables (header
- * text or button links), since the app has nothing to fill them with.
+ * The body variables each notification fills, in order, and whether it
+ * carries a PDF as a document header:
+ * - payment: {{1}} amount, {{2}} date, {{3}} remaining balance.
+ * - balance (invoice PDF): {{1}} invoice number, {{2}} amount, {{3}} paid,
+ *   {{4}} balance before, {{5}} balance after.
+ * - return (Return Notice PDF): {{1}} return (credit note) number,
+ *   {{2}} invoice number, {{3}} amount returned, {{4}} balance after.
+ * - payment_correction: {{1}} payment number, {{2}} old amount,
+ *   {{3}} corrected amount, {{4}} balance after.
+ * - payment_deletion: {{1}} payment number, {{2}} balance after.
+ */
+const NOTIFICATION_SHAPES: Record<NotificationKind, { variables: number; document: boolean }> = {
+    payment: { variables: 3, document: false },
+    balance: { variables: 5, document: true },
+    return: { variables: 4, document: true },
+    payment_correction: { variables: 4, document: false },
+    payment_deletion: { variables: 2, document: false },
+}
+
+/**
+ * Whether a template has the shape a notification fills in (see
+ * NOTIFICATION_SHAPES): positional placeholders, exactly the body variables
+ * the app sends, and a document header only for the ones with a PDF. No
+ * other variables (header text or button links), since the app has nothing
+ * to fill them with.
  */
 export function fitsNotification(kind: NotificationKind, template: MetaTemplate): boolean {
     if (template.status !== "APPROVED") return false
@@ -104,22 +136,22 @@ export function fitsNotification(kind: NotificationKind, template: MetaTemplate)
     if (buttons?.buttons?.some((b) => placeholdersIn(b.url).length > 0)) return false
     if (header && (!header.format || header.format === "TEXT") && placeholdersIn(header.text).length > 0) return false
 
-    const expected = kind === "payment" ? ["1", "2", "3"] : ["1", "2", "3", "4", "5"]
+    const shape = NOTIFICATION_SHAPES[kind]
+    const expected = Array.from({ length: shape.variables }, (_, i) => String(i + 1))
     // Variables can appear out of order in the text, so compare them sorted.
     const bodyVars = placeholdersIn(body?.text).sort((a, b) => Number(a) - Number(b))
     if (bodyVars.length !== expected.length || bodyVars.some((v, i) => v !== expected[i])) return false
 
-    if (kind === "balance") return header?.format === "DOCUMENT"
+    if (shape.document) return header?.format === "DOCUMENT"
     return !header || !header.format || header.format === "TEXT"
 }
 
 /** The approved templates each notification could be switched to. */
 export async function notificationTemplateOptions(force = false): Promise<Record<NotificationKind, MetaTemplate[]>> {
     const templates = await listTemplates(force)
-    return {
-        payment: templates.filter((t) => fitsNotification("payment", t)),
-        balance: templates.filter((t) => fitsNotification("balance", t)),
-    }
+    return Object.fromEntries(
+        NOTIFICATION_KINDS.map((kind) => [kind, templates.filter((t) => fitsNotification(kind, t))]),
+    ) as Record<NotificationKind, MetaTemplate[]>
 }
 
 /**
@@ -129,7 +161,7 @@ export async function notificationTemplateOptions(force = false): Promise<Record
  */
 export async function saveNotificationTemplateSettings(input: any): Promise<NotificationTemplateSettings> {
     const templates = await listTemplates(true)
-    const next: NotificationTemplateSettings = { payment: {}, balance: {} }
+    const next = emptySettings()
 
     for (const kind of NOTIFICATION_KINDS) {
         for (const language of PREFERRED_LANGUAGES) {

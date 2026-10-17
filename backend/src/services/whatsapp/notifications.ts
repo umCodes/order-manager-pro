@@ -213,3 +213,160 @@ export async function sendBalanceNotification(
         throw error
     }
 }
+
+/** Chat-record wording for the return / payment correction / payment deletion notifications. */
+const CHANGE_LABELS: Record<
+    PreferredLanguage,
+    {
+        returnTitle: string
+        returnNumber: string
+        returnAmount: string
+        correctionTitle: string
+        deletionTitle: string
+        paymentNumber: string
+        oldAmount: string
+        newAmount: string
+    }
+> = {
+    am: {
+        returnTitle: "የተመላሽ ደረሰኝ",
+        returnNumber: "የተመላሽ ደረሰኝ ቁጥር",
+        returnAmount: "የተመላሽ መጠን",
+        correctionTitle: "የክፍያ ማረምያ",
+        deletionTitle: "የክፍያ ማጥፊያ",
+        paymentNumber: "የክፍያ ቁጥር",
+        oldAmount: "የቀድሞ ክፍያ",
+        newAmount: "ትክክለኛ ክፍያ",
+    },
+    ar: {
+        returnTitle: "إشعار مرتجع",
+        returnNumber: "رقم المرتجع",
+        returnAmount: "مبلغ المرتجع",
+        correctionTitle: "تصحيح دفعة",
+        deletionTitle: "حذف دفعة",
+        paymentNumber: "رقم الدفعة",
+        oldAmount: "المبلغ السابق",
+        newAmount: "المبلغ الصحيح",
+    },
+    en: {
+        returnTitle: "Return notice",
+        returnNumber: "Return number",
+        returnAmount: "Amount returned",
+        correctionTitle: "Payment correction",
+        deletionTitle: "Payment deleted",
+        paymentNumber: "Payment number",
+        oldAmount: "Previous amount",
+        newAmount: "Correct amount",
+    },
+}
+
+const bodyParams = (values: string[]) => ({
+    type: "body" as const,
+    parameters: values.map((text) => ({ type: "text" as const, text })),
+})
+
+async function requireTemplate(kind: "return" | "payment_correction" | "payment_deletion", language: PreferredLanguage) {
+    const template = await resolveNotificationTemplate(kind, language)
+    console.log(`[WhatsApp] ${kind} notification: language="${language}" -> template="${template?.name ?? "(none chosen)"}"`)
+    if (!template) throw new Error(`No ${kind.replace("_", " ")} template chosen in Settings for language "${language}"`)
+    return template
+}
+
+/**
+ * "Return Notice" template: sent after a return on a sent invoice.
+ * Header: the Return Notice PDF. Body params: {{1}} return (credit note)
+ * number, {{2}} invoice number, {{3}} amount returned, {{4}} the customer's
+ * total balance after the return.
+ */
+export async function sendReturnNotification(
+    to: string,
+    customerName: string,
+    preferredLanguage: PreferredLanguage,
+    pdf: Buffer,
+    pdfFilename: string,
+    returnNumber: string,
+    invoiceNumber: string,
+    returnAmount: string,
+    balanceAfter: string,
+) {
+    const template = await requireTemplate("return", preferredLanguage)
+    const mediaId = await uploadWhatsAppMedia(pdf, pdfFilename, "application/pdf")
+    const labels = SUMMARY_LABELS[preferredLanguage]
+    const changeLabels = CHANGE_LABELS[preferredLanguage]
+    return sendWhatsAppTemplate(
+        to,
+        template.name,
+        [
+            { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename: pdfFilename } }] },
+            bodyParams([returnNumber, invoiceNumber, returnAmount, balanceAfter]),
+        ],
+        template.language,
+        summaryList(changeLabels.returnTitle, [
+            [labels.customer, customerName],
+            [changeLabels.returnNumber, returnNumber],
+            [labels.invoiceNumber, invoiceNumber],
+            [changeLabels.returnAmount, returnAmount],
+            [labels.remainingBalance, balanceAfter],
+        ]),
+    )
+}
+
+/**
+ * "Payment Correction" template: sent when a payment's amount is changed.
+ * Body params: {{1}} payment number, {{2}} old amount, {{3}} corrected
+ * amount, {{4}} the customer's total balance after the change.
+ */
+export async function sendPaymentCorrectionNotification(
+    to: string,
+    customerName: string,
+    preferredLanguage: PreferredLanguage,
+    paymentNumber: string,
+    oldAmount: string,
+    newAmount: string,
+    balanceAfter: string,
+) {
+    const template = await requireTemplate("payment_correction", preferredLanguage)
+    const labels = SUMMARY_LABELS[preferredLanguage]
+    const changeLabels = CHANGE_LABELS[preferredLanguage]
+    return sendWhatsAppTemplate(
+        to,
+        template.name,
+        [bodyParams([paymentNumber, oldAmount, newAmount, balanceAfter])],
+        template.language,
+        summaryList(changeLabels.correctionTitle, [
+            [labels.customer, customerName],
+            [changeLabels.paymentNumber, paymentNumber],
+            [changeLabels.oldAmount, oldAmount],
+            [changeLabels.newAmount, newAmount],
+            [labels.remainingBalance, balanceAfter],
+        ]),
+    )
+}
+
+/**
+ * "Payment Deletion" template: sent when a payment is deleted.
+ * Body params: {{1}} payment number, {{2}} the customer's total balance
+ * after the deletion.
+ */
+export async function sendPaymentDeletionNotification(
+    to: string,
+    customerName: string,
+    preferredLanguage: PreferredLanguage,
+    paymentNumber: string,
+    balanceAfter: string,
+) {
+    const template = await requireTemplate("payment_deletion", preferredLanguage)
+    const labels = SUMMARY_LABELS[preferredLanguage]
+    const changeLabels = CHANGE_LABELS[preferredLanguage]
+    return sendWhatsAppTemplate(
+        to,
+        template.name,
+        [bodyParams([paymentNumber, balanceAfter])],
+        template.language,
+        summaryList(changeLabels.deletionTitle, [
+            [labels.customer, customerName],
+            [changeLabels.paymentNumber, paymentNumber],
+            [labels.remainingBalance, balanceAfter],
+        ]),
+    )
+}

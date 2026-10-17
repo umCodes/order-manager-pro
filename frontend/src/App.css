@@ -596,6 +596,16 @@
   cursor: not-allowed;
 }
 
+/* Destructive icon action (e.g. delete a payment). */
+.icon-btn--danger:not(:disabled) {
+  color: var(--color-red-600);
+}
+
+.icon-btn--danger:not(:disabled):hover {
+  color: var(--color-red-600);
+  border-color: var(--color-red-600);
+}
+
 .icon-btn--armed {
   color: var(--color-green-700);
   border-color: var(--color-green-700);

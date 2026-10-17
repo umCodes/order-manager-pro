@@ -103,3 +103,59 @@ export async function ZohoGetCustomerPaymentById(headers: string, paymentId: str
         throw error;
     }
 }
+
+/** A customer payment with the invoices it's applied to (as Zoho returns a single payment). */
+type CustomerPaymentDetail = CustomerPaymentSummary & {
+    invoices?: { invoice_id: string | number; amount_applied: number }[]
+}
+
+const round2 = (value: number) => Math.round(value * 100) / 100
+
+/** Fetches one payment and checks it belongs to `customerId`. */
+async function getOwnPayment(headers: string, customerId: string, paymentId: string): Promise<CustomerPaymentDetail> {
+    const payment = (await ZohoGetCustomerPaymentById(headers, paymentId)) as CustomerPaymentDetail
+    if (String(payment.customer_id) !== customerId) throw new Error("Payment does not belong to this customer")
+    return payment
+}
+
+/**
+ * Changes a payment's amount (the "payment correction"), keeping its date
+ * and mode. The new amount is spread over the customer's open invoices
+ * oldest-first, the same way a new payment is, counting the invoices this
+ * payment already covers as unpaid by it: a smaller amount comes off the
+ * newest invoices it covered, a larger one goes on to the next open ones.
+ * Returns the payment as it was before and after.
+ */
+export async function ZohoUpdateCustomerPaymentAmount(headers: string, customerId: string, paymentId: string, amount: number) {
+    if (!(amount > 0)) throw new Error("The amount must be more than 0")
+    const before = await getOwnPayment(headers, customerId, paymentId)
+    if (round2(Number(before.amount)) === round2(amount)) throw new Error("The amount is unchanged")
+
+    const appliedByThisPayment = new Map(
+        (before.invoices ?? []).map((inv) => [String(inv.invoice_id), Number(inv.amount_applied) || 0]),
+    )
+    const invoices: any[] = await ZohoGetInvoices(headers, { customer_id: customerId })
+    const asIfUnpaidByThisPayment = invoices.map((inv) => {
+        const applied = appliedByThisPayment.get(String(inv.invoice_id)) ?? 0
+        if (!applied) return inv
+        return { ...inv, balance: round2(Number(inv.balance) + applied), status: inv.status === "paid" ? "partially_paid" : inv.status }
+    })
+
+    const response = await ZohoApi(`customerpayments/${encodeURIComponent(paymentId)}`, headers, "PUT", {
+        customer_id: customerId,
+        payment_mode: before.payment_mode,
+        date: before.date,
+        amount,
+        invoices: getAppliedInvoices(asIfUnpaidByThisPayment, amount),
+    })
+    if (!response.payment) throw new Error(response.message ?? "Failed to update the payment")
+    return { before, after: response.payment as CustomerPaymentSummary }
+}
+
+/** Deletes a payment; the invoices it paid go back to owing that amount. Returns the deleted payment. */
+export async function ZohoDeleteCustomerPayment(headers: string, customerId: string, paymentId: string) {
+    const payment = await getOwnPayment(headers, customerId, paymentId)
+    const response = await ZohoApi(`customerpayments/${encodeURIComponent(paymentId)}`, headers, "DELETE")
+    if (response.code !== 0) throw new Error(response.message ?? "Failed to delete the payment")
+    return payment
+}

@@ -27,7 +27,27 @@ const NOTIFICATIONS: { kind: NotificationKind; title: string; description: strin
     title: "Payment confirmation",
     description: "Sent when a payment is recorded.",
   },
+  {
+    kind: "return",
+    title: "Return notice",
+    description: "Sent after a return on a sent invoice, with the Return Notice PDF attached.",
+  },
+  {
+    kind: "payment_correction",
+    title: "Payment correction",
+    description: "Sent when a payment's amount is edited.",
+  },
+  {
+    kind: "payment_deletion",
+    title: "Payment deletion",
+    description: "Sent when a payment is deleted.",
+  },
 ];
+
+/** One empty slot set per notification, so a kind the server didn't send is never undefined. */
+function withAllKinds(slots: Partial<NotificationTemplateSlots> | undefined): NotificationTemplateSlots {
+  return Object.fromEntries(NOTIFICATIONS.map(({ kind }) => [kind, slots?.[kind] ?? {}])) as NotificationTemplateSlots;
+}
 
 const LANGUAGES: { key: NotificationLanguage; label: string }[] = [
   { key: "am", label: "Amharic customers" },
@@ -52,7 +72,7 @@ function parseRefKey(key: string): TemplateRef | undefined {
  */
 export default function SettingsPage({ onBack }: Props) {
   const [settings, setSettings] = useState<NotificationTemplateSettings | null>(null);
-  const [draft, setDraft] = useState<NotificationTemplateSlots>({ payment: {}, balance: {} });
+  const [draft, setDraft] = useState<NotificationTemplateSlots>(() => withAllKinds(undefined));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -62,8 +82,13 @@ export default function SettingsPage({ onBack }: Props) {
     return fetchNotificationTemplateSettings(force)
       .then((loaded) => {
         setLoadError(null);
-        setSettings(loaded);
-        setDraft(loaded.selected);
+        const selected = withAllKinds(loaded.selected);
+        setSettings({
+          selected,
+          defaults: withAllKinds(loaded.defaults),
+          options: Object.fromEntries(NOTIFICATIONS.map(({ kind }) => [kind, loaded.options?.[kind] ?? []])) as NotificationTemplateSettings["options"],
+        });
+        setDraft(selected);
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "Failed to load settings"));
   }
@@ -94,8 +119,8 @@ export default function SettingsPage({ onBack }: Props) {
     setSaveError(null);
     saveNotificationTemplateSettings(draft)
       .then((selected) => {
-        setSettings((prev) => (prev ? { ...prev, selected } : prev));
-        setDraft(selected);
+        setSettings((prev) => (prev ? { ...prev, selected: withAllKinds(selected) } : prev));
+        setDraft(withAllKinds(selected));
         setSavedAt(Date.now());
       })
       .catch((e) => setSaveError(e instanceof Error ? e.message : "Failed to save settings"))
@@ -159,7 +184,7 @@ export default function SettingsPage({ onBack }: Props) {
                         onChange={(e) => choose(kind, key, e.target.value)}
                       >
                         <option value="">
-                          {fallback ? `Default — ${refLabel(fallback)}` : "Default — none configured"}
+                          {fallback ? `Default — ${refLabel(fallback)}` : "None chosen — not sent"}
                         </option>
                         {chosenMissing && (
                           <option value={refKey(chosen)}>{refLabel(chosen)} — unavailable</option>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, Send, TriangleAlert } from "lucide-react";
 import {
+  sendInvoiceReturnNotification,
   fetchInvoiceById,
   fetchCustomerById,
   fetchCustomers,
@@ -116,6 +117,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isChangeCustomerOpen, setIsChangeCustomerOpen] = useState(false);
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [createdReturn, setCreatedReturn] = useState<CreatedInvoiceReturn | null>(null);
+  // Sending a return's "Return Notice" on WhatsApp: asked right after a return, or from the Returns list.
+  const [returnNotify, setReturnNotify] = useState<{ creditNoteId: string; number: string; step: "confirm" | "pickContact" } | null>(null);
+  const [isSendingReturnNotice, setIsSendingReturnNotice] = useState(false);
   const [isChangingCustomer, setIsChangingCustomer] = useState(false);
   const [changeCustomerError, setChangeCustomerError] = useState<string | null>(null);
 
@@ -399,6 +403,47 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .finally(() => setIsRetryingNotify(false));
+  }
+
+  /** Sends a return's Return Notice (with its PDF) on WhatsApp; failures show the usual retry banner. */
+  function runSendReturnNotice(creditNoteId: string, notifyContactIds?: string[]) {
+    if (!invoice) return;
+    const invoiceIdForSend = invoice.invoice_id;
+    const retry = () => {
+      setIsRetryingNotify(true);
+      sendInvoiceReturnNotification(invoiceIdForSend, creditNoteId, notifyContactIds)
+        .then((result) => {
+          setNotifyBanner(result.notified ? "success" : "failed");
+          if (result.notified) setNotifyRetry(null);
+        })
+        .catch(() => setNotifyBanner("failed"))
+        .finally(() => setIsRetryingNotify(false));
+    };
+    setIsSendingReturnNotice(true);
+    setNotifyBanner(null);
+    sendInvoiceReturnNotification(invoiceIdForSend, creditNoteId, notifyContactIds)
+      .then((result) => {
+        setNotifyBanner(result.notified ? "success" : "failed");
+        setNotifyRetry(result.notified ? null : () => retry);
+      })
+      .catch(() => {
+        setNotifyBanner("failed");
+        setNotifyRetry(() => retry);
+      })
+      .finally(() => {
+        setIsSendingReturnNotice(false);
+        setReturnNotify(null);
+      });
+  }
+
+  function handleYesNotifyReturn() {
+    if (!returnNotify) return;
+    if (customer && getContactList(customer).length > 1) {
+      setReturnNotify({ ...returnNotify, step: "pickContact" });
+      return;
+    }
+    const primaryId = customer ? getPrimaryContact(customer)?.contact_person_id : undefined;
+    runSendReturnNotice(returnNotify.creditNoteId, primaryId ? [primaryId] : undefined);
   }
 
   function handleSubmitPayment(
@@ -688,7 +733,16 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           )}
 
           {invoice.status !== "draft" && invoice.status !== "void" && (
-            <ReturnNotices invoiceId={invoice.invoice_id} reloadKey={createdReturn?.creditnote_id} />
+            <ReturnNotices
+              invoiceId={invoice.invoice_id}
+              reloadKey={createdReturn?.creditnote_id}
+              onSend={
+                invoice.customer_id
+                  ? (creditNoteId, number) => setReturnNotify({ creditNoteId, number, step: "confirm" })
+                  : undefined
+              }
+              isSending={isSendingReturnNotice}
+            />
           )}
 
           {notifyBanner === "success" && (
@@ -1010,6 +1064,40 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         </div>
       )}
 
+      {returnNotify?.step === "confirm" && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={isSendingReturnNotice ? undefined : () => setReturnNotify(null)} />
+          <div className="modal">
+            <div className="modal__title">Notify Customer?</div>
+            <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
+              Send the return notice {returnNotify.number} (with its PDF) to the customer on WhatsApp?
+            </div>
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                disabled={isSendingReturnNotice}
+                onClick={() => setReturnNotify(null)}
+              >
+                No, don't notify
+              </button>
+              <button type="button" className="btn btn--primary" disabled={isSendingReturnNotice} onClick={handleYesNotifyReturn}>
+                {isSendingReturnNotice ? "Sending..." : "Yes, notify"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnNotify?.step === "pickContact" && customer && (
+        <NotifyContactModal
+          customer={customer}
+          isSaving={isSendingReturnNotice}
+          onCancel={() => setReturnNotify(null)}
+          onConfirm={(contactPersonIds) => runSendReturnNotice(returnNotify.creditNoteId, contactPersonIds)}
+        />
+      )}
+
       {sendOnWhatsAppStep === "confirm" && invoice && (
         <ConfirmModal
           title="Send on WhatsApp?"
@@ -1070,6 +1158,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           onCreated={(created) => {
             setIsReturnOpen(false);
             setCreatedReturn(created);
+            if (invoice.customer_id) {
+              setReturnNotify({ creditNoteId: created.creditnote_id, number: created.creditnote_number, step: "confirm" });
+            }
             reloadInvoiceAndCustomer().catch(() => {});
           }}
         />

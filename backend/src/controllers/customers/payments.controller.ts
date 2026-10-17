@@ -4,12 +4,15 @@ import {
     ZohoGetCustomerById,
     ZohoGetCustomerPayments,
     ZohoGetCustomerPaymentById,
+    ZohoUpdateCustomerPaymentAmount,
+    ZohoDeleteCustomerPayment,
 } from '../../services/zoho/customers/index.js';
 import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
-import { notifyCustomerPayment } from '../../services/whatsapp/customers.js';
+import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
+import { redisClient } from '../../config/redis.js';
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
-import { addToCollectedToday } from '../../services/dailyTotals.js';
+import { addToCollectedToday, adjustCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
 
 /**
@@ -127,6 +130,125 @@ export async function sendCustomerPaymentNotification(req: Request, res: Respons
         res.status(200).json({ notified })
     } catch (error) {
         console.error('Error sending customer payment notification:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send notification' });
+    }
+};
+
+/**
+ * What a payment edit or delete changed, kept for a week so its WhatsApp
+ * message can be re-sent (after a failure, or later) without the client
+ * supplying the amounts — a deleted payment can't be read back from Zoho.
+ */
+type PaymentChange =
+    | { kind: "correction"; customer_id: string; payment_number: string; old_amount: number; new_amount: number }
+    | { kind: "deletion"; customer_id: string; payment_number: string }
+
+const paymentChangeKey = (paymentId: string) => `payment-change:${paymentId}`
+const PAYMENT_CHANGE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+async function savePaymentChange(paymentId: string, change: PaymentChange) {
+    try {
+        await redisClient.set(paymentChangeKey(paymentId), JSON.stringify(change), { EX: PAYMENT_CHANGE_TTL_SECONDS })
+    } catch (error) {
+        console.error('Failed to record payment change:', error)
+    }
+}
+
+function notifyPaymentChange(accessToken: string, change: PaymentChange, contactIds?: string[]) {
+    return change.kind === "correction"
+        ? notifyPaymentCorrected(accessToken, change.customer_id, change.payment_number, change.old_amount, change.new_amount, contactIds)
+        : notifyPaymentDeleted(accessToken, change.customer_id, change.payment_number, contactIds)
+}
+
+/** A today's-payment's change also moves today's collected total. */
+async function adjustTodayFor(paymentDate: string, delta: number) {
+    if (paymentDate === todayInBusinessTimezone()) await adjustCollectedToday(delta)
+}
+
+/**
+ * Corrects a payment's amount (body: `{ amount, notify?, notify_contact_ids? }`),
+ * re-spreading it over the customer's invoices (see
+ * ZohoUpdateCustomerPaymentAmount). The optional WhatsApp "payment
+ * correction" message is best-effort, like the payment confirmation.
+ */
+export async function updateCustomerPayment(req: Request, res: Response) {
+    const id = req.params.id as string
+    const paymentId = req.params.paymentId as string
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured updating the payment")
+        if (!id || !paymentId) throw new Error("Customer id and payment id are required")
+        const amount = Math.round(Number(req.body?.amount) * 100) / 100
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter an amount more than 0")
+        const { notify, notify_contact_ids } = req.body ?? {}
+
+        const { before, after } = await ZohoUpdateCustomerPaymentAmount(access_token, id, paymentId, amount)
+        deleteCache("customers")
+        const oldAmount = Number(before.amount)
+        await adjustTodayFor(before.date, amount - oldAmount)
+
+        const change: PaymentChange = {
+            kind: "correction",
+            customer_id: id,
+            payment_number: before.payment_number ?? "",
+            old_amount: oldAmount,
+            new_amount: amount,
+        }
+        await savePaymentChange(paymentId, change)
+        const notified = notify ? await notifyPaymentChange(access_token, change, notify_contact_ids) : false
+
+        res.status(200).json({ payment: after, notified })
+    } catch (error) {
+        console.error('Error updating customer payment:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to update the payment' });
+    }
+};
+
+/**
+ * Deletes a payment (body: `{ notify?, notify_contact_ids? }`); the invoices
+ * it paid go back to owing that amount. The optional WhatsApp "payment
+ * deletion" message is best-effort.
+ */
+export async function deleteCustomerPayment(req: Request, res: Response) {
+    const id = req.params.id as string
+    const paymentId = req.params.paymentId as string
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured deleting the payment")
+        if (!id || !paymentId) throw new Error("Customer id and payment id are required")
+        const { notify, notify_contact_ids } = req.body ?? {}
+
+        const deleted = await ZohoDeleteCustomerPayment(access_token, id, paymentId)
+        deleteCache("customers")
+        await adjustTodayFor(deleted.date, -Number(deleted.amount))
+
+        const change: PaymentChange = { kind: "deletion", customer_id: id, payment_number: deleted.payment_number ?? "" }
+        await savePaymentChange(paymentId, change)
+        const notified = notify ? await notifyPaymentChange(access_token, change, notify_contact_ids) : false
+
+        res.status(200).json({ notified })
+    } catch (error) {
+        console.error('Error deleting customer payment:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to delete the payment' });
+    }
+};
+
+/** Re-sends the WhatsApp message for a payment's last edit or deletion (kept for a week). */
+export async function resendPaymentChangeNotification(req: Request, res: Response) {
+    const id = req.params.id as string
+    const paymentId = req.params.paymentId as string
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured sending the notification")
+        const raw = await redisClient.get(paymentChangeKey(paymentId))
+        if (!raw) throw new Error("There's no recent change to this payment to send")
+        const change = JSON.parse(raw) as PaymentChange
+        if (change.customer_id !== id) throw new Error("Payment does not belong to this customer")
+
+        const notified = await notifyPaymentChange(access_token, change, req.body?.notify_contact_ids)
+        res.status(200).json({ notified })
+    } catch (error) {
+        console.error('Error re-sending payment change notification:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send notification' });
     }
 };

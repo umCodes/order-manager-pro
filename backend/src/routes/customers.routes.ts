@@ -8,6 +8,9 @@ import {
     payCustomerBalance,
     getCustomerPayments,
     sendCustomerPaymentNotification,
+    updateCustomerPayment,
+    deleteCustomerPayment,
+    resendPaymentChangeNotification,
     getCustomerDraftInvoices,
     addCustomerContact,
     updateCustomerContact,
@@ -26,6 +29,9 @@ customersRouter.get('/customers/:id/invoices/drafts', getCustomerDraftInvoices);
 customersRouter.get('/customers/:id/payments', getCustomerPayments);
 customersRouter.post('/customers/:id/payments', payCustomerBalance);
 customersRouter.post('/customers/:id/payments/:paymentId/notify', sendCustomerPaymentNotification);
+customersRouter.patch('/customers/:id/payments/:paymentId', updateCustomerPayment);
+customersRouter.delete('/customers/:id/payments/:paymentId', deleteCustomerPayment);
+customersRouter.post('/customers/:id/payments/:paymentId/notify-change', resendPaymentChangeNotification);
 customersRouter.post('/customers/:id/contacts', addCustomerContact);
 customersRouter.put('/customers/:id/contacts/:contactId', updateCustomerContact);
 customersRouter.delete('/customers/:id/contacts/:contactId', deleteCustomerContact);

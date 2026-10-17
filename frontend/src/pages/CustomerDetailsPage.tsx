@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, CheckCircle2, Coffee, ExternalLink, MapPin, Pencil, Send, ShoppingBasket, TriangleAlert, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Coffee, ExternalLink, MapPin, Pencil, Send, ShoppingBasket, Trash2, TriangleAlert, UserCheck, UserPlus, UserX, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import {
   fetchCustomerById,
   fetchCustomerDraftInvoices,
   fetchCustomerPayments,
   sendCustomerPaymentNotification,
   recordCustomerPayment,
+  updateCustomerPayment,
+  deleteCustomerPayment,
+  resendPaymentChangeNotification,
   addCustomerContact,
   updateCustomerContact,
   deleteCustomerContact,
@@ -28,6 +31,7 @@ import { getContactList, getPrimaryContact, LEGACY_CONTACT_ID } from "../lib/con
 import ClickableCard from "../components/ClickableCard";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
+import PaymentChangeModal from "../components/PaymentChangeModal";
 import AddCustomerModal from "../components/AddCustomerModal";
 import ContactCard from "../components/ContactCard";
 import AddContactModal from "../components/AddContactModal";
@@ -58,7 +62,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
 };
 
 /** How many of the customer's latest payments (and return credits) the Recent Payments section shows. */
-const RECENT_PAYMENTS_SHOWN = 3;
+const RECENT_PAYMENTS_SHOWN = 6;
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -101,6 +105,11 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   const [sendingPayment, setSendingPayment] = useState<CustomerPayment | null>(null);
   const [sendPaymentStep, setSendPaymentStep] = useState<SendPaymentStep>("closed");
   const [isSendingPayment, setIsSendingPayment] = useState(false);
+  // A payment being edited or deleted, and what happened to the last one.
+  const [paymentChange, setPaymentChange] = useState<{ mode: "edit" | "delete"; payment: CustomerPayment } | null>(null);
+  const [isSavingPaymentChange, setIsSavingPaymentChange] = useState(false);
+  const [paymentChangeError, setPaymentChangeError] = useState<string | null>(null);
+  const [paymentChangeSummary, setPaymentChangeSummary] = useState<string | null>(null);
   const [notifyBanner, setNotifyBanner] = useState<"success" | "failed" | null>(null);
   // Where the last payment's discount landed, e.g. "Discount applied: 500 on INV-102."
   const [discountSummary, setDiscountSummary] = useState<string | null>(null);
@@ -146,6 +155,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     if (!customer) return;
     setIsRecordingPayment(true);
     setDiscountSummary(null);
+    setPaymentChangeSummary(null);
     recordCustomerPayment(customer.contact_id, amount, discount, notify, notifyContactIds)
       .then((result) => {
         setIsPaymentModalOpen(false);
@@ -191,6 +201,67 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         setIsSendingPayment(false);
         setSendPaymentStep("closed");
       });
+  }
+
+  function reloadPaymentsAndCustomer() {
+    fetchCustomerPayments(customerId)
+      .then((list) => {
+        setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
+        setPaymentsError(null);
+      })
+      .catch(() => {});
+    fetchCustomerById(customerId)
+      .then(setCustomer)
+      .catch(() => {});
+  }
+
+  /** Re-sends the correction/deletion message for a payment's last change (the server kept its details). */
+  function runResendPaymentChange(paymentId: string, notifyContactIds?: string[]) {
+    if (!customer) return;
+    const retry = () => runResendPaymentChange(paymentId, notifyContactIds);
+    setIsSendingPayment(true);
+    setNotifyBanner(null);
+    resendPaymentChangeNotification(customer.contact_id, paymentId, notifyContactIds)
+      .then((result) => {
+        setNotifyBanner(result.notified ? "success" : "failed");
+        setNotifyRetry(result.notified ? null : () => retry);
+      })
+      .catch(() => {
+        setNotifyBanner("failed");
+        setNotifyRetry(() => retry);
+      })
+      .finally(() => setIsSendingPayment(false));
+  }
+
+  /** Saves an edit (new amount) or a delete of `paymentChange`, optionally notifying the customer. */
+  function handleSubmitPaymentChange(amount: number | undefined, notify: boolean, notifyContactIds?: string[]) {
+    if (!customer || !paymentChange) return;
+    const { mode, payment } = paymentChange;
+    const label = payment.payment_number || "Payment";
+    setIsSavingPaymentChange(true);
+    setPaymentChangeError(null);
+    setNotifyBanner(null);
+    setDiscountSummary(null);
+    const request =
+      mode === "edit" && amount !== undefined
+        ? updateCustomerPayment(customer.contact_id, payment.payment_id, amount, notify, notifyContactIds)
+        : deleteCustomerPayment(customer.contact_id, payment.payment_id, notify, notifyContactIds);
+    request
+      .then((result) => {
+        setPaymentChange(null);
+        setPaymentChangeSummary(
+          mode === "edit"
+            ? `${label} changed from ${currency(payment.amount)} to ${currency(amount ?? 0)}.`
+            : `${label} (${currency(payment.amount)}) deleted.`,
+        );
+        if (notify) {
+          setNotifyBanner(result.notified ? "success" : "failed");
+          setNotifyRetry(result.notified ? null : () => () => runResendPaymentChange(payment.payment_id, notifyContactIds));
+        }
+        reloadPaymentsAndCustomer();
+      })
+      .catch((e) => setPaymentChangeError(e instanceof Error ? e.message : "Failed to save the change"))
+      .finally(() => setIsSavingPaymentChange(false));
   }
 
   function handleConfirmSendPayment() {
@@ -525,6 +596,13 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             )}
           </div>
 
+          {paymentChangeSummary && (
+            <div className="notify-banner notify-banner--success">
+              <CheckCircle2 className="notify-banner__icon" size={14} />
+              {paymentChangeSummary}
+            </div>
+          )}
+
           {discountSummary && (
             <div className="notify-banner notify-banner--success">
               <CheckCircle2 className="notify-banner__icon" size={14} />
@@ -592,6 +670,36 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                             <Send size={14} />
                           </button>
                         )}
+                        {payment.kind !== "return_credit" && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              onClick={() => {
+                                setPaymentChangeError(null);
+                                setPaymentChange({ mode: "edit", payment });
+                              }}
+                              disabled={isSavingPaymentChange}
+                              aria-label={`Edit payment ${payment.payment_number ?? ""}`}
+                              title="Edit payment"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn--danger"
+                              onClick={() => {
+                                setPaymentChangeError(null);
+                                setPaymentChange({ mode: "delete", payment });
+                              }}
+                              disabled={isSavingPaymentChange}
+                              aria-label={`Delete payment ${payment.payment_number ?? ""}`}
+                              title="Delete payment"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="draft-card__bottom">
@@ -618,6 +726,19 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
           customer={customer}
           onCancel={() => setIsPaymentModalOpen(false)}
           onSubmit={handleSubmitPayment}
+        />
+      )}
+
+      {paymentChange && customer && (
+        <PaymentChangeModal
+          key={`${paymentChange.mode}-${paymentChange.payment.payment_id}`}
+          mode={paymentChange.mode}
+          payment={paymentChange.payment}
+          customer={customer}
+          isSaving={isSavingPaymentChange}
+          error={paymentChangeError}
+          onCancel={() => setPaymentChange(null)}
+          onSubmit={handleSubmitPaymentChange}
         />
       )}
 

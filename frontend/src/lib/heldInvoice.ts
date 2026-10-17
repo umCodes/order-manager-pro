@@ -28,7 +28,7 @@ export function loadHeldInvoice(): HeldInvoice | null {
       cart: value.cart,
       contactId: typeof value.contactId === "string" ? value.contactId : "",
       scheduledDate: typeof value.scheduledDate === "string" ? value.scheduledDate : null,
-      mode: value.mode === "update" ? "update" : "new",
+      mode: value.mode === "update" || value.mode === "items" ? value.mode : "new",
       draftId: typeof value.draftId === "string" ? value.draftId : null,
       heldAt: typeof value.heldAt === "number" ? value.heldAt : Date.now(),
     };

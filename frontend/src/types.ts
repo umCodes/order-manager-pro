@@ -60,7 +60,8 @@ export type InvoiceLineItem = CartLine & {
 export type TabKey = "invoices" | "messages" | "drafts" | "items" | "customers";
 
 /** "new" always creates a fresh invoice; "update" edits a specific existing draft, chosen by invoice number. */
-export type InvoiceMode = "new" | "update";
+/** "items" sends only the item list to Telegram — no invoice, no customer. */
+export type InvoiceMode = "new" | "update" | "items";
 
 /**
  * One row of a customer's payments list: a recorded payment, or a return

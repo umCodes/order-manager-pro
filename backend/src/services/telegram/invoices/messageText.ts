@@ -53,6 +53,20 @@ export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[],
     return invoiceMessage(invoice, itemLines, undefined, suffixNotice);
 }
 
+/** Heads an items-only post (no invoice behind it), in place of an invoice number. */
+export const ITEMS_LIST_HEADER = "📦 የእቃ ዝርዝር (ደረሰኝ የለውም)";
+
+/**
+ * An items-only post: the same item lines and day line as an invoice
+ * message, under ITEMS_LIST_HEADER instead of an invoice number. The day
+ * line is left out when no date was picked.
+ */
+export function itemsListMessageText(line_items: ItemWithQuantity[], date?: string) {
+    const itemLines = visible(line_items).map((item) => `${quantityCalc(item.quantity, item.unit)} ${item.description}`);
+    const dayLine = invoiceDayLine({ date });
+    return [ITEMS_LIST_HEADER, itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
+}
+
 /** Sums quantities per item, so an item split over two lines compares as one. */
 function totalsByItem(line_items: ItemWithQuantity[]) {
     const totals = new Map<string, ItemWithQuantity>();

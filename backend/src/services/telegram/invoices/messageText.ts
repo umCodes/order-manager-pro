@@ -53,6 +53,17 @@ export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[],
     return invoiceMessage(invoice, itemLines, undefined, suffixNotice);
 }
 
+/**
+ * An items-only post: the same item lines and day line as an invoice
+ * message, with nothing above the items (no invoice number, no heading).
+ * The day line is left out when no date was picked.
+ */
+export function itemsListMessageText(line_items: ItemWithQuantity[], date?: string) {
+    const itemLines = visible(line_items).map((item) => `${quantityCalc(item.quantity, item.unit)} ${item.description}`);
+    const dayLine = invoiceDayLine({ date });
+    return [itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
+}
+
 /** Sums quantities per item, so an item split over two lines compares as one. */
 function totalsByItem(line_items: ItemWithQuantity[]) {
     const totals = new Map<string, ItemWithQuantity>();

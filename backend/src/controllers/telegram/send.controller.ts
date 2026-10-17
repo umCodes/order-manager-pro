@@ -3,6 +3,9 @@ import { TelegramSendMessage, TelegramReplyToMessage } from '../../services/tele
 import { ZohoGetInvoiceById } from '../../services/zoho/invoices/index.js';
 import { redisClient } from '../../config/redis.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
+import { itemsListMessageText } from '../../services/telegram/invoices/messageText.js';
+import { sortLineItemsByCategory } from '../../services/lineItemOrder.js';
+import { excludeInternalLineItems } from '../../utils/internalLineItems.js';
 
 /** Posts a free-text message to the team's channel. */
 export async function sendMessage(req: Request, res: Response) {
@@ -21,6 +24,34 @@ export async function sendMessage(req: Request, res: Response) {
             res.status(500).json({ error: 'Failed to send message' });
         console.error('Error sending message:', error);
         return
+    }
+}
+
+/**
+ * Posts a list of items to the channel without creating an invoice (the
+ * Invoice tab's "Items Only" mode). Takes the same `line_items` shape as
+ * invoice creation, sorted by category the same way; lines marked internal
+ * ("###") are left out. Nothing is written to Zoho.
+ */
+export async function sendItemsList(req: Request, res: Response) {
+    try {
+        const { line_items, date } = req.body ?? {};
+        if (!Array.isArray(line_items) || line_items.length === 0) throw new Error("line_items (non-empty array) are required")
+        if (date !== undefined && typeof date !== "string") throw new Error("date must be a string")
+
+        const access_token = requireAccessToken(req, "A problem occured getting items");
+        const sorted = await sortLineItemsByCategory(access_token, line_items);
+        const visibleItems = excludeInternalLineItems(sorted);
+        if (visibleItems.length === 0) throw new Error("Every item is excluded from Telegram, so there's nothing to send")
+
+        const message = await TelegramSendMessage(itemsListMessageText(visibleItems, date || undefined));
+        res.status(201).json({ message });
+    } catch (error) {
+        if (error instanceof Error)
+            res.status(400).json({ error: error.message });
+        else
+            res.status(500).json({ error: 'Failed to send items list' });
+        console.error('Error sending items list:', error);
     }
 }
 

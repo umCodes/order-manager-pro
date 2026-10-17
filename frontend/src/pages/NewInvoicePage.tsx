@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Info, Pause, Play, Trash2 } from "lucide-react";
+import { Info, Pause, Play, Send, Trash2 } from "lucide-react";
 import AddItemModal from "../components/AddItemModal";
 import ConfirmModal from "../components/ConfirmModal";
 import CustomerCombobox from "../components/CustomerCombobox";
@@ -12,6 +12,7 @@ import {
   fetchCustomers,
   fetchInvoiceById,
   fetchItems,
+  sendItemsListToTelegram,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import type { HeldInvoice } from "../lib/heldInvoice";
@@ -64,7 +65,9 @@ type Props = {
  * line items. A top toggle switches between "Create New Invoice" (always
  * posts a brand-new invoice, cart starts empty) and "Update Draft" (a second
  * dropdown lets you pick which of the customer's existing drafts, by invoice
- * number, to load and update).
+ * number, to load and update). A third mode, "Items Only", sends just the
+ * item list to Telegram with no customer and no invoice in Zoho — its own
+ * mode (and look) so an invoice without a customer is never made by mistake.
  *
  * "Hold" puts the whole form (either mode) aside into a single slot and
  * clears it for the next order; "Resume" brings it back, swapping with
@@ -97,6 +100,7 @@ export default function NewInvoicePage({
   // submission, and resets back to checked after each one so skipping it
   // is always a deliberate choice, never a leftover setting.
   const [notifyTelegram, setNotifyTelegram] = useState(true);
+  const [itemsSentNotice, setItemsSentNotice] = useState(false);
   const [heldConfirm, setHeldConfirm] = useState<"replace" | "remove" | null>(null);
   const draftsFetchIdRef = useRef(0);
   const draftItemsFetchIdRef = useRef(0);
@@ -154,7 +158,16 @@ export default function NewInvoicePage({
   function selectMode(nextMode: InvoiceMode) {
     setMode(nextMode);
     setDraftId(null);
+    setSubmitError(null);
+    setItemsSentNotice(false);
     onCartChange(keepManualLines(cart));
+    // Items Only has no customer: drop it rather than keep one hidden.
+    if (nextMode === "items") {
+      setSelectedContactId("");
+      draftsFetchIdRef.current++;
+      setIsLoadingDrafts(false);
+      setCustomerDrafts([]);
+    }
   }
 
   function selectDraft(nextDraftId: string) {
@@ -199,7 +212,39 @@ export default function NewInvoicePage({
     setIsAddItemOpen(true);
   }
 
+  function toLinePayload(li: InvoiceLineItem) {
+    return {
+      item_id: li.item_id,
+      description: li.excludeFromTelegram ? `${li.description} ###` : li.description,
+      quantity: li.quantity,
+      rate: li.rate,
+      unit: li.unit,
+    };
+  }
+
+  /** Items Only: posts the list to Telegram, creates nothing in Zoho, then goes back to Create New Invoice. */
+  async function sendItemsOnly() {
+    if (mode !== "items" || lineItems.length === 0) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await sendItemsListToTelegram({
+        ...(scheduledDate ? { date: scheduledDate } : {}),
+        line_items: lineItems.map(toLinePayload),
+      });
+      onCartChange({});
+      setScheduledDate(null);
+      setMode("new");
+      setItemsSentNotice(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Failed to send items list");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   async function submitInvoice() {
+    if (mode === "items") return sendItemsOnly();
     if (!selectedContactId || lineItems.length === 0) return;
     if (mode === "update" && !draftId) return;
 
@@ -212,13 +257,7 @@ export default function NewInvoicePage({
         ...(scheduledDate ? { date: scheduledDate } : {}),
         ...(mode === "update" && draftId ? { invoice_id: draftId } : {}),
         ...(notifyTelegram ? {} : { skip_telegram: true }),
-        line_items: lineItems.map((li) => ({
-          item_id: li.item_id,
-          description: li.excludeFromTelegram ? `${li.description} ###` : li.description,
-          quantity: li.quantity,
-          rate: li.rate,
-          unit: li.unit,
-        })),
+        line_items: lineItems.map(toLinePayload),
       });
       onCartChange({});
       setSelectedContactId("");
@@ -246,6 +285,7 @@ export default function NewInvoicePage({
     setMode(invoice?.mode ?? "new");
     setDraftId(invoice?.draftId ?? null);
     setSubmitError(null);
+    setItemsSentNotice(false);
     if (invoice?.contactId) {
       loadDraftsForCustomer(invoice.contactId);
     } else {
@@ -276,18 +316,28 @@ export default function NewInvoicePage({
     const contact = contacts.find((c) => c.contact_id === heldInvoice.contactId);
     const lines = Object.values(heldInvoice.cart);
     return {
-      name: contact ? contact.company_name || contact.contact_name : heldInvoice.contactId ? "Customer" : "No customer yet",
+      name:
+        heldInvoice.mode === "items"
+          ? "No customer"
+          : contact
+            ? contact.company_name || contact.contact_name
+            : heldInvoice.contactId
+              ? "Customer"
+              : "No customer yet",
       itemCount: lines.length,
       total: lines.reduce((sum, line) => sum + line.rate * line.quantity, 0),
     };
   }, [heldInvoice, contacts]);
   const canSubmit =
-    !!selectedContactId && lineItems.length > 0 && !isSubmitting && !isLoadingItems && (mode === "new" || !!draftId);
+    lineItems.length > 0 &&
+    !isSubmitting &&
+    !isLoadingItems &&
+    (mode === "items" || (!!selectedContactId && (mode === "new" || !!draftId)));
 
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">New Invoice</h1>
+        <h1 className="page-title">{mode === "items" ? "Items List" : "New Invoice"}</h1>
         <div className="page-header__actions">
           <button
             type="button"
@@ -304,7 +354,7 @@ export default function NewInvoicePage({
       {heldInvoice && heldSummary && (
         <div className="held-invoice" role="status">
           <div className="held-invoice__text">
-            <div className="held-invoice__title">Invoice on hold{heldInvoice.mode === "update" ? " (draft update)" : ""}</div>
+            <div className="held-invoice__title">{heldInvoice.mode === "items" ? "Items list on hold" : `Invoice on hold${heldInvoice.mode === "update" ? " (draft update)" : ""}`}</div>
             <div className="held-invoice__detail">
               {heldSummary.name} · {heldSummary.itemCount} {heldSummary.itemCount === 1 ? "item" : "items"} · {currency(heldSummary.total)}
             </div>
@@ -338,7 +388,7 @@ export default function NewInvoicePage({
           className={`mode-toggle__option${mode === "new" ? " mode-toggle__option--active" : ""}`}
           onClick={() => selectMode("new")}
         >
-          Create New Invoice
+          New Invoice
         </button>
         <button
           type="button"
@@ -347,13 +397,26 @@ export default function NewInvoicePage({
         >
           Update Draft
         </button>
+        <button
+          type="button"
+          className={`mode-toggle__option mode-toggle__option--items${mode === "items" ? " mode-toggle__option--active" : ""}`}
+          onClick={() => selectMode("items")}
+        >
+          Items Only
+        </button>
       </div>
 
-      <CustomerCombobox
-        contacts={contacts}
-        selectedContactId={selectedContactId}
-        onSelect={selectContact}
-      />
+      {mode === "items" ? (
+        <div className="items-only-notice">
+          <Send size={15} className="items-only-notice__icon" />
+          <div>
+            <strong>No invoice will be created.</strong> Only this list of items is sent to the Telegram channel — no
+            customer, nothing saved in Zoho.
+          </div>
+        </div>
+      ) : (
+        <CustomerCombobox contacts={contacts} selectedContactId={selectedContactId} onSelect={selectContact} />
+      )}
 
       {mode === "new" && selectedContactId && !isLoadingDrafts && customerDrafts.length > 0 && (
         <div className="draft-hint">
@@ -395,23 +458,38 @@ export default function NewInvoicePage({
         )}
       </div>
 
-      <label className="field" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-        <input
-          type="checkbox"
-          checked={notifyTelegram}
-          onChange={(e) => setNotifyTelegram(e.target.checked)}
-        />
-        <span className="field-label" style={{ margin: 0 }}>
-          Send to Telegram channel
-        </span>
-      </label>
+      {mode !== "items" && (
+        <label className="field" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={notifyTelegram}
+            onChange={(e) => setNotifyTelegram(e.target.checked)}
+          />
+          <span className="field-label" style={{ margin: 0 }}>
+            Send to Telegram channel
+          </span>
+        </label>
+      )}
 
       {submitError && <div className="form-error">{submitError}</div>}
 
-      <button type="button" className="btn btn--primary btn--full" disabled={!canSubmit} onClick={submitInvoice}>
+      {itemsSentNotice && mode === "new" && lineItems.length === 0 && (
+        <div className="items-sent-notice" role="status">Items list sent to Telegram. No invoice was created.</div>
+      )}
+
+      <button
+        type="button"
+        className={`btn btn--primary btn--full${mode === "items" ? " btn--items-only" : ""}`}
+        disabled={!canSubmit}
+        onClick={submitInvoice}
+      >
         {isSubmitting
-          ? "Submitting..."
-          : notifyTelegram
+          ? mode === "items"
+            ? "Sending..."
+            : "Submitting..."
+          : mode === "items"
+            ? "Send Items to Telegram"
+            : notifyTelegram
             ? mode === "update"
               ? "Update Draft"
               : "Submit Invoice"

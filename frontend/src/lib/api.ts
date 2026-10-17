@@ -488,6 +488,25 @@ export async function fetchRecentInvoices(): Promise<DraftInvoice[]> {
   return data.invoices;
 }
 
+/** Posts just a list of items to the Telegram channel ("Items Only" mode): no invoice is created. */
+export async function sendItemsListToTelegram(payload: {
+  date?: string;
+  line_items: { item_id: string; description: string; quantity: number; unit: string }[];
+}) {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/items-list`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to send items list (${response.status})`);
+  }
+
+  return response.json();
+}
+
 export async function sendTelegramMessage(text: string) {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages`, {
     method: "POST",

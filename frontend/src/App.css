@@ -743,6 +743,41 @@
   color: var(--color-white);
 }
 
+/* Items Only mode: blue (Telegram's colour) so it never looks like an invoice. */
+.mode-toggle__option--items.mode-toggle__option--active {
+  background: #229ed9;
+}
+
+.items-only-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #9fd5ef;
+  border-left: 4px solid #229ed9;
+  border-radius: var(--radius-md);
+  background: #eef8fd;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #0b5c80;
+}
+
+.items-only-notice__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.btn.btn--items-only:not(:disabled) {
+  background: #229ed9;
+}
+
+.items-sent-notice {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--color-green-700);
+}
+
 .form-error {
   margin-bottom: 12px;
   font-size: 13px;

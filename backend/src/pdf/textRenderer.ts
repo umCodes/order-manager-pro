@@ -111,6 +111,7 @@ export function createTextRenderer(doc: PDFKit.PDFDocument, currency: string) {
     const SUFFIX_PATTERN = /^([\d.]+)(.*)$/;
 
     const drawQuantityCalc = (value: string, x: number, y: number) => {
+      if (!value) return;
       const match = SUFFIX_PATTERN.exec(value);
       if (!match) {
         drawMixedText(value, x, y);

@@ -80,6 +80,7 @@ const SUFFIX_PATTERN = /^([\d.]+)(.*)$/;
  * drawQuantityCalc already uses for the same reason — avoids it.
  */
 function drawSplitCentered(doc: PDFKit.PDFDocument, text: string, centerX: number, y: number) {
+  if (!text) return;
   const match = SUFFIX_PATTERN.exec(text);
   if (!match) {
     doc.text(text, centerX - doc.widthOfString(text) / 2, y, { lineBreak: false });

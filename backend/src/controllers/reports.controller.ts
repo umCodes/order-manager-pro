@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { businessDayKey, previousBusinessDay } from '../utils/businessDate.js';
 import { buildDailyReport } from '../services/dailyReport/report.js';
-import { scheduleDayCleanup } from '../services/dailyReport/store.js';
+import { markReportHandedOver } from '../services/dailyReport/store.js';
 import { createDailyReportPdfBuffer } from '../pdf/dailyReport.js';
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -16,8 +16,8 @@ export function getDailyReportDays(_req: Request, res: Response) {
 /**
  * The daily report PDF for `?day=YYYY-MM-DD` (default: the last finished
  * business day). Works with nothing recorded too — the PDF then says so.
- * Downloading a finished day's report schedules its data to be cleared a
- * few hours later (see scheduleDayCleanup).
+ * Downloading a finished day's report counts as handing it over: its data is
+ * then kept 3 more days instead of 7 (see markReportHandedOver).
  */
 export async function getDailyReportPdf(req: Request, res: Response) {
     try {
@@ -28,7 +28,7 @@ export async function getDailyReportPdf(req: Request, res: Response) {
 
         const report = await buildDailyReport(access_token, requested);
         const pdf = await createDailyReportPdfBuffer(report);
-        await scheduleDayCleanup(requested);
+        await markReportHandedOver(requested);
 
         res.setHeader("Content-Type", "application/pdf");
         const disposition = req.query.download === "1" ? "attachment" : "inline";

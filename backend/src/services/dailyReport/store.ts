@@ -1,5 +1,5 @@
 import { redisClient } from "../../config/redis.js"
-import { businessDayKey } from "../../utils/businessDate.js"
+import { businessDayKey, businessDayWindow } from "../../utils/businessDate.js"
 
 /**
  * The daily report's own record of what happened each business day (4am to
@@ -11,9 +11,10 @@ import { businessDayKey } from "../../utils/businessDate.js"
  * Kept in Redis per day, one hash per kind keyed by its id:
  *   daily-report:<day>:payments | :invoices | :returns | :drafts
  * plus `daily-report:index:<kind>:<id>` → day, so a later edit, delete or
- * void finds the day its record is under. Everything expires after
- * RETENTION_SECONDS, or a few hours after that day's report is downloaded
- * (see scheduleDayCleanup). Recording is best-effort: a failure here is
+ * void finds the day its record is under. A day's records are kept
+ * KEEP_DAYS_UNTOUCHED days after that business day ends, or
+ * KEEP_DAYS_AFTER_HANDOVER days once its report has been handed over
+ * (see markReportHandedOver). Recording is best-effort: a failure here is
  * logged and never fails the action itself.
  */
 
@@ -36,9 +37,27 @@ export type ReportDraft = { invoice_id: string; number: string; customer: string
 
 type Kind = "payments" | "invoices" | "returns" | "drafts"
 
-const RETENTION_SECONDS = 8 * 24 * 60 * 60
-/** How long a finished day's data is kept once its report has been downloaded. */
-export const CLEANUP_AFTER_DOWNLOAD_SECONDS = 6 * 60 * 60
+const DAY_SECONDS = 24 * 60 * 60
+/** Days a business day's records are kept after it ends, if its report is never handed over. */
+export const KEEP_DAYS_UNTOUCHED = 7
+/** Days a business day's records are kept once its report has been handed over (downloaded, or later delivered on WhatsApp). */
+export const KEEP_DAYS_AFTER_HANDOVER = 3
+
+/** Seconds from now until a business day's records expire if nothing else happens: KEEP_DAYS_UNTOUCHED after the day ends. */
+function untouchedSecondsLeft(day: string) {
+    const expireAt = businessDayWindow(day).end.getTime() + KEEP_DAYS_UNTOUCHED * DAY_SECONDS * 1000
+    return Math.max(60, Math.round((expireAt - Date.now()) / 1000))
+}
+
+/**
+ * Sets `key` to expire in `seconds`, unless it's already due to expire
+ * sooner. Uses TTL/EXPIRE only, which every Redis version has.
+ */
+async function expireNoLater(key: string, seconds: number) {
+    const ttl = await redisClient.ttl(key)
+    if (ttl === -2) return // key doesn't exist
+    if (ttl === -1 || ttl > seconds) await redisClient.expire(key, seconds)
+}
 
 const dayKey = (day: string, kind: Kind) => `daily-report:${day}:${kind}`
 const indexKey = (kind: Kind, id: string) => `daily-report:index:${kind}:${id}`
@@ -62,8 +81,10 @@ async function put(kind: Kind, id: string, record: object, day = businessDayKey(
     try {
         const key = dayKey(day, kind)
         await redisClient.hSet(key, id, JSON.stringify(record))
-        await redisClient.expire(key, RETENTION_SECONDS)
-        await redisClient.set(indexKey(kind, id), day, { EX: RETENTION_SECONDS })
+        const seconds = untouchedSecondsLeft(day)
+        // Never pushes back an earlier expiry set by a handover (see markReportHandedOver).
+        await expireNoLater(key, seconds)
+        await redisClient.set(indexKey(kind, id), day, { EX: seconds })
     } catch (error) {
         console.error(`Daily report: failed to record ${kind} ${id}`, error)
     }
@@ -241,19 +262,16 @@ export async function readReportDay(day: string) {
 }
 
 /**
- * Once a finished day's report has been downloaded, its data is kept only a
- * few more hours (in case it's needed again), then expires. Never shortens a
- * day that's still running.
+ * A finished day's report was handed over (downloaded from the app; later,
+ * delivered on WhatsApp): its records are now kept KEEP_DAYS_AFTER_HANDOVER
+ * more days — in case it's needed again — instead of KEEP_DAYS_UNTOUCHED.
+ * Only ever brings the expiry forward, and never touches a day still running.
  */
-export async function scheduleDayCleanup(day: string) {
+export async function markReportHandedOver(day: string) {
     if (day >= businessDayKey()) return
     try {
-        for (const kind of KINDS) {
-            const key = dayKey(day, kind)
-            const ttl = await redisClient.ttl(key)
-            if (ttl < 0 || ttl > CLEANUP_AFTER_DOWNLOAD_SECONDS) await redisClient.expire(key, CLEANUP_AFTER_DOWNLOAD_SECONDS)
-        }
+        for (const kind of KINDS) await expireNoLater(dayKey(day, kind), KEEP_DAYS_AFTER_HANDOVER * DAY_SECONDS)
     } catch (error) {
-        console.error(`Daily report: failed to schedule cleanup of ${day}`, error)
+        console.error(`Daily report: failed to shorten the keeping of ${day}`, error)
     }
 }

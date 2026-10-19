@@ -13,6 +13,7 @@ import type { LineItem, ZohoInvoice } from "../zoho/types.js"
 import { todayInBusinessTimezone } from "../../utils/businessDate.js"
 import { getAppliedInvoices } from "../../utils/getAppliedInvoices.js"
 import { recordReportReturn } from "../dailyReport/store.js"
+import { confirmVisitByActivity } from "../visits.js"
 
 /**
  * "Return Invoice" in the app = a Zoho credit note against the original
@@ -264,6 +265,7 @@ export async function createInvoiceReturn(
         const creditNoteId = String(creditNote.creditnote_id)
         await redisClient.sAdd(returnsKey(invoiceId), creditNoteId)
         await recordReportReturn(creditNote, invoice, lineItems)
+        await confirmVisitByActivity(invoice.customer_id, "return")
 
         const warnings: string[] = []
 

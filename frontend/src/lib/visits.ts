@@ -55,13 +55,6 @@ export function visitSummary(current: VisitsState) {
   return { visits, overdue, dueToday, total: visits.length };
 }
 
-/** The customer's visit if it's due (today or overdue) — what a payment, delivery or return can confirm. */
-export function dueVisitFor(customerId: string | undefined | null): ScheduledVisit | null {
-  if (!customerId) return null;
-  const visit = state.byCustomer[String(customerId)];
-  return visit && visit.day <= state.today ? visit : null;
-}
-
 export async function scheduleVisit(customerId: string, customerName: string, day: string) {
   const visit = await scheduleCustomerVisit(customerId, customerName, day);
   setState({ ...state, byCustomer: { ...state.byCustomer, [customerId]: visit } });
@@ -126,41 +119,4 @@ export function visitDayLabel(day: string, today: string) {
   if (day === today) return "Today";
   if (day === addDays(today, 1)) return "Tomorrow";
   return plain;
-}
-
-// ---------- "Mark today's visit as done?" after a payment, delivery or return ----------
-
-export type VisitActivity = "payment" | "delivery" | "return";
-type VisitPrompt = { customerId: string; customerName: string; activity: VisitActivity } | null;
-
-let prompt: VisitPrompt = null;
-const promptListeners = new Set<() => void>();
-
-function setPrompt(next: VisitPrompt) {
-  prompt = next;
-  for (const listener of promptListeners) listener();
-}
-
-export function useVisitPrompt(): VisitPrompt {
-  return useSyncExternalStore(
-    (listener) => {
-      promptListeners.add(listener);
-      return () => promptListeners.delete(listener);
-    },
-    () => prompt,
-  );
-}
-
-/**
- * After a payment, delivery (invoice marked as sent) or return for a
- * customer: if they have a visit due (today or overdue), ask whether to mark
- * it done, confirmed by that activity. Does nothing otherwise.
- */
-export function offerVisitCompletion(customerId: string | number | undefined | null, activity: VisitActivity) {
-  const visit = dueVisitFor(customerId == null ? null : String(customerId));
-  if (visit) setPrompt({ customerId: visit.customer_id, customerName: visit.customer_name, activity });
-}
-
-export function dismissVisitPrompt() {
-  setPrompt(null);
 }

@@ -5,8 +5,9 @@ import { businessDayKey } from "../utils/businessDate.js"
  * Customer visits: a visit is scheduled for a business day (4am to 4am, see
  * businessDate.ts), the customer stays pinned until it's marked done, and
  * marking it done records how it was confirmed — by the phone's location
- * compared with the customer's map location, or by a payment, delivery or
- * return made for that customer.
+ * compared with the customer's map location, or automatically by a payment,
+ * delivery (invoice marked as sent) or return made for that customer (see
+ * confirmVisitByActivity).
  *
  * Kept in Redis so every phone sees the same list:
  *   visits:scheduled  — hash, customer id → ScheduledVisit (one per customer)
@@ -172,4 +173,20 @@ export async function resolveLinkCoordinates(link: string): Promise<{ lat: numbe
     }
     await redisClient.set(cacheKey, found ? JSON.stringify(found) : "none", { EX: 30 * 24 * 60 * 60 }).catch(() => {})
     return found
+}
+
+/**
+ * A payment, delivery (invoice marked as sent) or return for a customer
+ * means they were visited: closes their scheduled visit, if any, confirmed
+ * by that activity — whatever day it was scheduled for. Never throws: a
+ * failure here mustn't fail the payment, delivery or return itself.
+ */
+export async function confirmVisitByActivity(customerId: string | number | undefined | null, activity: "payment" | "delivery" | "return") {
+    if (customerId === undefined || customerId === null || customerId === "") return null
+    try {
+        return await completeVisit(String(customerId), { confirmation: activity })
+    } catch (error) {
+        console.error(`Visits: failed to confirm the visit of customer ${customerId} by ${activity}`, error)
+        return null
+    }
 }

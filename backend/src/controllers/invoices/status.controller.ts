@@ -12,6 +12,7 @@ import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { addToCollectedToday } from "../../services/dailyTotals.js";
 import { deleteCache } from "../../utils/cache.js";
 import { recordReportInvoiceSent, recordReportPayment, removeReportInvoice } from "../../services/dailyReport/store.js";
+import { confirmVisitByActivity } from "../../services/visits.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -37,6 +38,7 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     deleteCache("customers");
     await addToCollectedToday(Number(amount));
     await recordReportPayment(payment, invoiceBeforePayment.customer_name);
+    await confirmVisitByActivity(invoiceBeforePayment.customer_id, "payment");
     // Paying a draft sends it: it becomes one of the day's sales.
     if (wasDraft) {
       await recordReportInvoiceSent({
@@ -91,6 +93,7 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     await deleteInvoiceTelegramMessage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
     await recordReportInvoiceSent(invoice);
+    await confirmVisitByActivity(invoice.customer_id, "delivery");
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
 

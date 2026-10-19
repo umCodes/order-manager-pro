@@ -26,7 +26,7 @@ import ReturnNotices from "../components/ReturnNotices";
 import PaymentModal from "../components/PaymentModal";
 import ReturnInvoiceFlow from "../components/ReturnInvoiceFlow";
 import VisitButton from "../components/VisitButton";
-import { offerVisitCompletion } from "../lib/visits";
+import { refreshVisits } from "../lib/visits";
 import type { CreatedInvoiceReturn } from "../lib/api";
 import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
@@ -467,7 +467,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactIds))
       .then((result) => {
         setIsPaymentModalOpen(false);
-        offerVisitCompletion(invoice.customer_id, "payment");
+        refreshVisits();
         if (notify) {
           const succeeded = wasDraft ? result.notified.balance : result.notified.payment;
           setNotifyBanner(succeeded ? "success" : "failed");
@@ -517,7 +517,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactIds))
       .then((result) => {
         setMarkSentNotifyStep("closed");
-        offerVisitCompletion(invoice.customer_id, "delivery");
+        refreshVisits();
         if (notify) {
           setNotifyBanner(result.notified ? "success" : "failed");
           if (!result.notified) {
@@ -1165,7 +1165,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           onCreated={(created) => {
             setIsReturnOpen(false);
             setCreatedReturn(created);
-            offerVisitCompletion(invoice.customer_id, "return");
+            refreshVisits();
             if (invoice.customer_id) {
               setReturnNotify({ creditNoteId: created.creditnote_id, number: created.creditnote_number, step: "confirm" });
             }

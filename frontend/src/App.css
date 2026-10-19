@@ -3628,8 +3628,3 @@ div.wa-pick-list__row {
 .unread-badge--tab.unread-badge--visits-later {
   background: #2563eb;
 }
-
-/* "Visit done?" after a payment/delivery/return: above any page's own windows. */
-.modal-overlay.visit-prompt {
-  z-index: 1000;
-}

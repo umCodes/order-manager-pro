@@ -11,6 +11,7 @@ import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
 import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
 import { redisClient } from '../../config/redis.js';
 import { recordReportPayment, removeReportPayment, reportDayOfPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
+import { confirmVisitByActivity } from '../../services/visits.js';
 import { businessDayKey, todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday, adjustCollectedToday } from '../../services/dailyTotals.js';
@@ -43,6 +44,8 @@ export async function payCustomerBalance(req: Request, res: Response){
         deleteCache("customers")
         if (amount) await addToCollectedToday(amount)
         if (payment) await recordReportPayment(payment)
+        // A discount on its own isn't a payment, so it doesn't confirm a visit.
+        if (payment) await confirmVisitByActivity(id as string, "payment")
 
         // A discount on its own isn't a payment to confirm to the customer.
         const notified = notify && payment

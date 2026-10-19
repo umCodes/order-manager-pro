@@ -21,6 +21,7 @@ import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type W
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
 import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
 import { notificationTemplateNames } from '../services/whatsapp/notificationTemplates.js';
+import { getDailyReportWhatsAppSettings } from '../services/dailyReport/whatsapp.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 
@@ -574,7 +575,11 @@ export async function createWhatsAppTemplate(req: Request, res: Response) {
 /** Deletes a message template from the WhatsApp Business Account. */
 export async function deleteWhatsAppTemplate(req: Request, res: Response) {
     try {
-        await deleteTemplate(String(req.params.id ?? ""), await notificationTemplateNames())
+        // Templates in use — by a notification or the daily report — can't be deleted.
+        const protectedNames = await notificationTemplateNames()
+        const dailyReportTemplate = (await getDailyReportWhatsAppSettings()).template
+        if (dailyReportTemplate) protectedNames.add(dailyReportTemplate.name)
+        await deleteTemplate(String(req.params.id ?? ""), protectedNames)
         res.status(200).json({ ok: true })
     } catch (error) {
         console.error('Error deleting WhatsApp template:', error);

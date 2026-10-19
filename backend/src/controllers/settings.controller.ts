@@ -7,6 +7,12 @@ import {
 } from '../services/whatsapp/notificationTemplates.js';
 import { getItemCategoryOrder, saveItemCategoryOrder } from '../services/itemCategoryOrder.js';
 import { catalogCategories, getCatalog } from '../services/zoho/items.js';
+import {
+    MAX_RECIPIENTS,
+    dailyReportTemplateOptions,
+    getDailyReportWhatsAppSettings,
+    saveDailyReportWhatsAppSettings,
+} from '../services/dailyReport/whatsapp.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -63,5 +69,33 @@ export async function updateItemCategoryOrder(req: Request, res: Response) {
     } catch (error) {
         console.error('Error saving item category order:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save category order' });
+    }
+}
+
+/**
+ * Sending the daily report on WhatsApp: the chosen template and numbers
+ * (`selected`), the templates that fit the report (`options`, approved or
+ * still under review), and how many numbers are allowed.
+ */
+export async function getDailyReportWhatsApp(req: Request, res: Response) {
+    try {
+        const [selected, options] = await Promise.all([
+            getDailyReportWhatsAppSettings(),
+            dailyReportTemplateOptions(req.query.refresh === "1"),
+        ]);
+        res.status(200).json({ selected, options, maxRecipients: MAX_RECIPIENTS });
+    } catch (error) {
+        console.error('Error loading daily report WhatsApp settings:', error);
+        res.status(502).json({ error: error instanceof Error ? error.message : 'Failed to load the daily report settings' });
+    }
+}
+
+/** Saves the daily report's WhatsApp template and numbers. */
+export async function updateDailyReportWhatsApp(req: Request, res: Response) {
+    try {
+        res.status(200).json({ selected: await saveDailyReportWhatsAppSettings(req.body) });
+    } catch (error) {
+        console.error('Error saving daily report WhatsApp settings:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the daily report settings' });
     }
 }

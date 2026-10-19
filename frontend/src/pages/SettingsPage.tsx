@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import RefreshButton from "../components/RefreshButton";
 import CategoryOrderSettings from "../components/CategoryOrderSettings";
+import DailyReportWhatsAppSettings from "../components/DailyReportWhatsAppSettings";
 import {
   fetchNotificationTemplateSettings,
   saveNotificationTemplateSettings,
@@ -216,6 +217,8 @@ export default function SettingsPage({ onBack }: Props) {
           </button>
         </>
       )}
+
+      <DailyReportWhatsAppSettings />
     </div>
   );
 }

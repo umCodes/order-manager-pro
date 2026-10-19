@@ -120,5 +120,11 @@ All routes are mounted under `/api`.
 - `GET /invoices/:id/returns` — per item: invoiced, already returned, returnable, credited price; plus past returns
 - `POST /invoices/:id/returns` — `{ items: [{ item_id, quantity }], reason? }` → creates the credit note, applies credit to the invoice's balance
 
+**Daily report** (`backend/src/routes/reports.routes.ts`) — business days run 4am to 4am (UTC+3); what happens each day is recorded in Redis as it happens (`services/dailyReport/store.ts`), kept 7 days after the day ends, or 3 days once its report is handed over (downloaded, or delivered on WhatsApp)
+- `GET /reports/daily/days` — the current and previous business day, and whether WhatsApp sending is set up
+- `GET /reports/daily?day=YYYY-MM-DD` — the day's Amharic PDF report (one Zoho call); `&download=1` as an attachment
+- `POST /reports/daily/send` — `{ day }` → sends the PDF on WhatsApp to the numbers chosen in Settings, with the chosen template (document header; `{{1}}` date, `{{2}}` sales, `{{3}}` payments collected, `{{4}}` invoices issued, `{{5}}` outstanding)
+- `GET` / `PUT /settings/daily-report-whatsapp` — that template (approved or under review) and up to 3 numbers
+
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

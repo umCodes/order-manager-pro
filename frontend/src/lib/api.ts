@@ -299,7 +299,7 @@ export async function fetchCustomerPayments(customerId: string): Promise<Custome
 }
 
 /** Sends the WhatsApp payment confirmation for one of the customer's existing payments. */
-async function postJson<T>(url: string, method: "POST" | "PATCH" | "DELETE", body: unknown, fallbackError: string): Promise<T> {
+async function postJson<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, fallbackError: string): Promise<T> {
   const response = await apiFetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -679,11 +679,59 @@ export async function deleteTelegramMessage(
   return response.json();
 }
 
+export type DailyReportDays = {
+  today: string;
+  previous: string;
+  /** WhatsApp sending as set up in Settings: the template's name (null if none) and how many numbers. */
+  whatsapp?: { template: string | null; recipients: number };
+};
+
 /** The current business day and the one before it (4am to 4am), as YYYY-MM-DD. */
-export async function fetchDailyReportDays(): Promise<{ today: string; previous: string }> {
+export async function fetchDailyReportDays(): Promise<DailyReportDays> {
   const response = await apiFetch(`${API_BASE_URL}/api/reports/daily/days`);
   if (!response.ok) throw new Error(`Failed to load report days (${response.status})`);
   return response.json();
+}
+
+export type DailyReportWhatsAppSettings = {
+  template: { name: string; language: string } | null;
+  /** Digits only, international format (e.g. "966512345678"). */
+  recipients: string[];
+};
+export type DailyReportTemplateOption = { id: string; name: string; language: string; status: string };
+
+export async function fetchDailyReportWhatsAppSettings(force = false): Promise<{
+  selected: DailyReportWhatsAppSettings;
+  options: DailyReportTemplateOption[];
+  maxRecipients: number;
+}> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/daily-report-whatsapp${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the daily report settings (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveDailyReportWhatsAppSettings(settings: DailyReportWhatsAppSettings): Promise<DailyReportWhatsAppSettings> {
+  const result = await postJson<{ selected: DailyReportWhatsAppSettings }>(
+    `${API_BASE_URL}/api/settings/daily-report-whatsapp`,
+    "PUT",
+    settings,
+    "Failed to save the daily report settings",
+  );
+  return result.selected;
+}
+
+/** Sends a business day's report on WhatsApp to the numbers chosen in Settings; one result per number. */
+export async function sendDailyReport(day: string): Promise<{ phone: string; ok: boolean; error?: string }[]> {
+  const result = await postJson<{ results: { phone: string; ok: boolean; error?: string }[] }>(
+    `${API_BASE_URL}/api/reports/daily/send`,
+    "POST",
+    { day },
+    "Failed to send the report",
+  );
+  return result.results;
 }
 
 /** URL for a business day's daily report PDF. Append `&download=1` to have it served as an attachment. */

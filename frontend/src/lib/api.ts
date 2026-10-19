@@ -1580,3 +1580,42 @@ export async function saveItemCategoryOrder(order: string[]): Promise<string[]> 
   updateCachedValue<ItemCategorySettings>("itemCategories", (settings) => ({ ...settings, order: data.order }));
   return data.order;
 }
+
+export type TransactionType = "invoices" | "payments" | "returns";
+
+export type InvoiceTransaction = { invoice_id: string; invoice_number: string; date: string; status: string; total: number; balance: number };
+export type PaymentTransaction = {
+  payment_id: string;
+  payment_number?: string;
+  date: string;
+  amount: number;
+  payment_mode?: string;
+  invoice_numbers?: string;
+};
+export type ReturnTransaction = {
+  creditnote_id: string;
+  creditnote_number: string;
+  date: string;
+  status: string;
+  total: number;
+  invoice_number?: string;
+  invoice_id?: string;
+  /** Made in the app, so its return notice PDF exists. */
+  has_notice: boolean;
+};
+
+export type CustomerTransactions =
+  | { type: "invoices"; from: string; to: string; items: InvoiceTransaction[]; totals: { count: number; total: number; balance: number } }
+  | { type: "payments"; from: string; to: string; items: PaymentTransaction[]; totals: { count: number; amount: number } }
+  | { type: "returns"; from: string; to: string; items: ReturnTransaction[]; totals: { count: number; total: number } };
+
+/** The customer's invoices, payments or returns dated from–to (inclusive), with the period's totals. */
+export async function fetchCustomerTransactions(customerId: string, type: TransactionType, from: string, to: string): Promise<CustomerTransactions> {
+  const query = new URLSearchParams({ type, from, to }).toString();
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/transactions?${query}`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load transactions (${response.status})`);
+  }
+  return response.json();
+}

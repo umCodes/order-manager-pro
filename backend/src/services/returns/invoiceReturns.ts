@@ -32,6 +32,11 @@ const returnsKey = (invoiceId: string) => `invoice-returns:${invoiceId}`
 /** Customer's balance due right after each return (credit note id -> amount), for its return notice. */
 const BALANCE_AFTER_KEY = "invoice-returns:balance-after"
 const lockKey = (invoiceId: string) => `invoice-returns:lock:${invoiceId}`
+
+/** Whether the app recorded this credit note as a return of this invoice (so its return notice can be built). */
+export async function isInvoiceReturn(invoiceId: string, creditNoteId: string) {
+    return redisClient.sIsMember(returnsKey(invoiceId), creditNoteId)
+}
 const LOCK_MS = 60_000
 
 /** Quantities are compared with a little slack for decimal units (kg, litres). */

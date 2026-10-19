@@ -89,6 +89,7 @@ All routes are mounted under `/api`.
 - `PUT /customers/:id` — update a customer
 - `GET /customers/:id` — customer detail
 - `GET /customers/:id/invoices/drafts` — all drafts for a customer
+- `GET /customers/:id/transactions?type=invoices|payments|returns&from=YYYY-MM-DD&to=YYYY-MM-DD` — the customer's invoices (drafts and voided ones left out), payments or returns dated in that period, any length (unlike the 30-day Previous Transactions), with the period's totals; returns carry the invoice they were made against
 - `GET /customers/:id/payments` — the customer's payments, newest first
 - `POST /customers/:id/payments` — record a payment (`{ amount, payment_mode?, notify? }`); `notify: true` sends a WhatsApp payment notification
 - `POST /customers/:id/payments/:paymentId/notify` — send the WhatsApp payment confirmation for an existing payment (`{ notify_contact_ids? }`)

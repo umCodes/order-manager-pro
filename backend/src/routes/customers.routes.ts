@@ -12,6 +12,7 @@ import {
     deleteCustomerPayment,
     resendPaymentChangeNotification,
     getCustomerDraftInvoices,
+    getCustomerTransactions,
     addCustomerContact,
     updateCustomerContact,
     deleteCustomerContact,
@@ -26,6 +27,7 @@ customersRouter.get('/customers/:id', getCustomerById);
 customersRouter.put('/customers/:id', updateCustomer);
 customersRouter.patch('/customers/:id/status', setCustomerStatus);
 customersRouter.get('/customers/:id/invoices/drafts', getCustomerDraftInvoices);
+customersRouter.get('/customers/:id/transactions', getCustomerTransactions);
 customersRouter.get('/customers/:id/payments', getCustomerPayments);
 customersRouter.post('/customers/:id/payments', payCustomerBalance);
 customersRouter.post('/customers/:id/payments/:paymentId/notify', sendCustomerPaymentNotification);

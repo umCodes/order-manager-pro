@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Download, Loader2, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { fetchInvoiceReturnList, returnNoticePdfUrl, type InvoiceReturnSummary } from "../lib/api";
-import { downloadPdfUrl } from "../lib/downloadPdf";
+import PdfFileButton from "./PdfFileButton";
 import { currency } from "../lib/currency";
 
 /**
@@ -22,7 +22,6 @@ export default function ReturnNotices({
   isSending?: boolean;
 }) {
   const [returns, setReturns] = useState<InvoiceReturnSummary["returns"]>([]);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,12 +38,6 @@ export default function ReturnNotices({
   }, [invoiceId, reloadKey]);
 
   if (returns.length === 0) return null;
-
-  function download(creditNoteId: string, number: string) {
-    if (downloadingId) return;
-    setDownloadingId(creditNoteId);
-    downloadPdfUrl(returnNoticePdfUrl(invoiceId, creditNoteId), `${number}.pdf`).finally(() => setDownloadingId(null));
-  }
 
   return (
     <div className="return-notices">
@@ -69,16 +62,11 @@ export default function ReturnNotices({
               <Send size={14} />
             </button>
           )}
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => download(r.creditnote_id, r.creditnote_number)}
-            disabled={downloadingId === r.creditnote_id}
-            aria-label={`Download return notice ${r.creditnote_number}`}
-            title="Download return notice"
-          >
-            {downloadingId === r.creditnote_id ? <Loader2 size={14} className="refresh-button__icon--spinning" /> : <Download size={14} />}
-          </button>
+          <PdfFileButton
+            url={returnNoticePdfUrl(invoiceId, r.creditnote_id)}
+            filename={`${r.creditnote_number}.pdf`}
+            label={`return notice ${r.creditnote_number}`}
+          />
         </div>
       ))}
     </div>

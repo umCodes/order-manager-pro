@@ -30,6 +30,7 @@ import { formatStatus } from "../lib/status";
 import { getContactList, getPrimaryContact, LEGACY_CONTACT_ID } from "../lib/contacts";
 import ClickableCard from "../components/ClickableCard";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
+import CustomerTransactions from "../components/CustomerTransactions";
 import PaymentModal from "../components/PaymentModal";
 import PaymentChangeModal from "../components/PaymentChangeModal";
 import VisitButton from "../components/VisitButton";
@@ -116,6 +117,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   // Where the last payment's discount landed, e.g. "Discount applied: 500 on INV-102."
   const [discountSummary, setDiscountSummary] = useState<string | null>(null);
   const [notifyRetry, setNotifyRetry] = useState<(() => void) | null>(null);
+  // Bumped when payments change, so the Transactions section reloads too.
+  const [paymentsVersion, setPaymentsVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +166,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         setIsPaymentModalOpen(false);
         // A discount on its own isn't a payment the customer made.
         if (amount > 0) refreshVisits();
+        setPaymentsVersion((v) => v + 1);
         if (result.discounts?.length) {
           setDiscountSummary(
             `Discount applied: ${result.discounts.map((d) => `${currency(d.amount)} on ${d.invoice_number}`).join(", ")}.`,
@@ -208,6 +212,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   }
 
   function reloadPaymentsAndCustomer() {
+    setPaymentsVersion((v) => v + 1);
     fetchCustomerPayments(customerId)
       .then((list) => {
         setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
@@ -719,6 +724,20 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
               </div>
             )}
           </div>
+
+          <CustomerTransactions
+            customerId={customerId}
+            onSelectInvoice={onSelectInvoice}
+            onEditPayment={(payment) => {
+              setPaymentChangeError(null);
+              setPaymentChange({ mode: "edit", payment });
+            }}
+            onDeletePayment={(payment) => {
+              setPaymentChangeError(null);
+              setPaymentChange({ mode: "delete", payment });
+            }}
+            reloadKey={paymentsVersion}
+          />
         </>
       )}
 

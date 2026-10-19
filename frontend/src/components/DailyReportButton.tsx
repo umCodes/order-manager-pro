@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { CheckCircle2, Download, FileBarChart, Loader2, Send, TriangleAlert } from "lucide-react";
+import { CheckCircle2, FileBarChart, FileText, Loader2, Send, TriangleAlert } from "lucide-react";
 import { dailyReportUrl, fetchDailyReportDays, sendDailyReport, type DailyReportDays } from "../lib/api";
-import { downloadPdfUrl } from "../lib/downloadPdf";
+import PdfFileButton from "./PdfFileButton";
 
 /** "18 Oct" for a YYYY-MM-DD day. */
 function shortDay(day: string) {
@@ -37,16 +37,6 @@ export default function DailyReportButton() {
   function close() {
     setIsOpen(false);
     setConfirmDay(null);
-  }
-
-  function download(day: string) {
-    if (busy) return;
-    setBusy(`download-${day}`);
-    setError(null);
-    downloadPdfUrl(dailyReportUrl(day), `daily-report-${day}.pdf`)
-      .then(() => setIsOpen(false))
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to download the report"))
-      .finally(() => setBusy(null));
   }
 
   function send(day: string, label: string) {
@@ -91,10 +81,17 @@ export default function DailyReportButton() {
               <div key={day} className="daily-report-day">
                 <div className="daily-report-day__title">{label}</div>
                 <div className="daily-report-day__actions">
-                  <button type="button" className="btn btn--secondary" disabled={!!busy} onClick={() => download(day)}>
-                    {busy === `download-${day}` ? <Loader2 size={15} className="refresh-button__icon--spinning" /> : <Download size={15} />}
-                    Download
-                  </button>
+                  <PdfFileButton
+                    url={dailyReportUrl(day)}
+                    filename={`daily-report-${day}.pdf`}
+                    label={`the daily report of ${day}`}
+                    disabled={!!busy}
+                    buttonText={
+                      <>
+                        <FileText size={15} /> PDF
+                      </>
+                    }
+                  />
                   <button
                     type="button"
                     className="btn btn--primary"

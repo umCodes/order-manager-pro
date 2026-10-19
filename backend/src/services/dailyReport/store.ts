@@ -17,7 +17,8 @@ import { businessDayKey } from "../../utils/businessDate.js"
  * logged and never fails the action itself.
  */
 
-export type ReportLine = { item_id: string; name: string; description: string; quantity: number; rate: number }
+/** `unit` is the Zoho unit code ("box", "pack", …); missing on lines recorded before it was kept. */
+export type ReportLine = { item_id: string; name: string; description: string; quantity: number; rate: number; unit?: string }
 
 export type ReportPayment = { payment_id: string; number: string; customer: string; amount: number; mode: string; at: string }
 export type ReportInvoice = {
@@ -53,6 +54,7 @@ export function toReportLines(lineItems: any[] | undefined): ReportLine[] {
         description: String(line.description ?? "").replace(/###/g, "").trim(),
         quantity: Number(line.quantity) || 0,
         rate: Number(line.rate) || 0,
+        ...(line.unit ? { unit: String(line.unit) } : {}),
     }))
 }
 

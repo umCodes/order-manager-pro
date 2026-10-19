@@ -1,14 +1,19 @@
 import { renderToBuffer } from "./documentFactory.js";
 import { FONT_ETHIOPIC_MERGED_BOLD, FONT_ETHIOPIC_MERGED_REGULAR } from "./assets.js";
 import { businessDayWindow, businessTimeParts } from "../utils/businessDate.js";
-import type { DailyReportData } from "../services/dailyReport/report.js";
+import { lineWeightKg } from "../utils/packWeight.js";
+import { toAmharicUnit } from "../utils/units.js";
+import type { DailyReportData, InvoiceStatus } from "../services/dailyReport/report.js";
 import type { ReportLine } from "../services/dailyReport/store.js";
 
 /**
- * The daily business report (A4, Amharic): a summary, then payments
- * received, sales by item, sales by invoice, the invoice register with
- * balances, returns, and drafts not yet sent. Item names are the Amharic
- * description, with the English (Zoho) name small and grey underneath.
+ * The daily business report (A4, Amharic, large print for easy reading).
+ * Each section starts on a page of its own under a large underlined title:
+ * payments collected, items sold, invoices issued (orders delivered), the
+ * invoice register with balances, returns, and orders not yet delivered.
+ * Item names are the Amharic description with the English (Zoho) name under
+ * it; item tables show the quantity with its unit and the weight in kilograms
+ * (from the pack size in the English name, see packWeight.ts).
  */
 
 const WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"];
@@ -20,25 +25,28 @@ const PAYMENT_MODES: Record<string, string> = {
   creditcard: "ካርድ",
   card: "ካርድ",
 };
-const STATUS = { paid: "ተከፍሏል", partial: "በከፊል ተከፍሏል", unpaid: "አልተከፈለም" } as const;
+const STATUS: Record<InvoiceStatus, { text: string; fill: string; ink: string }> = {
+  paid: { text: "ተከፍሏል", fill: "#dcfce7", ink: "#14532d" },
+  partial: { text: "በከፊል", fill: "#fef3c7", ink: "#78350f" },
+  unpaid: { text: "አልተከፈለም", fill: "#fee2e2", ink: "#7f1d1d" },
+};
 
-const INK = "#111827";
-const MUTED = "#6b7280";
-const SUBTLE = "#9ca3af";
-const RULE = "#d1d5db";
-const BAND = "#f3f4f6";
+const INK = "#000000";
+const SECOND = "#374151";
+const RULE = "#9ca3af";
+const BAND = "#e5e7eb";
+const STRIPE = "#f3f4f6";
 const ACCENT = "#7f1d1d";
-const MARGIN = 40;
+const MARGIN = 36;
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const qty = (value: number) => String(Math.round(value * 1000) / 1000);
-const lineSum = (lines: ReportLine[]) => lines.reduce((sum, line) => sum + line.quantity * line.rate, 0);
-
-/** "18 ኦክቶበር 09:02" in business time. */
-function when(iso: string) {
-  const parts = businessTimeParts(new Date(iso));
-  return `${parts.day} ${MONTHS[parts.month]} ${parts.time}`;
-}
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
+const qty = (value: number) => String(round3(value));
+const kgText = (kg: number | null) => (kg === null ? "—" : String(round3(kg)));
+const linesKg = (lines: ReportLine[]) => lines.reduce((sum, line) => sum + (lineWeightKg(line.name, line.quantity) ?? 0), 0);
+/** "2 ካርቶን"; just the number for lines recorded before units were kept. */
+const qtyWithUnit = (quantity: number, unit: string | undefined) => (unit ? `${qty(quantity)} ${toAmharicUnit(unit)}` : qty(quantity));
+const time = (iso: string) => businessTimeParts(new Date(iso)).time;
 
 /** "18 ኦክቶበር" for a YYYY-MM-DD date. */
 function dateLabel(date: string | undefined) {
@@ -52,8 +60,8 @@ function modeLabel(mode: string) {
 }
 
 type Col = { w: number; align?: "left" | "right" | "center" };
-/** A table cell: plain text, or an item (Amharic name with the English name under it). */
-type Cell = string | { main: string; sub?: string | undefined };
+/** A table cell: plain text, or text with a smaller second line, bold, or a status badge. */
+type Cell = string | { main: string; sub?: string | undefined; bold?: boolean; badge?: InvoiceStatus };
 
 export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buffer> {
   return renderToBuffer({ size: "A4", margin: MARGIN, bufferPages: true }, (doc) => {
@@ -61,7 +69,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     doc.registerFont("B", FONT_ETHIOPIC_MERGED_BOLD);
     const L = MARGIN;
     const W = doc.page.width - MARGIN * 2;
-    const BOTTOM = doc.page.height - 50;
+    const BOTTOM = doc.page.height - 56;
 
     function ensure(height: number) {
       if (doc.y + height > BOTTOM) {
@@ -71,65 +79,90 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     }
 
     function header(cols: Col[], labels: string[]) {
-      ensure(42);
+      ensure(70);
       const y = doc.y;
-      doc.rect(L, y, W, 18).fill(BAND);
+      doc.rect(L, y, W, 26).fill(BAND);
       let x = L;
-      doc.font("B").fontSize(8.5).fillColor(MUTED);
+      doc.font("B").fontSize(11.5).fillColor(INK);
       cols.forEach((col, i) => {
-        doc.text(labels[i] ?? "", x + 4, y + 3, { width: col.w - 8, align: col.align ?? "left", lineBreak: false });
+        doc.text(labels[i] ?? "", x + 6, y + 6, { width: col.w - 12, align: col.align ?? "left", lineBreak: false });
         x += col.w;
       });
-      doc.y = y + 20;
+      doc.y = y + 26;
     }
 
     function row(cols: Col[], cells: Cell[], shade: boolean) {
       const tall = cells.some((cell) => typeof cell !== "string" && cell.sub);
-      const height = tall ? 26 : 16;
-      ensure(height + 2);
+      const height = tall ? 40 : 28;
+      ensure(height);
       const y = doc.y;
-      if (shade) doc.rect(L, y - 1, W, height).fill("#fafafa");
+      if (shade) doc.rect(L, y, W, height).fill(STRIPE);
       let x = L;
       cols.forEach((col, i) => {
         const cell = cells[i] ?? "";
-        const main = typeof cell === "string" ? cell : cell.main;
-        doc.font("R").fontSize(9).fillColor(INK);
-        doc.text(main, x + 4, y + 2, { width: col.w - 8, align: col.align ?? "left", lineBreak: false, ellipsis: true });
-        if (typeof cell !== "string" && cell.sub) {
-          doc.font("R").fontSize(6.5).fillColor(SUBTLE);
-          doc.text(cell.sub, x + 4, y + 14, { width: col.w - 8, align: col.align ?? "left", lineBreak: false, ellipsis: true });
+        const top = y + (tall ? 6 : 7);
+        if (typeof cell !== "string" && cell.badge) {
+          const status = STATUS[cell.badge];
+          doc.font("B").fontSize(12);
+          const badgeW = doc.widthOfString(status.text) + 16;
+          const badgeX = x + (col.w - badgeW) / 2;
+          doc.roundedRect(badgeX, y + (height - 20) / 2, badgeW, 20, 10).fill(status.fill);
+          doc.fillColor(status.ink).text(status.text, badgeX, y + (height - 20) / 2 + 3, { width: badgeW, align: "center", lineBreak: false });
+        } else {
+          const main = typeof cell === "string" ? cell : cell.main;
+          doc.font(typeof cell !== "string" && cell.bold ? "B" : "R").fontSize(12.5).fillColor(INK);
+          doc.text(main, x + 6, top, { width: col.w - 12, align: col.align ?? "left", lineBreak: false, ellipsis: true });
+          if (typeof cell !== "string" && cell.sub) {
+            doc.font("R").fontSize(9.5).fillColor(SECOND);
+            doc.text(cell.sub, x + 6, top + 18, { width: col.w - 12, align: col.align ?? "left", lineBreak: false, ellipsis: true });
+          }
         }
         x += col.w;
       });
       doc.y = y + height;
-      doc.moveTo(L, doc.y - 1).lineTo(L + W, doc.y - 1).lineWidth(0.4).strokeColor("#eeeeee").stroke();
+      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.6).strokeColor(RULE).stroke();
     }
 
-    function totals(lines: [string, string][]) {
-      ensure(20 + lines.length * 17);
-      const top = doc.y + 2;
-      doc.moveTo(L, top).lineTo(L + W, top).lineWidth(1).strokeColor(INK).stroke();
-      doc.y = top + 6;
-      for (const [label, value] of lines) {
-        const y = doc.y;
-        doc.font("B").fontSize(10).fillColor(INK).text(label, L + 4, y, { lineBreak: false });
-        doc.text(value, L, y, { width: W - 4, align: "right", lineBreak: false });
-        doc.y = y + 17;
+    function totalBox(lines: [string, string][]) {
+      const height = 14 + lines.length * 26;
+      ensure(height + 10);
+      const y = doc.y + 8;
+      doc.rect(L, y, W, height).lineWidth(1.5).strokeColor(INK).stroke();
+      lines.forEach(([label, value], i) => {
+        const lineY = y + 9 + i * 26;
+        doc.font("B").fontSize(13.5).fillColor(INK).text(label, L + 12, lineY, { lineBreak: false });
+        doc.font("B").fontSize(15).text(value, L, lineY - 1, { width: W - 12, align: "right", lineBreak: false });
+      });
+      doc.y = y + height + 4;
+    }
+
+    let sectionsDrawn = 0;
+    /** Every section starts on a page of its own; its title is the largest text there, underlined. */
+    function section(n: number, title: string, note: string) {
+      if (sectionsDrawn++ > 0) {
+        doc.addPage();
+        doc.y = MARGIN;
       }
-    }
-
-    function section(n: number, title: string, note: string, keepWith = 90) {
-      ensure(keepWith);
+      const y = doc.y;
+      doc.font("B").fontSize(22).fillColor(INK).text(`${n}. ${title}`, L, y, { lineBreak: false });
+      doc.moveTo(L, y + 34).lineTo(L + W, y + 34).lineWidth(2.5).strokeColor(ACCENT).stroke();
+      doc.font("R").fontSize(11.5).fillColor(SECOND).text(note, L, y + 42, { width: W });
       doc.y += 14;
-      doc.font("B").fontSize(13).fillColor(ACCENT).text(`${n}. ${title}`, L, doc.y);
-      doc.font("R").fontSize(8.5).fillColor(MUTED).text(note, L, doc.y + 1);
+    }
+
+    function empty() {
+      doc.font("R").fontSize(12.5).fillColor(SECOND).text("ምንም የለም።", L + 6, doc.y + 2);
       doc.y += 6;
     }
 
-    function empty(text = "ምንም የለም።") {
-      ensure(24);
-      doc.font("R").fontSize(9.5).fillColor(MUTED).text(text, L + 4, doc.y + 4);
-      doc.y += 6;
+    /** A customer heading inside a section: smaller than the section title, with a thin bar beside it. */
+    function customerHeading(customer: string, detail: string) {
+      doc.y += 10;
+      const y = doc.y;
+      doc.rect(L, y, 3, 36).fill(ACCENT);
+      doc.font("B").fontSize(14).fillColor(INK).text(customer, L + 12, y + 1, { width: W - 12, lineBreak: false, ellipsis: true });
+      doc.font("R").fontSize(11).fillColor(SECOND).text(detail, L + 12, y + 21, { width: W - 12, lineBreak: false });
+      doc.y = y + 44;
     }
 
     const itemCell = (line: { description: string; name: string }): Cell => ({
@@ -137,189 +170,190 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
       sub: line.description && line.name && line.description !== line.name ? line.name : undefined,
     });
 
-    const lineCols: Col[] = [{ w: 230 }, { w: 70, align: "right" }, { w: 100, align: "right" }, { w: W - 400, align: "right" }];
-    function block(customer: string, right: string, lines: ReportLine[], totalLabel: string) {
-      const rowsHeight = lines.reduce((h, line) => {
-        const cell = itemCell(line);
-        return h + (typeof cell !== "string" && cell.sub ? 26 : 16);
-      }, 0);
-      ensure(Math.min(50 + rowsHeight + 26, 300));
-      doc.y += 8;
-      const y = doc.y;
-      doc.rect(L, y, 3, 18).fill(ACCENT);
-      doc.font("B").fontSize(12).fillColor(INK).text(customer, L + 10, y + 1, { width: W * 0.55, lineBreak: false, ellipsis: true });
-      doc.font("R").fontSize(9).fillColor(MUTED).text(right, L, y + 4, { width: W, align: "right", lineBreak: false });
-      doc.y = y + 24;
-      header(lineCols, ["እቃ", "ብዛት", "የአንዱ ዋጋ", "ድምር"]);
-      lines.forEach((line, i) => row(lineCols, [itemCell(line), qty(line.quantity), money(line.rate), money(line.quantity * line.rate)], i % 2 === 1));
-      ensure(18);
-      doc.font("B").fontSize(9.5).fillColor(INK).text(`${totalLabel}  SAR ${money(lineSum(lines))}`, L, doc.y + 3, { width: W - 4, align: "right" });
+    const lineCols: Col[] = [{ w: 180 }, { w: 92, align: "right" }, { w: 70, align: "right" }, { w: 85, align: "right" }, { w: W - 427, align: "right" }];
+    function lineTable(lines: ReportLine[]) {
+      header(lineCols, ["እቃ", "ብዛት", "ኪሎ", "ዋጋ", "ድምር"]);
+      lines.forEach((line, i) =>
+        row(
+          lineCols,
+          [
+            itemCell(line),
+            qtyWithUnit(line.quantity, line.unit),
+            kgText(lineWeightKg(line.name, line.quantity)),
+            money(line.rate),
+            { main: money(line.quantity * line.rate), bold: true },
+          ],
+          i % 2 === 1,
+        ),
+      );
     }
 
-    // ---------- header ----------
-    const window = businessDayWindow(report.day);
-    const start = businessTimeParts(window.start);
-    const end = businessTimeParts(window.end);
+    // ---------- page 1 heading ----------
+    const start = businessTimeParts(businessDayWindow(report.day).start);
     const made = businessTimeParts(report.generatedAt);
-    doc.font("B").fontSize(18).fillColor(INK).text("የዕለቱ የሥራ ሪፖርት", L, MARGIN);
-    doc
-      .font("R")
-      .fontSize(10)
-      .fillColor(MUTED)
-      .text(
-        `የሥራ ቀን፦ ${WEEKDAYS[start.weekday]} ${start.day} ${MONTHS[start.month]} ${start.year}   ·   ` +
-          `ከ${start.day} ${MONTHS[start.month]} ${start.time} እስከ ${end.day} ${MONTHS[end.month]} ${end.time}`,
-        L,
-        doc.y + 2,
-      )
-      .text(`የተዘጋጀው፦ ${made.day} ${MONTHS[made.month]} ${made.year} ${made.time}`, L, doc.y + 1);
+    doc.font("B").fontSize(26).fillColor(INK).text("የዕለት የሥራ ሪፖርት", L, MARGIN);
+    doc.font("B").fontSize(16).fillColor(ACCENT).text(`${WEEKDAYS[start.weekday]} ${start.day} ${MONTHS[start.month]} ${start.year}`, L, doc.y + 4);
+    doc.font("R").fontSize(11).fillColor(SECOND).text(`የተዘጋጀው፦ ${made.day} ${MONTHS[made.month]} ${made.time}`, L, doc.y + 4);
     if (!report.isComplete) {
-      doc.font("B").fontSize(9).fillColor(ACCENT).text("ይህ የሥራ ቀን ገና አላለቀም — እስካሁን የተመዘገበው ብቻ ነው።", L, doc.y + 3);
+      doc.font("B").fontSize(11).fillColor(ACCENT).text("ይህ የሥራ ቀን ገና አላለቀም — እስካሁን የተመዘገበው ብቻ ነው።", L, doc.y + 4, { width: W });
     }
     if (report.zohoTimezone.matches === false) {
       const offset = report.zohoTimezone.offsetHours ?? 0;
       doc
         .font("R")
-        .fontSize(8.5)
+        .fontSize(10.5)
         .fillColor(ACCENT)
         .text(
           `የZoho የሰዓት ሰቅ ${report.zohoTimezone.timeZone} (UTC${offset >= 0 ? "+" : ""}${offset}) ነው፤ መተግበሪያው UTC+3 ይጠቀማል — ከእኩለ ሌሊት አካባቢ ያሉ ቀኖች ሊለያዩ ይችላሉ።`,
           L,
-          doc.y + 2,
+          doc.y + 4,
+          { width: W },
         );
     }
     if (!report.balancesRefreshed) {
-      doc.font("R").fontSize(8.5).fillColor(ACCENT).text("ከZoho ማንበብ አልተቻለም፤ ቀሪ ሂሳቦቹ ደረሰኞቹ በተላኩበት ጊዜ እንደነበሩ ናቸው።", L, doc.y + 2);
+      doc.font("R").fontSize(10.5).fillColor(ACCENT).text("ከZoho ማንበብ አልተቻለም፤ ቀሪ ሂሳቦቹ ደረሰኞቹ በተሰሩበት ጊዜ እንደነበሩ ናቸው።", L, doc.y + 4, { width: W });
     }
-    doc.y += 10;
+    doc.y += 8;
+    doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
+    doc.y += 18;
 
-    const nothing =
-      report.payments.length === 0 &&
-      report.invoices.length === 0 &&
-      report.returns.length === 0 &&
-      report.drafts.length === 0;
+    const nothing = !report.payments.length && !report.invoices.length && !report.returns.length && !report.drafts.length;
 
     if (nothing) {
-      const y = doc.y + 20;
-      doc.roundedRect(L, y, W, 90, 6).lineWidth(0.8).strokeColor(RULE).stroke();
-      doc.font("B").fontSize(14).fillColor(INK).text("በዚህ የሥራ ቀን ምንም አልተመዘገበም።", L, y + 26, { width: W, align: "center" });
-      doc
-        .font("R")
-        .fontSize(9.5)
-        .fillColor(MUTED)
-        .text("ክፍያ፣ የተላከ ደረሰኝ፣ ተመላሽ ወይም አዲስ ረቂቅ የለም።", L, y + 52, { width: W, align: "center" });
+      const y = doc.y + 10;
+      doc.rect(L, y, W, 100).lineWidth(1.5).strokeColor(INK).stroke();
+      doc.font("B").fontSize(18).fillColor(INK).text("በዚህ የሥራ ቀን ምንም አልተመዘገበም።", L, y + 28, { width: W, align: "center" });
+      doc.font("R").fontSize(12.5).fillColor(SECOND).text("ክፍያ፣ ደረሰኝ፣ ተመላሽ ወይም አዲስ ትዕዛዝ የለም።", L, y + 60, { width: W, align: "center" });
     } else {
-      const salesTotal = report.invoices.reduce((sum, invoice) => sum + invoice.total, 0);
-      const paidTotal = report.payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const sales = report.invoices.reduce((sum, invoice) => sum + invoice.total, 0);
+      const collected = report.payments.reduce((sum, payment) => sum + payment.amount, 0);
       const paidAgainst = report.invoices.reduce((sum, invoice) => sum + invoice.paid, 0);
       const outstanding = report.invoices.reduce((sum, invoice) => sum + invoice.balance, 0);
 
-      // ---------- summary tiles ----------
-      const tiles: [string, string][] = [
-        ["የተላኩ ደረሰኞች", String(report.invoices.length)],
-        ["ሽያጭ (SAR)", money(salesTotal)],
-        ["የተቀበልነው ክፍያ (SAR)", money(paidTotal)],
-        ["በዕለቱ ደረሰኞች ላይ ያለ ቀሪ", money(outstanding)],
-      ];
-      const tileW = (W - 24) / 4;
-      const tileY = doc.y;
-      tiles.forEach(([label, value], i) => {
-        const x = L + i * (tileW + 8);
-        doc.roundedRect(x, tileY, tileW, 50, 4).lineWidth(0.8).strokeColor(RULE).stroke();
-        doc.font("R").fontSize(7.5).fillColor(MUTED).text(label, x + 8, tileY + 7, { width: tileW - 16 });
-        doc.font("B").fontSize(13).fillColor(INK).text(value, x + 8, tileY + 28, { width: tileW - 16, lineBreak: false });
-      });
-      doc.y = tileY + 62;
-
-      // ---------- 1. payments ----------
-      section(1, "የተቀበልናቸው ክፍያዎች", "በሥራ ቀኑ የተመዘገቡ ክፍያዎች በሙሉ፣ በተመዘገቡበት ቅደም ተከተል።");
-      if (report.payments.length === 0) empty();
+      // ---------- 1. payments collected ----------
+      section(1, "የተለቀሙ ጥቅል ክፍያዎች", "በሥራ ቀኑ የተለቀሙ ክፍያዎች በሙሉ፣ በተለቀሙበት ሰዓት ቅደም ተከተል።");
+      if (!report.payments.length) empty();
       else {
-        const cols: Col[] = [{ w: 95 }, { w: 80 }, { w: 175 }, { w: 90 }, { w: W - 440, align: "right" }];
-        header(cols, ["ቀንና ሰዓት", "የክፍያ ቁጥር", "ደንበኛ", "የክፍያ ዓይነት", "መጠን (SAR)"]);
+        const cols: Col[] = [{ w: 70 }, { w: 220 }, { w: 110 }, { w: W - 400, align: "right" }];
+        header(cols, ["ሰዓት", "ደንበኛ", "ዓይነት", "መጠን (SAR)"]);
         report.payments.forEach((payment, i) =>
-          row(cols, [when(payment.at), payment.number, payment.customer, modeLabel(payment.mode), money(payment.amount)], i % 2 === 1),
-        );
-        totals([["ጠቅላላ የተቀበልነው ክፍያ", `SAR ${money(paidTotal)}`]]);
-      }
-
-      // ---------- 2. sales by item ----------
-      section(2, "ሽያጭ በእቃ", "በሥራ ቀኑ እንደተላኩ የተመዘገቡ ደረሰኞች በሙሉ፣ በእቃ ተጠቃለው።");
-      if (report.items.length === 0) empty();
-      else {
-        const cols: Col[] = [{ w: 150 }, { w: 75, align: "right" }, { w: 80, align: "right" }, { w: 65, align: "right" }, { w: 65, align: "right" }, { w: W - 435, align: "right" }];
-        header(cols, ["እቃ", "የተሸጠ ብዛት", "አማካይ ዋጋ", "ዝቅተኛ", "ከፍተኛ", "የሽያጭ ዋጋ"]);
-        report.items.forEach((item, i) =>
           row(
             cols,
-            [itemCell(item), qty(item.quantity), money(item.quantity ? item.value / item.quantity : 0), money(item.low), money(item.high), money(item.value)],
+            [time(payment.at), { main: payment.customer, sub: payment.number }, modeLabel(payment.mode), { main: money(payment.amount), bold: true }],
             i % 2 === 1,
           ),
         );
-        totals([["ጠቅላላ የእቃ ሽያጭ", `SAR ${money(salesTotal)}`]]);
+        totalBox([["ጠቅላላ የተለቀመ ክፍያ", `${money(collected)} SAR`]]);
       }
 
-      // ---------- 3. sales by invoice ----------
-      section(3, "ሽያጭ በደረሰኝ", "በሥራ ቀኑ የተላከ እያንዳንዱ ደረሰኝ ከእቃዎቹ ጋር።", report.invoices.length ? 220 : 90);
-      if (report.invoices.length === 0) empty();
-      for (const invoice of report.invoices) block(invoice.customer, `${invoice.number}  ·  የተላከበት ${when(invoice.at)}`, invoice.lines, "የደረሰኝ ድምር");
-
-      // ---------- 4. invoice register ----------
-      // Keep the heading, register and its totals together when they fit on one page.
-      section(
-        4,
-        "የደረሰኞች መዝገብና ቀሪ ሂሳብ",
-        "በሥራ ቀኑ የተላኩ ደረሰኞች፣ ሪፖርቱ በተዘጋጀበት ጊዜ የተከፈለባቸው።",
-        Math.min(90 + report.invoices.length * 16 + 70, BOTTOM - MARGIN),
-      );
-      if (report.invoices.length === 0) empty();
+      // ---------- 2. items sold ----------
+      section(2, "የተሸጡ እቃዎች", "በሥራ ቀኑ የደረሱ ትዕዛዞች (የተሰሩ ደረሰኞች) እቃዎች፣ በእቃ ተጠቃለው።");
+      if (!report.items.length) empty();
       else {
-        const cols: Col[] = [{ w: 75 }, { w: 145 }, { w: 70, align: "right" }, { w: 70, align: "right" }, { w: 70, align: "right" }, { w: W - 430, align: "center" }];
-        header(cols, ["የደረሰኝ ቁጥር", "ደንበኛ", "ጠቅላላ", "የተከፈለ", "ቀሪ", "ሁኔታ"]);
+        const cols: Col[] = [{ w: 160 }, { w: 92, align: "right" }, { w: 70, align: "right" }, { w: 100, align: "right" }, { w: W - 422, align: "right" }];
+        header(cols, ["እቃ", "ብዛት", "ኪሎ", "አማካይ ዋጋ", "ጠቅላላ (SAR)"]);
+        let totalKg = 0;
+        report.items.forEach((item, i) => {
+          const kg = lineWeightKg(item.name, item.quantity);
+          if (kg !== null) totalKg += kg;
+          row(
+            cols,
+            [
+              itemCell(item),
+              qtyWithUnit(item.quantity, item.unit),
+              kgText(kg),
+              { main: money(item.quantity ? item.value / item.quantity : 0), sub: item.low === item.high ? undefined : `${money(item.low)} – ${money(item.high)}` },
+              { main: money(item.value), bold: true },
+            ],
+            i % 2 === 1,
+          );
+        });
+        totalBox([
+          ["ጠቅላላ ሽያጭ", `${money(sales)} SAR`],
+          ["ጠቅላላ ኪሎ", `${round3(totalKg)} ኪሎ`],
+        ]);
+      }
+
+      // ---------- 3. invoices issued (orders delivered) ----------
+      section(3, "የተሰሩ ደረሰኞች", "በሥራ ቀኑ የደረሰ እያንዳንዱ ትዕዛዝ ከእቃዎቹ ጋር።");
+      if (!report.invoices.length) empty();
+      for (const invoice of report.invoices) {
+        ensure(120 + invoice.lines.length * 40);
+        customerHeading(invoice.customer, `${invoice.number}  ·  የደረሰበት ${time(invoice.at)}`);
+        lineTable(invoice.lines);
+        ensure(26);
+        doc
+          .font("B")
+          .fontSize(13)
+          .fillColor(INK)
+          .text(`${round3(linesKg(invoice.lines))} ኪሎ   ·   የደረሰኝ ድምር፦  ${money(invoice.total)} SAR`, L, doc.y + 8, { width: W - 6, align: "right" });
+        doc.y += 4;
+      }
+
+      // ---------- 4. invoice register & balances ----------
+      section(4, "ደረሰኞችና ቀሪ ሂሳብ", "በሥራ ቀኑ የተሰሩ ደረሰኞች፣ ሪፖርቱ በተዘጋጀበት ጊዜ የተከፈለባቸው።");
+      if (!report.invoices.length) empty();
+      else {
+        const cols: Col[] = [{ w: 170 }, { w: 90, align: "right" }, { w: 90, align: "right" }, { w: 85, align: "right" }, { w: W - 435, align: "center" }];
+        header(cols, ["ደንበኛ", "ጠቅላላ", "የተከፈለ", "ቀሪ", "ሁኔታ"]);
         report.invoices.forEach((invoice, i) =>
-          row(cols, [invoice.number, invoice.customer, money(invoice.total), money(invoice.paid), money(invoice.balance), STATUS[invoice.status]], i % 2 === 1),
+          row(
+            cols,
+            [
+              { main: invoice.customer, sub: invoice.number },
+              money(invoice.total),
+              money(invoice.paid),
+              { main: money(invoice.balance), bold: true },
+              { main: "", badge: invoice.status },
+            ],
+            i % 2 === 1,
+          ),
         );
-        totals([
-          ["ጠቅላላ የተሸጠ", `SAR ${money(salesTotal)}`],
-          ["ከነዚህ ደረሰኞች የተከፈለ", `SAR ${money(paidAgainst)}`],
-          ["ጠቅላላ ቀሪ", `SAR ${money(outstanding)}`],
+        totalBox([
+          ["ጠቅላላ ሽያጭ", `${money(sales)} SAR`],
+          ["የተከፈለ", `${money(paidAgainst)} SAR`],
+          ["በዕለቱ ደረሰኞች ላይ ያለ ቀሪ", `${money(outstanding)} SAR`],
         ]);
       }
 
       // ---------- 5. returns ----------
-      section(5, "ተመላሽ እቃዎች", "በሥራ ቀኑ የተመዘገቡ ተመላሾች።", report.returns.length ? 200 : 90);
-      if (report.returns.length === 0) empty();
+      section(5, "ተመላሽ እቃዎች", "በሥራ ቀኑ የተመዘገቡ ተመላሾች።");
+      if (!report.returns.length) empty();
       else {
-        for (const ret of report.returns) block(ret.customer, `${ret.number}  ·  ለደረሰኝ ${ret.invoice_number}  ·  ${when(ret.at)}`, ret.lines, "የተመላሽ ድምር");
-        doc.y += 4;
-        totals([["ጠቅላላ ተመላሽ", `SAR ${money(report.returns.reduce((sum, ret) => sum + ret.total, 0))}`]]);
+        for (const ret of report.returns) {
+          ensure(110 + ret.lines.length * 40);
+          customerHeading(ret.customer, `${ret.number}  ·  ለደረሰኝ ${ret.invoice_number}  ·  ${time(ret.at)}`);
+          lineTable(ret.lines);
+        }
+        totalBox([
+          ["ጠቅላላ ተመላሽ", `${money(report.returns.reduce((sum, ret) => sum + ret.total, 0))} SAR`],
+          ["ጠቅላላ ኪሎ", `${round3(linesKg(report.returns.flatMap((ret) => ret.lines)))} ኪሎ`],
+        ]);
       }
 
-      // ---------- 6. drafts not sent ----------
-      section(6, "ያልተላኩ ረቂቆች", "በሥራ ቀኑ ተፈጥረው እስካሁን እንደተላኩ ያልተመዘገቡ ረቂቆች።");
-      if (report.drafts.length === 0) empty();
+      // ---------- 6. orders not yet delivered ----------
+      section(6, "ያልደረሱ ትዕዛዞች", "ገና ያልደረሱ ትዕዛዞች (ረቂቆች)፣ ከሚደርሱበት ቀን ጋር።");
+      if (!report.drafts.length) empty();
       else {
-        const cols: Col[] = [{ w: 85 }, { w: 175 }, { w: 95 }, { w: 75 }, { w: W - 430, align: "right" }];
-        header(cols, ["የረቂቅ ቁጥር", "ደንበኛ", "የተፈጠረበት", "ለቀን", "ጠቅላላ"]);
-        report.drafts.forEach((draft, i) => row(cols, [draft.number, draft.customer, when(draft.at), dateLabel(draft.date), money(draft.total)], i % 2 === 1));
-        totals([["ጠቅላላ ያልተላከ", `SAR ${money(report.drafts.reduce((sum, draft) => sum + draft.total, 0))}`]]);
+        const cols: Col[] = [{ w: 230 }, { w: 120 }, { w: W - 350, align: "right" }];
+        header(cols, ["ደንበኛ", "የሚደርስበት ቀን", "ጠቅላላ (SAR)"]);
+        report.drafts.forEach((draft, i) =>
+          row(cols, [{ main: draft.customer, sub: draft.number }, dateLabel(draft.date), { main: money(draft.total), bold: true }], i % 2 === 1),
+        );
+        totalBox([["ጠቅላላ ያልደረሰ", `${money(report.drafts.reduce((sum, draft) => sum + draft.total, 0))} SAR`]]);
       }
     }
 
-    // ---------- page footers ----------
+    // ---------- page numbers ----------
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
       doc.page.margins.bottom = 0;
       doc
-        .font("R")
-        .fontSize(8)
-        .fillColor(MUTED)
-        .text(`የዕለቱ የሥራ ሪፖርት · ${start.day} ${MONTHS[start.month]} ${start.year} · ገጽ ${i + 1} ከ ${range.count}`, L, doc.page.height - 32, {
-          width: W,
-          align: "center",
-          lineBreak: false,
-        });
+        .font("B")
+        .fontSize(11)
+        .fillColor(SECOND)
+        .text(`ገጽ ${i + 1} ከ ${range.count}`, L, doc.page.height - 36, { width: W, align: "center", lineBreak: false });
     }
   });
 }

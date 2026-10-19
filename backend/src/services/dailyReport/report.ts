@@ -17,7 +17,7 @@ export type DailyReportData = {
     /** Zoho's organization time zone, checked against the business's UTC+3 (the PDF warns on a mismatch). */
     zohoTimezone: ZohoTimezoneCheck
     payments: { at: string; number: string; customer: string; mode: string; amount: number }[]
-    items: { name: string; description: string; quantity: number; value: number; low: number; high: number }[]
+    items: { name: string; description: string; unit?: string; quantity: number; value: number; low: number; high: number }[]
     invoices: { number: string; customer: string; at: string; total: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
     returns: ReportReturn[]
     drafts: { number: string; customer: string; at: string; date?: string; total: number }[]
@@ -100,6 +100,7 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         for (const line of invoice.lines) {
             const key = line.item_id || line.name || line.description
             const entry = items.get(key) ?? { name: line.name, description: line.description, quantity: 0, value: 0, low: Infinity, high: -Infinity }
+            if (!entry.unit && line.unit) entry.unit = line.unit
             entry.quantity = round3(entry.quantity + line.quantity)
             entry.value = round2(entry.value + line.quantity * line.rate)
             entry.low = Math.min(entry.low, line.rate)

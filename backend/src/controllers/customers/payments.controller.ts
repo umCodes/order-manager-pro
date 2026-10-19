@@ -10,8 +10,8 @@ import {
 import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
 import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
 import { redisClient } from '../../config/redis.js';
-import { recordReportPayment, removeReportPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
-import { todayInBusinessTimezone } from '../../utils/businessDate.js';
+import { recordReportPayment, removeReportPayment, reportDayOfPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
+import { businessDayKey, todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday, adjustCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
@@ -162,9 +162,17 @@ function notifyPaymentChange(accessToken: string, change: PaymentChange, contact
         : notifyPaymentDeleted(accessToken, change.customer_id, change.payment_number, contactIds)
 }
 
-/** A today's-payment's change also moves today's collected total. */
-async function adjustTodayFor(paymentDate: string, delta: number) {
-    if (paymentDate === todayInBusinessTimezone()) await adjustCollectedToday(delta)
+/**
+ * A change to a payment collected in the current business day (4am to 4am)
+ * also moves today's collected total. Which business day a payment belongs
+ * to comes from when it was recorded (the daily report keeps that), not its
+ * Zoho date: Zoho dates by calendar day, so a payment made at 1am carries
+ * the next date while still counting toward the previous business day.
+ * Payments recorded before that existed fall back to their Zoho date.
+ */
+async function adjustTodayFor(paymentId: string, paymentDate: string, delta: number) {
+    const recordedDay = await reportDayOfPayment(paymentId)
+    if ((recordedDay ?? paymentDate) === businessDayKey()) await adjustCollectedToday(delta)
 }
 
 /**
@@ -187,7 +195,7 @@ export async function updateCustomerPayment(req: Request, res: Response) {
         const { before, after } = await ZohoUpdateCustomerPaymentAmount(access_token, id, paymentId, amount)
         deleteCache("customers")
         const oldAmount = Number(before.amount)
-        await adjustTodayFor(before.date, amount - oldAmount)
+        await adjustTodayFor(paymentId, before.date, amount - oldAmount)
         await updateReportPaymentAmount(paymentId, amount)
 
         const change: PaymentChange = {
@@ -223,7 +231,7 @@ export async function deleteCustomerPayment(req: Request, res: Response) {
 
         const deleted = await ZohoDeleteCustomerPayment(access_token, id, paymentId)
         deleteCache("customers")
-        await adjustTodayFor(deleted.date, -Number(deleted.amount))
+        await adjustTodayFor(paymentId, deleted.date, -Number(deleted.amount))
         await removeReportPayment(paymentId)
 
         const change: PaymentChange = { kind: "deletion", customer_id: id, payment_number: deleted.payment_number ?? "" }

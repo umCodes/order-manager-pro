@@ -2,6 +2,7 @@ import { ZohoApi } from "../zoho/client.js"
 import { redisClient } from "../../config/redis.js"
 import { businessDayKey } from "../../utils/businessDate.js"
 import { readReportDay, type ReportLine, type ReportReturn } from "./store.js"
+import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
 
 export type InvoiceStatus = "paid" | "partial" | "unpaid"
 
@@ -13,6 +14,8 @@ export type DailyReportData = {
     isComplete: boolean
     /** False when Zoho couldn't be reached: balances are as recorded when each invoice was sent. */
     balancesRefreshed: boolean
+    /** Zoho's organization time zone, checked against the business's UTC+3 (the PDF warns on a mismatch). */
+    zohoTimezone: ZohoTimezoneCheck
     payments: { at: string; number: string; customer: string; mode: string; amount: number }[]
     items: { name: string; description: string; quantity: number; value: number; low: number; high: number }[]
     invoices: { number: string; customer: string; at: string; total: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
@@ -67,7 +70,10 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
 
     const ids = new Set([...recorded.invoices, ...recorded.drafts].map((record) => record.invoice_id))
     const dates = [...recorded.invoices, ...recorded.drafts].map((record) => record.date).filter((date): date is string => !!date)
-    const states = await currentInvoiceStates(accessToken, ids, dates)
+    const [states, zohoTimezone] = await Promise.all([
+        currentInvoiceStates(accessToken, ids, dates),
+        checkZohoTimezone(accessToken),
+    ])
 
     // Invoices voided since are dropped; the rest take Zoho's current balance when known.
     const invoices = recorded.invoices
@@ -122,6 +128,7 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         generatedAt: new Date(),
         isComplete: day < businessDayKey(),
         balancesRefreshed: states !== null,
+        zohoTimezone,
         payments: recorded.payments.map((payment) => ({
             at: payment.at,
             number: payment.number,

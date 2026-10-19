@@ -7,7 +7,7 @@
  * stamped with yesterday's date. This computes "today" in the fixed business
  * offset instead, regardless of where the server process runs.
  */
-const BUSINESS_UTC_OFFSET_HOURS = 3;
+export const BUSINESS_UTC_OFFSET_HOURS = 3;
 
 /** Today's date as YYYY-MM-DD in the business's calendar (UTC+3), not the server's. */
 export function todayInBusinessTimezone(): string {

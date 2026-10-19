@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { buildScheduleOptions } from "../lib/scheduledDate";
+import { businessNow } from "../lib/businessTime";
 import DayPickerRow from "./DayPickerRow";
 import type { ScheduledDate } from "../types";
 
-/** Options are day-of-week labels relative to "now"; stale after local midnight. */
+/** Options are day-of-week labels relative to "now"; stale after midnight business time. */
 function isNearMidnight(date: Date): boolean {
   const minutes = date.getHours() * 60 + date.getMinutes();
   return minutes >= 22 * 60 + 30 || minutes <= 30;
@@ -23,17 +24,17 @@ type Props = {
  */
 export default function SchedulePicker({ value, onChange }: Props) {
   const [options, setOptions] = useState(() => buildScheduleOptions());
-  const [isNearMidnightNow, setIsNearMidnightNow] = useState(() => isNearMidnight(new Date()));
+  const [isNearMidnightNow, setIsNearMidnightNow] = useState(() => isNearMidnight(businessNow()));
 
   useEffect(() => {
-    const id = setInterval(() => setIsNearMidnightNow(isNearMidnight(new Date())), 30_000);
+    const id = setInterval(() => setIsNearMidnightNow(isNearMidnight(businessNow())), 30_000);
     return () => clearInterval(id);
   }, []);
 
   function refresh() {
     const nextOptions = buildScheduleOptions();
     setOptions(nextOptions);
-    setIsNearMidnightNow(isNearMidnight(new Date()));
+    setIsNearMidnightNow(isNearMidnight(businessNow()));
     if (value && !nextOptions.some((o) => o.date === value)) {
       onChange(null);
     }

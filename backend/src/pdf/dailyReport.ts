@@ -176,6 +176,18 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     if (!report.isComplete) {
       doc.font("B").fontSize(9).fillColor(ACCENT).text("ይህ የሥራ ቀን ገና አላለቀም — እስካሁን የተመዘገበው ብቻ ነው።", L, doc.y + 3);
     }
+    if (report.zohoTimezone.matches === false) {
+      const offset = report.zohoTimezone.offsetHours ?? 0;
+      doc
+        .font("R")
+        .fontSize(8.5)
+        .fillColor(ACCENT)
+        .text(
+          `የZoho የሰዓት ሰቅ ${report.zohoTimezone.timeZone} (UTC${offset >= 0 ? "+" : ""}${offset}) ነው፤ መተግበሪያው UTC+3 ይጠቀማል — ከእኩለ ሌሊት አካባቢ ያሉ ቀኖች ሊለያዩ ይችላሉ።`,
+          L,
+          doc.y + 2,
+        );
+    }
     if (!report.balancesRefreshed) {
       doc.font("R").fontSize(8.5).fillColor(ACCENT).text("ከZoho ማንበብ አልተቻለም፤ ቀሪ ሂሳቦቹ ደረሰኞቹ በተላኩበት ጊዜ እንደነበሩ ናቸው።", L, doc.y + 2);
     }

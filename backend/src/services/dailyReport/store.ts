@@ -99,6 +99,16 @@ export function recordReportPayment(payment: any, fallbackCustomer = "") {
     return put("payments", record.payment_id, record)
 }
 
+/** The business day a payment was recorded under, or null if it isn't recorded (made before this existed, or expired). */
+export async function reportDayOfPayment(paymentId: string): Promise<string | null> {
+    try {
+        return await redisClient.get(indexKey("payments", paymentId))
+    } catch (error) {
+        console.error(`Daily report: failed to read the day of payment ${paymentId}`, error)
+        return null
+    }
+}
+
 /** A payment's amount was corrected: updates its record, if the report still has it. */
 export async function updateReportPaymentAmount(paymentId: string, amount: number) {
     try {

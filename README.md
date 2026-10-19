@@ -126,5 +126,11 @@ All routes are mounted under `/api`.
 - `POST /reports/daily/send` — `{ day }` → sends the PDF on WhatsApp to the numbers chosen in Settings, with the chosen template (document header; `{{1}}` date, `{{2}}` sales, `{{3}}` payments collected, `{{4}}` invoices issued, `{{5}}` outstanding)
 - `GET` / `PUT /settings/daily-report-whatsapp` — that template (approved or under review) and up to 3 numbers
 
+**Customer visits** (`backend/src/routes/visits.routes.ts`) — kept in Redis (`visits:scheduled`, one per customer; `visits:log` of done ones); days are business days (4am to 4am). Customers with a visit not done yet are pinned on the Customers tab, with a banner and a tab badge
+- `GET /visits` — visits not done yet, the current business day, and the latest done ones
+- `PUT /customers/:id/visit` — `{ day, customer_name }` → schedule or move the visit; `DELETE` cancels it
+- `POST /customers/:id/visit/done` — `{ method: "location", position: { lat, lng, accuracy } }` compares the phone with the customer's map link (short links are followed and cached; within 200 m counts as at the customer), or `{ method: "not_checked" | "payment" | "delivery" | "return" }`
+- `POST /customers/:id/location` — `{ lat, lng }` → saves a phone position as the customer's map link (on their existing address)
+
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

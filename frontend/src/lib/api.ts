@@ -679,6 +679,61 @@ export async function deleteTelegramMessage(
   return response.json();
 }
 
+export type ScheduledVisit = { customer_id: string; customer_name: string; day: string; scheduled_at: string };
+export type VisitConfirmation =
+  | "at_location"
+  | "away_from_location"
+  | "no_customer_location"
+  | "location_not_checked"
+  | "payment"
+  | "delivery"
+  | "return";
+export type DoneVisit = ScheduledVisit & {
+  visited_at: string;
+  confirmation: VisitConfirmation;
+  distance_m?: number;
+  position?: { lat: number; lng: number; accuracy?: number };
+};
+
+/** Scheduled visits not done yet, and the current business day. */
+export async function fetchVisits(): Promise<{ today: string; visits: ScheduledVisit[]; done: DoneVisit[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/visits`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load visits (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function scheduleCustomerVisit(customerId: string, customerName: string, day: string): Promise<ScheduledVisit> {
+  const result = await postJson<{ visit: ScheduledVisit }>(
+    `${API_BASE_URL}/api/customers/${customerId}/visit`,
+    "PUT",
+    { day, customer_name: customerName },
+    "Failed to schedule the visit",
+  );
+  return result.visit;
+}
+
+export function cancelCustomerVisit(customerId: string): Promise<{ ok: boolean }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/visit`, "DELETE", {}, "Failed to cancel the visit");
+}
+
+/** Marks a customer's visit done, confirmed by the phone's position, without it, or by a payment / delivery / return. */
+export function markCustomerVisited(
+  customerId: string,
+  confirmation:
+    | { method: "location"; position: { lat: number; lng: number; accuracy?: number } }
+    | { method: "not_checked" | "payment" | "delivery" | "return" },
+): Promise<{ visit: DoneVisit; can_save_location: boolean }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/visit/done`, "POST", confirmation, "Failed to mark the visit as done");
+}
+
+/** Saves a phone position as the customer's map location (on their address). */
+export function saveCustomerLocation(customerId: string, position: { lat: number; lng: number }): Promise<{ location_link: string }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/location`, "POST", position, "Failed to save the location");
+}
+
 export type DailyReportDays = {
   today: string;
   previous: string;

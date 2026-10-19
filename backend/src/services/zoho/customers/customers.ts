@@ -7,6 +7,7 @@ import {
     formatAddress,
 } from "./constants.js"
 import type { CreateCustomerPayload } from "./types.js"
+import { getContactAddress } from "./contactDetails.js"
 
 /**
  * Builds the custom_fields array for a create/update request: preferred_language
@@ -193,4 +194,24 @@ export async function ZohoSetCustomerStatus(headers: string, customerId: string,
         console.error(error);
         throw error;
     }
+}
+
+/**
+ * Sets the map link on a customer's address, leaving the rest of the address
+ * (and everything else about the customer) as it is. The customer needs an
+ * address (city, district, street) to put it on.
+ */
+export async function ZohoSetCustomerLocationLink(headers: string, customerId: string, locationLink: string) {
+    if (!ADDRESS_CUSTOMFIELD_ID) throw new Error("The address custom field isn't set up")
+    const contact = await ZohoGetCustomerById(headers, customerId)
+    const address = getContactAddress(contact)
+    if (!address?.city || !address.district || !address.street) {
+        throw new Error("Add the customer's address (city, district, street) first")
+    }
+    const response = await ZohoApi(`contacts/${customerId}`, headers, "PUT", {
+        contact_name: contact.contact_name,
+        custom_fields: [{ customfield_id: ADDRESS_CUSTOMFIELD_ID, value: formatAddress({ ...address, location_link: locationLink }) }],
+    })
+    if (response.code !== 0) throw new Error(response.message || "Zoho rejected the location update")
+    return response.contact
 }

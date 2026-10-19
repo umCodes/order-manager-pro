@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  CalendarCheck,
   ChevronDown,
   Search,
   SlidersHorizontal,
@@ -22,6 +23,8 @@ import ClickableCard from "../components/ClickableCard";
 import RefreshButton from "../components/RefreshButton";
 import AddCustomerModal from "../components/AddCustomerModal";
 import CustomerTags from "../components/CustomerTags";
+import VisitButton from "../components/VisitButton";
+import { useVisits, visitSummary } from "../lib/visits";
 import type { Contact } from "../types";
 
 type StatusFilter = "all" | "outstanding" | "settled";
@@ -61,7 +64,12 @@ function rankedOptions(customers: Contact[], pick: (c: Contact) => string | unde
     .map(([value]) => value);
 }
 
-/** Customer directory: search, filter by status/activity, and sort by name or balance. */
+/**
+ * Customer directory: search, filter by status/activity, and sort by name or
+ * balance. Customers with a scheduled visit not done yet are pinned on top
+ * ("To visit", earliest day first, overdue in red) whatever the filters and
+ * sort — only the search narrows them — with a banner counting them.
+ */
 export default function CustomersPage({
   onSelectCustomer,
 }: {
@@ -78,6 +86,8 @@ export default function CustomersPage({
   const [isMoreFiltersOpen, setIsMoreFiltersOpen] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("balance", "desc");
+  const visits = useVisits();
+  const visitInfo = visitSummary(visits);
 
   // "All" and "Active" are the implicit defaults — toggling one of the pills
   // below switches to it, tapping the already-active one switches back off.
@@ -188,6 +198,92 @@ export default function CustomersPage({
     sortKey,
     sortDirection,
   ]);
+
+  const pinQuery = query.trim().toLowerCase();
+  const matchesQuery = (name: string, company?: string) =>
+    !pinQuery || name.toLowerCase().includes(pinQuery) || (company ?? "").toLowerCase().includes(pinQuery);
+  const pinnedIds = new Set(visitInfo.visits.map((v) => v.customer_id));
+  // Pinned whatever the filters and sort; only the search narrows them.
+  const pinned = visitInfo.visits
+    .map((visit) => {
+      const customer = customers.find((c) => c.contact_id === visit.customer_id);
+      return { visit, customer };
+    })
+    .filter(({ visit, customer }) =>
+      customer ? matchesQuery(customer.contact_name || "", customer.company_name) : matchesQuery(visit.customer_name),
+    );
+  const unpinned = filteredCustomers.filter((c) => !pinnedIds.has(c.contact_id));
+
+  function renderCard(c: Contact | undefined, visit?: (typeof visitInfo.visits)[number]) {
+    if (!c) {
+      // A scheduled customer not in the loaded list (yet): just their name and visit.
+      return visit ? (
+        <ClickableCard key={visit.customer_id} className="customer-card--visit" onClick={() => onSelectCustomer(visit.customer_id)}>
+          <div className="draft-card__top">
+            <span className="draft-card__invoice-number">{visit.customer_name}</span>
+          </div>
+          <div className="customer-card__visit" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <VisitButton customerId={visit.customer_id} customerName={visit.customer_name} compact />
+          </div>
+        </ClickableCard>
+      ) : null;
+    }
+    const isOverdueVisit = !!visit && visit.day < visits.today;
+    const contactNumber = getPrimaryContactPhone(c);
+    const isInactive = c.status !== "active";
+    const hasNoPhone = !contactNumber;
+    // Only flag a missing language if the list response actually carries
+    // custom_fields at all — otherwise every customer would falsely show as missing.
+    const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
+    return (
+      <ClickableCard
+        key={c.contact_id}
+        className={
+          [isInactive && "customer-card--inactive", visit && "customer-card--visit", isOverdueVisit && "customer-card--visit-overdue"]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
+        onClick={() => onSelectCustomer(c.contact_id)}
+      >
+        <div className="draft-card__top">
+          <span className="draft-card__invoice-number">
+            {c.contact_name || c.company_name}
+            {isInactive && <span className="badge customer-card__inactive-badge">inactive</span>}
+            {hasNoPhone && (
+              <span className="badge badge--warning customer-card__inactive-badge" title="No phone number on file">
+                no phone
+              </span>
+            )}
+            {hasNoPreferredLanguage && (
+              <span className="badge badge--warning customer-card__inactive-badge" title="No preferred language set">
+                no language
+              </span>
+            )}
+          </span>
+          <span className="draft-card__status">
+            {c.outstanding_receivable_amount > 0 ? "outstanding" : "settled"}
+          </span>
+        </div>
+        {c.company_name && c.company_name !== c.contact_name && (
+          <div className="draft-card__company">{c.company_name}</div>
+        )}
+        <CustomerTags customer={c} />
+        {visit && (
+          <div className="customer-card__visit" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <VisitButton customerId={c.contact_id} customerName={c.contact_name || c.company_name} compact />
+          </div>
+        )}
+        <div className="draft-card__bottom">
+          <span className="draft-card__scheduled">
+            {contactNumber || "No contact number"}
+          </span>
+          <span className="draft-card__total">
+            {currency(c.outstanding_receivable_amount)}
+          </span>
+        </div>
+      </ClickableCard>
+    );
+  }
 
   return (
     <div>
@@ -370,57 +466,30 @@ export default function CustomersPage({
         </span>
       </div>
 
+      {visitInfo.total > 0 && (
+        <div className={`visits-banner${visitInfo.overdue ? " visits-banner--overdue" : ""}`} role="status">
+          <CalendarCheck size={16} />
+          <span>
+            {visitInfo.total} {visitInfo.total === 1 ? "customer" : "customers"} to visit
+            {visitInfo.dueToday > 0 && ` · ${visitInfo.dueToday} today`}
+            {visitInfo.overdue > 0 && ` · ${visitInfo.overdue} overdue`}
+          </span>
+        </div>
+      )}
+
+      {pinned.length > 0 && (
+        <>
+          <div className="customers-section-label">To visit</div>
+          <div className="draft-list customers-pinned">{pinned.map(({ customer, visit }) => renderCard(customer, visit))}</div>
+          <div className="customers-section-label">All customers</div>
+        </>
+      )}
+
       <div className="draft-list">
-        {filteredCustomers.length === 0 ? (
+        {unpinned.length === 0 ? (
           <div className="items-area__empty">No customers found</div>
         ) : (
-          filteredCustomers.map((c) => {
-            const contactNumber = getPrimaryContactPhone(c);
-            const isInactive = c.status !== "active";
-            const hasNoPhone = !contactNumber;
-            // Only flag a missing language if the list response actually carries
-            // custom_fields at all — otherwise every customer would falsely show as missing.
-            const hasNoPreferredLanguage = !!c.custom_fields?.length && getRawContactPreferredLanguage(c) === undefined;
-            return (
-              <ClickableCard
-                key={c.contact_id}
-                className={isInactive ? "customer-card--inactive" : undefined}
-                onClick={() => onSelectCustomer(c.contact_id)}
-              >
-                <div className="draft-card__top">
-                  <span className="draft-card__invoice-number">
-                    {c.contact_name || c.company_name}
-                    {isInactive && <span className="badge customer-card__inactive-badge">inactive</span>}
-                    {hasNoPhone && (
-                      <span className="badge badge--warning customer-card__inactive-badge" title="No phone number on file">
-                        no phone
-                      </span>
-                    )}
-                    {hasNoPreferredLanguage && (
-                      <span className="badge badge--warning customer-card__inactive-badge" title="No preferred language set">
-                        no language
-                      </span>
-                    )}
-                  </span>
-                  <span className="draft-card__status">
-                    {c.outstanding_receivable_amount > 0 ? "outstanding" : "settled"}
-                  </span>
-                </div>
-                {c.company_name && c.company_name !== c.contact_name && (
-                  <div className="draft-card__company">{c.company_name}</div>
-                )}
-                <CustomerTags customer={c} />
-                <div className="draft-card__bottom">
-                  <span className="draft-card__scheduled">
-                    {contactNumber || "No contact number"}
-                  </span>
-                  <span className="draft-card__total">
-                    {currency(c.outstanding_receivable_amount)}
-                  </span>
-                </div>
-              </ClickableCard>
-            );
-          })
+          unpinned.map((c) => renderCard(c))
         )}
       </div>
 

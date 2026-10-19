@@ -32,6 +32,8 @@ import ClickableCard from "../components/ClickableCard";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import PaymentModal from "../components/PaymentModal";
 import PaymentChangeModal from "../components/PaymentChangeModal";
+import VisitButton from "../components/VisitButton";
+import { offerVisitCompletion } from "../lib/visits";
 import AddCustomerModal from "../components/AddCustomerModal";
 import ContactCard from "../components/ContactCard";
 import AddContactModal from "../components/AddContactModal";
@@ -159,6 +161,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     recordCustomerPayment(customer.contact_id, amount, discount, notify, notifyContactIds)
       .then((result) => {
         setIsPaymentModalOpen(false);
+        // A discount on its own isn't a payment the customer made.
+        if (amount > 0) offerVisitCompletion(customer.contact_id, "payment");
         if (result.discounts?.length) {
           setDiscountSummary(
             `Discount applied: ${result.discounts.map((d) => `${currency(d.amount)} on ${d.invoice_number}`).join(", ")}.`,
@@ -500,6 +504,10 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="visit-row">
+            <VisitButton customerId={customer.contact_id} customerName={customer.contact_name || customer.company_name} />
           </div>
 
           <div className="invoice-details__totals">

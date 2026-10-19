@@ -1446,6 +1446,7 @@
 
 .invoice-details__customer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 17px;
@@ -3475,4 +3476,160 @@ div.wa-pick-list__row {
   margin-top: 10px;
   font-size: 12.5px;
   color: var(--color-gray-500);
+}
+
+/* Customer visits: the Visit button, its day tag, and the schedule window. */
+.visit-row {
+  margin-bottom: 14px;
+}
+
+.visit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px dashed var(--color-gray-400);
+  border-radius: var(--radius-full);
+  background: var(--color-white);
+  color: var(--color-gray-700);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.visit-button--compact {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.visit-button--scheduled {
+  border: 1px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.visit-button--overdue {
+  border-color: var(--color-red-600);
+  background: #fef2f2;
+  color: var(--color-red-600);
+}
+
+.visit-day-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.visit-day-tag--overdue {
+  background: #fee2e2;
+  color: var(--color-red-600);
+}
+
+.visit-other-date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-gray-600);
+}
+
+.visit-other-date .input {
+  flex: 1;
+}
+
+.visit-done-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.btn.visit-mark-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--color-green-700);
+}
+
+.visit-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--color-gray-700);
+}
+
+/* Customers tab: visits banner, pinned "To visit" section, highlighted cards. */
+.visits-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb;
+  border-radius: var(--radius-md);
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.visits-banner--overdue {
+  border-color: #fca5a5;
+  border-left-color: var(--color-red-600);
+  background: #fef2f2;
+  color: var(--color-red-600);
+}
+
+.customers-section-label {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-gray-500);
+}
+
+.customers-pinned {
+  margin-bottom: 4px;
+}
+
+.draft-card.customer-card--visit {
+  border-color: #93c5fd;
+  border-left: 4px solid #2563eb;
+  background: #f8fbff;
+}
+
+.draft-card.customer-card--visit-overdue {
+  border-color: #fca5a5;
+  border-left-color: var(--color-red-600);
+  background: #fffafa;
+}
+
+.customer-card__visit {
+  margin: 6px 0 4px;
+}
+
+/* Tab badge for visits that are only later (none today or overdue): blue instead of red. */
+.unread-badge--tab.unread-badge--visits-later {
+  background: #2563eb;
+}
+
+/* "Visit done?" after a payment/delivery/return: above any page's own windows. */
+.modal-overlay.visit-prompt {
+  z-index: 1000;
 }

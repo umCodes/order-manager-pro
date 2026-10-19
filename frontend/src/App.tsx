@@ -3,6 +3,8 @@ import { Settings } from "lucide-react";
 import "./App.css";
 import TabBar from "./components/TabBar";
 import { startUnreadWatcher } from "./lib/unread";
+import { startVisitsWatcher } from "./lib/visits";
+import VisitCompletionPrompt from "./components/VisitCompletionPrompt";
 import NewInvoicePage from "./pages/NewInvoicePage";
 import MessagesPage from "./pages/MessagesPage";
 import DraftsPage from "./pages/DraftsPage";
@@ -46,6 +48,7 @@ function App() {
   }
 
   useEffect(() => startUnreadWatcher(), []);
+  useEffect(() => startVisitsWatcher(), []);
 
   function openCustomerFromList(customerId: string) {
     setIsCustomerOnTop(false);
@@ -134,6 +137,8 @@ function App() {
           </div>
         </div>
       )}
+
+      <VisitCompletionPrompt />
 
       {isSettingsOpen && (
         <div className="detail-overlay detail-overlay--settings">

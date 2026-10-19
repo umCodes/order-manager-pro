@@ -20,6 +20,8 @@ export type Contact = {
   contact_name: string;
   company_name: string;
   outstanding_receivable_amount: number;
+  /** Credit not used yet (e.g. a return when nothing was owed); taken off the next invoices automatically. */
+  unused_credits_receivable_amount?: number;
   contact_persons: ContactPerson[];
   phone: string;
   mobile: string;

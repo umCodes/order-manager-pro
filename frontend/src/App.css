@@ -3733,3 +3733,9 @@ button.line-items__header.customer-tx__toggle {
   margin: 10px 14px 14px;
   width: calc(100% - 28px);
 }
+
+/* Customer page: credit left from returns, under the balance. */
+.customer-credit-row {
+  color: #15803d;
+  font-weight: 500;
+}

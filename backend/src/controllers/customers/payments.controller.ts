@@ -8,6 +8,7 @@ import {
     ZohoDeleteCustomerPayment,
 } from '../../services/zoho/customers/index.js';
 import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
+import { applyUnusedCredits } from '../../services/credits.js';
 import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
 import { redisClient } from '../../config/redis.js';
 import { recordReportPayment, removeReportPayment, reportDayOfPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
@@ -46,6 +47,8 @@ export async function payCustomerBalance(req: Request, res: Response){
         if (payment) await recordReportPayment(payment)
         // A discount on its own isn't a payment, so it doesn't confirm a visit.
         if (payment) await confirmVisitByActivity(id as string, "payment")
+        // Leftover credit from returns goes on what's still owed, before the balance is read for the notice.
+        if (payment) await applyUnusedCredits(access_token, id as string)
 
         // A discount on its own isn't a payment to confirm to the customer.
         const notified = notify && payment

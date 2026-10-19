@@ -520,6 +520,12 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
               <span>Outstanding balance</span>
               <span>{currency(customer.outstanding_receivable_amount)}</span>
             </div>
+            {Number(customer.unused_credits_receivable_amount) > 0 && (
+              <div className="invoice-details__totals-row customer-credit-row" title="Taken off the next delivered invoice automatically">
+                <span>Unused credit</span>
+                <span>{currency(Number(customer.unused_credits_receivable_amount))}</span>
+              </div>
+            )}
           </div>
 
           <div className="invoice-details__actions">

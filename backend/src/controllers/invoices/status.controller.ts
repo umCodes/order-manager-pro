@@ -13,6 +13,7 @@ import { addToCollectedToday } from "../../services/dailyTotals.js";
 import { deleteCache } from "../../utils/cache.js";
 import { recordReportInvoiceSent, recordReportPayment, removeReportInvoice } from "../../services/dailyReport/store.js";
 import { confirmVisitByActivity } from "../../services/visits.js";
+import { applyUnusedCredits } from "../../services/credits.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -39,6 +40,8 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     await addToCollectedToday(Number(amount));
     await recordReportPayment(payment, invoiceBeforePayment.customer_name);
     await confirmVisitByActivity(invoiceBeforePayment.customer_id, "payment");
+    // Leftover credit from returns goes on what's still owed (before the balance is read for the notice).
+    await applyUnusedCredits(access_token, invoiceBeforePayment.customer_id);
     // Paying a draft sends it: it becomes one of the day's sales.
     if (wasDraft) {
       await recordReportInvoiceSent({
@@ -91,7 +94,10 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     // A sent invoice now counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
-    const invoice = await ZohoGetInvoiceById(access_token, id);
+    // Leftover credit from returns goes on the delivered invoice (and any other open ones), before it's read back.
+    const before = await ZohoGetInvoiceById(access_token, id);
+    const credits = await applyUnusedCredits(access_token, before.customer_id);
+    const invoice = credits.length ? await ZohoGetInvoiceById(access_token, id) : before;
     await recordReportInvoiceSent(invoice);
     await confirmVisitByActivity(invoice.customer_id, "delivery");
 

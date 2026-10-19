@@ -3,6 +3,7 @@ import { FONT_ETHIOPIC_MERGED_BOLD, FONT_ETHIOPIC_MERGED_REGULAR } from "./asset
 import { businessDayWindow, businessTimeParts } from "../utils/businessDate.js";
 import { lineWeightKg } from "../utils/packWeight.js";
 import { toAmharicUnit } from "../utils/units.js";
+import { drawMixedLine, registerArabicFonts } from "./mixedText.js";
 import type { DailyReportData, InvoiceStatus } from "../services/dailyReport/report.js";
 import type { ReportLine } from "../services/dailyReport/store.js";
 
@@ -13,7 +14,9 @@ import type { ReportLine } from "../services/dailyReport/store.js";
  * invoice register with balances, returns, and orders not yet delivered.
  * Item names are the Amharic description with the English (Zoho) name under
  * it; item tables show the quantity with its unit and the weight in kilograms
- * (from the pack size in the English name, see packWeight.ts).
+ * (from the pack size in the English name, see packWeight.ts). Names in
+ * Arabic (customers, items) are drawn with the Arabic font, right to left
+ * (see mixedText.ts); everything else stays in Amharic as is.
  */
 
 const WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"];
@@ -67,6 +70,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
   return renderToBuffer({ size: "A4", margin: MARGIN, bufferPages: true }, (doc) => {
     doc.registerFont("R", FONT_ETHIOPIC_MERGED_REGULAR);
     doc.registerFont("B", FONT_ETHIOPIC_MERGED_BOLD);
+    registerArabicFonts(doc);
     const L = MARGIN;
     const W = doc.page.width - MARGIN * 2;
     const BOTTOM = doc.page.height - 56;
@@ -110,11 +114,10 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           doc.fillColor(status.ink).text(status.text, badgeX, y + (height - 20) / 2 + 3, { width: badgeW, align: "center", lineBreak: false });
         } else {
           const main = typeof cell === "string" ? cell : cell.main;
-          doc.font(typeof cell !== "string" && cell.bold ? "B" : "R").fontSize(12.5).fillColor(INK);
-          doc.text(main, x + 6, top, { width: col.w - 12, align: col.align ?? "left", lineBreak: false, ellipsis: true });
+          const bold = typeof cell !== "string" && !!cell.bold;
+          drawMixedLine(doc, main, x + 6, top, { font: bold ? "B" : "R", bold, size: 12.5, color: INK, width: col.w - 12, align: col.align });
           if (typeof cell !== "string" && cell.sub) {
-            doc.font("R").fontSize(9.5).fillColor(SECOND);
-            doc.text(cell.sub, x + 6, top + 18, { width: col.w - 12, align: col.align ?? "left", lineBreak: false, ellipsis: true });
+            drawMixedLine(doc, cell.sub, x + 6, top + 18, { font: "R", size: 9.5, color: SECOND, width: col.w - 12, align: col.align });
           }
         }
         x += col.w;
@@ -160,8 +163,8 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
       doc.y += 10;
       const y = doc.y;
       doc.rect(L, y, 3, 36).fill(ACCENT);
-      doc.font("B").fontSize(14).fillColor(INK).text(customer, L + 12, y + 1, { width: W - 12, lineBreak: false, ellipsis: true });
-      doc.font("R").fontSize(11).fillColor(SECOND).text(detail, L + 12, y + 21, { width: W - 12, lineBreak: false });
+      drawMixedLine(doc, customer, L + 12, y + 1, { font: "B", bold: true, size: 14, color: INK, width: W - 12 });
+      drawMixedLine(doc, detail, L + 12, y + 21, { font: "R", size: 11, color: SECOND, width: W - 12 });
       doc.y = y + 44;
     }
 

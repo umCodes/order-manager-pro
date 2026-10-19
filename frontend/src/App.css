@@ -3404,3 +3404,17 @@ div.wa-pick-list__row {
   font-size: 12px;
   color: var(--color-gray-500);
 }
+
+/* Daily report picker: one button per business day. */
+.daily-report-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.daily-report-options .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}

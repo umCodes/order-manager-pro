@@ -10,6 +10,7 @@ import {
 import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
 import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
 import { redisClient } from '../../config/redis.js';
+import { recordReportPayment, removeReportPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
 import { todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday, adjustCollectedToday } from '../../services/dailyTotals.js';
@@ -41,6 +42,7 @@ export async function payCustomerBalance(req: Request, res: Response){
         // The cached customer list carries each customer's balance due.
         deleteCache("customers")
         if (amount) await addToCollectedToday(amount)
+        if (payment) await recordReportPayment(payment)
 
         // A discount on its own isn't a payment to confirm to the customer.
         const notified = notify && payment
@@ -186,6 +188,7 @@ export async function updateCustomerPayment(req: Request, res: Response) {
         deleteCache("customers")
         const oldAmount = Number(before.amount)
         await adjustTodayFor(before.date, amount - oldAmount)
+        await updateReportPaymentAmount(paymentId, amount)
 
         const change: PaymentChange = {
             kind: "correction",
@@ -221,6 +224,7 @@ export async function deleteCustomerPayment(req: Request, res: Response) {
         const deleted = await ZohoDeleteCustomerPayment(access_token, id, paymentId)
         deleteCache("customers")
         await adjustTodayFor(deleted.date, -Number(deleted.amount))
+        await removeReportPayment(paymentId)
 
         const change: PaymentChange = { kind: "deletion", customer_id: id, payment_number: deleted.payment_number ?? "" }
         await savePaymentChange(paymentId, change)

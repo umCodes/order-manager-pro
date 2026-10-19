@@ -4,7 +4,7 @@ import { businessDayKey, secondsUntilNextBusinessDay } from "../utils/businessDa
 /**
  * Redis-backed "today" totals for the Drafts tab: the estimated amount for
  * the day, and how much of it has actually been collected so far. Both are
- * keyed by business day (5am-to-5am, see businessDate.ts) and expire on
+ * keyed by business day (4am-to-4am, see businessDate.ts) and expire on
  * their own at the next boundary — no cleanup job needed.
  *
  * The estimate used to be computed live from today's still-in-draft

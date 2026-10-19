@@ -15,6 +15,7 @@ import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
+import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
@@ -54,6 +55,7 @@ export async function updateInvoiceDate(req: Request, res: Response) {
       await redisClient.set(String(invoice.invoice_id), String(message.message_id));
     }
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -100,6 +102,7 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
     // A sent invoice's total is part of the customer's balance due in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -129,6 +132,7 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
     // Moving a sent invoice shifts balance due between two customers in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -161,7 +165,9 @@ export async function splitInvoice(req: Request, res: Response) {
       !!create_new_draft,
     );
 
+    await refreshReportInvoice(invoice);
     if (newDraft) {
+      await recordReportDraft(newDraft);
       const newDraftTelegramLineItems = excludeInternalLineItems(newDraft.line_items);
       const telegramMessage = await sendInvoiceTelegramMessage(newDraft, newDraftTelegramLineItems);
       await redisClient.set(String(newDraft.invoice_id), String(telegramMessage.message_id));

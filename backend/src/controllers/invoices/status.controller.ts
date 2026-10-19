@@ -11,6 +11,7 @@ import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { addToCollectedToday } from "../../services/dailyTotals.js";
 import { deleteCache } from "../../utils/cache.js";
+import { recordReportInvoiceSent, recordReportPayment, removeReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -35,6 +36,14 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     // The cached customer list carries each customer's balance due.
     deleteCache("customers");
     await addToCollectedToday(Number(amount));
+    await recordReportPayment(payment, invoiceBeforePayment.customer_name);
+    // Paying a draft sends it: it becomes one of the day's sales.
+    if (wasDraft) {
+      await recordReportInvoiceSent({
+        ...invoiceBeforePayment,
+        balance: Math.max(0, Number(invoiceBeforePayment.total) - Number(amount) - (Number(discount) || 0)),
+      });
+    }
 
     // Once any payment is recorded the invoice is no longer pending
     // fulfillment, so its channel message (if one is still around) no longer applies.
@@ -81,6 +90,7 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
+    await recordReportInvoiceSent(invoice);
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
 
@@ -105,6 +115,7 @@ export async function voidInvoice(req: Request, res: Response) {
     if (!id) throw new Error("id not provided");
 
     await ZohoMarkInvoiceAsVoid(access_token, id);
+    await removeReportInvoice(id);
     // A voided invoice no longer counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);

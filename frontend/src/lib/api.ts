@@ -679,6 +679,18 @@ export async function deleteTelegramMessage(
   return response.json();
 }
 
+/** The current business day and the one before it (4am to 4am), as YYYY-MM-DD. */
+export async function fetchDailyReportDays(): Promise<{ today: string; previous: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/reports/daily/days`);
+  if (!response.ok) throw new Error(`Failed to load report days (${response.status})`);
+  return response.json();
+}
+
+/** URL for a business day's daily report PDF. Append `&download=1` to have it served as an attachment. */
+export function dailyReportUrl(day: string) {
+  return `${API_BASE_URL}/api/reports/daily?day=${encodeURIComponent(day)}`;
+}
+
 /** URL for the invoice's PDF. Append `?download=1` to have it served as an attachment. */
 export function invoicePdfUrl(invoiceId: string): string {
   return `${API_BASE_URL}/api/invoices/${invoiceId}/pdf`;

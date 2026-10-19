@@ -9,6 +9,7 @@ import { excludeInternalLineItems, stripInternalMarker } from "../../utils/inter
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 import { oneMonthFromTodayInBusinessTimezone } from "../../utils/businessDate.js";
+import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
  * Creates a new invoice, or — when `invoice_id` is given — replaces an
@@ -48,6 +49,7 @@ export async function createInvoice(req: Request, res: Response) {
       });
 
       const invoice = await ZohoGetInvoiceById(access_token, String(invoice_id));
+      await refreshReportInvoice(invoice);
 
       if (!skip_telegram) {
         const allTelegramLineItems = excludeInternalLineItems(invoice.line_items);
@@ -78,6 +80,7 @@ export async function createInvoice(req: Request, res: Response) {
       line_items: zohoLineItems,
     });
 
+    await recordReportDraft(invoice);
     if (!date) invoice.date = undefined
 
     if (!skip_telegram) {

@@ -123,7 +123,7 @@ All routes are mounted under `/api`.
 
 **Daily report** (`backend/src/routes/reports.routes.ts`) — business days run 4am to 4am (UTC+3); what happens each day is recorded in Redis as it happens (`services/dailyReport/store.ts`), kept 7 days after the day ends, or 3 days once its report is handed over (downloaded, or delivered on WhatsApp)
 - `GET /reports/daily/days` — the current and previous business day, and whether WhatsApp sending is set up
-- `GET /reports/daily?day=YYYY-MM-DD` — the day's Amharic PDF report (one Zoho call); `&download=1` as an attachment
+- `GET /reports/daily?day=YYYY-MM-DD` — the day's Amharic PDF report; `&download=1` as an attachment. Its undelivered orders are every draft dated that day or earlier (read from Zoho, so an order stays on each day's report until delivered), plus, for a past day, orders delivered only after it ended
 - `POST /reports/daily/send` — `{ day }` → sends the PDF on WhatsApp to the numbers chosen in Settings, with the chosen template (document header; `{{1}}` date, `{{2}}` sales, `{{3}}` payments collected, `{{4}}` invoices issued, `{{5}}` outstanding)
 - `POST /reports/daily/scheduled` — for a scheduler (e.g. cron-job.org, daily just after 4am business time): sends the business day that just ended, like `/reports/daily/send`. Needs the `X-Cron-Secret` header to equal the `CRON_SECRET` env var (unset: refused). Answers `202` at once and sends in the background; each day is sent once (a repeat answers `200` "Already sent"); a send that fails for every number can be retried. `400` when the template or numbers aren't set in Settings
 - `GET` / `PUT /settings/daily-report-whatsapp` — that template (approved or under review) and up to 3 numbers

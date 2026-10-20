@@ -1,7 +1,7 @@
 import { ZohoApi } from "../zoho/client.js"
 import { redisClient } from "../../config/redis.js"
 import { businessDayKey } from "../../utils/businessDate.js"
-import { readReportDay, type ReportLine, type ReportReturn } from "./store.js"
+import { readReportDay, type ReportDraft, type ReportLine, type ReportReturn } from "./store.js"
 import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
 
 export type InvoiceStatus = "paid" | "partial" | "unpaid"
@@ -56,6 +56,60 @@ async function currentInvoiceStates(accessToken: string, ids: Set<string>, dates
     }
 }
 
+const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+/**
+ * The orders not delivered by the end of `day`: every draft dated that day
+ * or earlier — an order due and missed stays on every day's report until
+ * it's delivered — read from Zoho, so drafts made in Zoho count too. For a
+ * day that has passed, orders delivered (marked as sent through the app)
+ * only after it ended still count as undelivered on it. Oldest first.
+ * If Zoho can't be read, the drafts the app recorded that day stand in.
+ */
+async function undeliveredOrders(accessToken: string, day: string, recordedDrafts: ReportDraft[]): Promise<DailyReportData["drafts"]> {
+    const orders = new Map<string, DailyReportData["drafts"][number] & { id: string }>()
+    try {
+        for (let page = 1; page <= 10; page++) {
+            const query = new URLSearchParams({ status: "draft", date_end: day, per_page: "200", page: String(page) })
+            const response = await ZohoApi(`invoices?${query}`, accessToken)
+            if (!Array.isArray(response.invoices)) throw new Error(response.message ?? "Failed to list drafts")
+            for (const invoice of response.invoices) {
+                // Checked here too, in case Zoho ignores a filter.
+                if (invoice.status !== "draft" || !invoice.date || invoice.date > day) continue
+                orders.set(String(invoice.invoice_id), {
+                    id: String(invoice.invoice_id),
+                    number: String(invoice.invoice_number),
+                    customer: String(invoice.customer_name ?? ""),
+                    at: String(invoice.created_time ?? ""),
+                    date: invoice.date,
+                    total: round2(Number(invoice.total) || 0),
+                })
+            }
+            if (!response.page_context?.has_more_page) break
+        }
+    } catch (error) {
+        console.error("Daily report: couldn't read the undelivered orders from Zoho", error)
+        for (const draft of recordedDrafts) {
+            if (draft.date && draft.date > day) continue
+            if (await redisClient.exists(`daily-report:index:invoices:${draft.invoice_id}`)) continue
+            orders.set(draft.invoice_id, { id: draft.invoice_id, number: draft.number, customer: draft.customer, at: draft.at, ...(draft.date ? { date: draft.date } : {}), total: draft.total })
+        }
+    }
+
+    // Delivered on a later business day: still undelivered at the end of this one.
+    const today = businessDayKey()
+    for (let later = nextDay(day); later <= today; later = nextDay(later)) {
+        for (const sent of (await readReportDay(later)).invoices) {
+            if (!sent.date || sent.date > day || orders.has(sent.invoice_id)) continue
+            orders.set(sent.invoice_id, { id: sent.invoice_id, number: sent.number, customer: sent.customer, at: sent.at, date: sent.date, total: sent.total })
+        }
+    }
+
+    return [...orders.values()]
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.number.localeCompare(b.number))
+        .map(({ id: _id, ...order }) => order)
+}
+
 function statusOf(total: number, balance: number): InvoiceStatus {
     if (balance <= 0.004) return "paid"
     return balance < total - 0.004 ? "partial" : "unpaid"
@@ -63,16 +117,18 @@ function statusOf(total: number, balance: number): InvoiceStatus {
 
 /**
  * Builds a business day's report from what was recorded (see store.ts),
- * refreshing paid/outstanding and draft status with a single Zoho call.
+ * refreshing paid/outstanding with a single Zoho call; the undelivered
+ * orders come from Zoho (see undeliveredOrders).
  */
 export async function buildDailyReport(accessToken: string, day: string): Promise<DailyReportData> {
     const recorded = await readReportDay(day)
 
-    const ids = new Set([...recorded.invoices, ...recorded.drafts].map((record) => record.invoice_id))
-    const dates = [...recorded.invoices, ...recorded.drafts].map((record) => record.date).filter((date): date is string => !!date)
-    const [states, zohoTimezone] = await Promise.all([
+    const ids = new Set(recorded.invoices.map((record) => record.invoice_id))
+    const dates = recorded.invoices.map((record) => record.date).filter((date): date is string => !!date)
+    const [states, zohoTimezone, drafts] = await Promise.all([
         currentInvoiceStates(accessToken, ids, dates),
         checkZohoTimezone(accessToken),
+        undeliveredOrders(accessToken, day, recorded.drafts),
     ])
 
     // Invoices voided since are dropped; the rest take Zoho's current balance when known.
@@ -107,21 +163,6 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
             entry.high = Math.max(entry.high, line.rate)
             items.set(key, entry)
         }
-    }
-
-    // Drafts still unsent: not marked as sent through the app, and still a draft in Zoho (when it could be read).
-    const drafts = []
-    for (const draft of recorded.drafts) {
-        const state = states?.get(draft.invoice_id)
-        if (state && state.status !== "draft") continue
-        if (await redisClient.exists(`daily-report:index:invoices:${draft.invoice_id}`)) continue
-        drafts.push({
-            number: draft.number,
-            customer: state?.customer_name ?? draft.customer,
-            at: draft.at,
-            date: state?.date ?? draft.date,
-            total: state ? round2(Number(state.total)) : draft.total,
-        })
     }
 
     return {

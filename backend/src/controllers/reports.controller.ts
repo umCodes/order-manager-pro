@@ -78,10 +78,14 @@ export async function getDailyReportPdf(req: Request, res: Response) {
 /** Set once a day's report was sent by the scheduler, so a repeated call doesn't send it twice. */
 const AUTO_SENT_KEY = (day: string) => `daily-report:auto-sent:${day}`;
 
+/** Compared with spaces, line breaks and quotes around either value ignored (easy to paste in by accident). */
 function secretMatches(given: string | undefined) {
-    if (!CRON_SECRET || !given) return false;
-    const a = Buffer.from(given);
-    const b = Buffer.from(CRON_SECRET);
+    const clean = (value: string | undefined) => (value ?? '').trim().replace(/^["']|["']$/g, '').trim();
+    const expected = clean(CRON_SECRET);
+    const received = clean(given);
+    if (!expected || !received) return false;
+    const a = Buffer.from(received);
+    const b = Buffer.from(expected);
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
@@ -95,12 +99,12 @@ function secretMatches(given: string | undefined) {
  * is logged, and a day whose send failed for every number can be retried.
  */
 export async function scheduledDailyReport(req: Request, res: Response) {
-    if (!CRON_SECRET) {
+    if (!CRON_SECRET?.trim()) {
         res.status(503).json({ error: 'CRON_SECRET is not set on the server' });
         return;
     }
     if (!secretMatches(req.get('X-Cron-Secret'))) {
-        res.status(401).json({ error: 'Wrong or missing X-Cron-Secret' });
+        res.status(401).json({ error: req.get('X-Cron-Secret') ? 'X-Cron-Secret does not match CRON_SECRET' : 'The X-Cron-Secret header is missing' });
         return;
     }
 

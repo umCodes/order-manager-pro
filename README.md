@@ -125,6 +125,7 @@ All routes are mounted under `/api`.
 - `GET /reports/daily/days` — the current and previous business day, and whether WhatsApp sending is set up
 - `GET /reports/daily?day=YYYY-MM-DD` — the day's Amharic PDF report (one Zoho call); `&download=1` as an attachment
 - `POST /reports/daily/send` — `{ day }` → sends the PDF on WhatsApp to the numbers chosen in Settings, with the chosen template (document header; `{{1}}` date, `{{2}}` sales, `{{3}}` payments collected, `{{4}}` invoices issued, `{{5}}` outstanding)
+- `POST /reports/daily/scheduled` — for a scheduler (e.g. cron-job.org, daily just after 4am business time): sends the business day that just ended, like `/reports/daily/send`. Needs the `X-Cron-Secret` header to equal the `CRON_SECRET` env var (unset: refused). Answers `202` at once and sends in the background; each day is sent once (a repeat answers `200` "Already sent"); a send that fails for every number can be retried. `400` when the template or numbers aren't set in Settings
 - `GET` / `PUT /settings/daily-report-whatsapp` — that template (approved or under review) and up to 3 numbers
 
 **Customer visits** (`backend/src/routes/visits.routes.ts`) — kept in Redis (`visits:scheduled`, one per customer; `visits:log` of done ones); days are business days (4am to 4am). Customers with a visit not done yet are pinned on the Customers tab, with a banner and a tab badge. A payment, an invoice marked as sent (delivery) or a return for the customer confirms their scheduled visit automatically, whatever day it was for.

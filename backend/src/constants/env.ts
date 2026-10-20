@@ -55,4 +55,9 @@ export const ENV = {
 export const IS_PRODUCTION = process.env.NODE_ENV === "production";
 export const FRONTEND_URL = process.env.FRONTEND_URL;
 /** Origin of the standalone customer-manager app (see /customer-manager) — optional, only needed in production if that app is deployed. */
-export const CUSTOMER_MANAGER_URL = process.env.CUSTOMER_MANAGER_URL;
+export const CUSTOMER_MANAGER_URL = process.env.CUSTOMER_MANAGER_URL;/**
+ * Shared secret a scheduler (e.g. cron-job.org) sends in the X-Cron-Secret
+ * header to trigger the automatic daily report. Optional: unset, the
+ * scheduled endpoint refuses every call.
+ */
+export const CRON_SECRET = process.env.CRON_SECRET;

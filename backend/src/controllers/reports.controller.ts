@@ -1,4 +1,7 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { CRON_SECRET } from '../constants/env.js';
+import { redisClient } from '../config/redis.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { businessDayKey, previousBusinessDay } from '../utils/businessDate.js';
 import { buildDailyReport } from '../services/dailyReport/report.js';
@@ -69,5 +72,65 @@ export async function getDailyReportPdf(req: Request, res: Response) {
     } catch (error) {
         console.error('Error building daily report:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to build the daily report' });
+    }
+}
+
+/** Set once a day's report was sent by the scheduler, so a repeated call doesn't send it twice. */
+const AUTO_SENT_KEY = (day: string) => `daily-report:auto-sent:${day}`;
+
+function secretMatches(given: string | undefined) {
+    if (!CRON_SECRET || !given) return false;
+    const a = Buffer.from(given);
+    const b = Buffer.from(CRON_SECRET);
+    return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Called by a scheduler (cron-job.org) just after 4am business time: sends
+ * the business day that just ended on WhatsApp, to the template and numbers
+ * chosen in Settings. Needs the X-Cron-Secret header to match CRON_SECRET.
+ * Sends each day once at most — a repeated or retried call is skipped. It
+ * answers at once (202) and sends in the background, so a slow send (or a
+ * server waking from sleep) doesn't make the scheduler time out; the result
+ * is logged, and a day whose send failed for every number can be retried.
+ */
+export async function scheduledDailyReport(req: Request, res: Response) {
+    if (!CRON_SECRET) {
+        res.status(503).json({ error: 'CRON_SECRET is not set on the server' });
+        return;
+    }
+    if (!secretMatches(req.get('X-Cron-Secret'))) {
+        res.status(401).json({ error: 'Wrong or missing X-Cron-Secret' });
+        return;
+    }
+
+    try {
+        const access_token = requireAccessToken(req, "A problem occured sending the report");
+        const day = previousBusinessDay(businessDayKey());
+        // Checked before answering, so the scheduler's log shows it as a failure.
+        const settings = await getDailyReportWhatsAppSettings();
+        if (!settings.template || settings.recipients.length === 0) {
+            res.status(400).json({ day, error: "Choose the daily report's WhatsApp template and numbers in Settings first" });
+            return;
+        }
+        const claimed = await redisClient.set(AUTO_SENT_KEY(day), new Date().toISOString(), { NX: true, EX: 3 * 24 * 60 * 60 });
+        if (!claimed) {
+            res.status(200).json({ day, skipped: 'Already sent' });
+            return;
+        }
+        res.status(202).json({ day, sending: true });
+
+        try {
+            await settleReportDeliveries();
+            const results = await sendDailyReportOnWhatsApp(access_token, day);
+            console.log(`Daily report ${day} sent by the scheduler:`, JSON.stringify(results));
+            if (!results.some((r) => r.ok)) await redisClient.del(AUTO_SENT_KEY(day));
+        } catch (error) {
+            console.error(`Daily report ${day}: the scheduled send failed`, error);
+            await redisClient.del(AUTO_SENT_KEY(day)).catch(() => {});
+        }
+    } catch (error) {
+        console.error('Daily report: the scheduled send failed', error);
+        if (!res.headersSent) res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to send the daily report' });
     }
 }

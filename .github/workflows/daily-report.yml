@@ -38,8 +38,12 @@ jobs:
             echo "Attempt $attempt: HTTP $status — $(head -c 300 response.txt 2>/dev/null)"
             case "$status" in
               200|202) exit 0 ;;                                   # sending, or already sent
-              400|401|503) echo "::error::$(head -c 300 response.txt)"; exit 1 ;;  # needs fixing in Settings or on the server
+              400|401) echo "::error::$(head -c 300 response.txt)"; exit 1 ;;  # needs fixing in Settings or the secret
             esac
+            # The app's own 503 (CRON_SECRET unset) won't fix itself; Render's 503 while waking will.
+            if [ "$status" = "503" ] && grep -q "CRON_SECRET" response.txt; then
+              echo "::error::$(head -c 300 response.txt)"; exit 1
+            fi
             # Server still waking (timeout, 502/503 from Render, a loading page…): try again shortly.
             sleep 30
           done

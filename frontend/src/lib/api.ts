@@ -1652,3 +1652,18 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ street
   }
   return response.json();
 }
+
+/** The general items: catalog items whose unit can be changed on each invoice line (chosen in Settings). */
+export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: number }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the general items (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveGeneralItemIds(itemIds: string[]): Promise<string[]> {
+  const result = await postJson<{ item_ids: string[] }>(`${API_BASE_URL}/api/settings/general-items`, "PUT", { item_ids: itemIds }, "Failed to save the general items");
+  return result.item_ids;
+}

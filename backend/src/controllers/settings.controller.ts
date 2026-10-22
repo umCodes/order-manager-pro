@@ -14,6 +14,7 @@ import {
     saveDailyReportWhatsAppSettings,
 } from '../services/dailyReport/whatsapp.js';
 import { getInvoiceDueSetting, MAX_DUE_DAYS, saveInvoiceDueSetting } from '../services/invoiceDueDate.js';
+import { getGeneralItemIds, MAX_GENERAL_ITEMS, saveGeneralItemIds } from '../services/generalItems.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -111,5 +112,18 @@ export async function updateInvoiceDue(req: Request, res: Response) {
         res.status(200).json({ selected: await saveInvoiceDueSetting(req.body) });
     } catch (error) {
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the overdue period' });
+    }
+}
+
+/** The general items (`item_ids`): items whose unit can be changed per invoice line. */
+export async function getGeneralItems(_req: Request, res: Response) {
+    res.status(200).json({ item_ids: await getGeneralItemIds(), max: MAX_GENERAL_ITEMS });
+}
+
+export async function updateGeneralItems(req: Request, res: Response) {
+    try {
+        res.status(200).json({ item_ids: await saveGeneralItemIds(req.body?.item_ids) });
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the general items' });
     }
 }

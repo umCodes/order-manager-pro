@@ -47,6 +47,8 @@ export type CartLine = {
   rate: number;
   quantity: number;
   excludeFromTelegram: boolean;
+  /** The line's unit when it differs from the catalog item's (general items, chosen in Settings); unset = the item's own unit. */
+  unit?: string;
   /** invoice_id of the draft this line was loaded from, if any. Unset for manually-added lines. */
   fromDraftId?: string;
 };

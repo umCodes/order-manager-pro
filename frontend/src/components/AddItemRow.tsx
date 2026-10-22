@@ -8,6 +8,8 @@ export type DraftForm = {
   quantity: string;
   rate: string;
   excludeFromTelegram: boolean;
+  /** The line's unit — only offered for general items (see unitOptions). */
+  unit?: string;
 };
 
 type Props = {
@@ -26,6 +28,8 @@ type Props = {
    * the quantity must be more than 0 and at most this.
    */
   maxQuantity?: number;
+  /** General items: the units this line can be set to, shown as a dropdown. */
+  unitOptions?: string[];
 };
 
 /** One catalog item in the add-item sheet: a header row that expands into a qty/rate/description editor. */
@@ -40,6 +44,7 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
   onRemove,
   showExcludeFromTelegram = true,
   maxQuantity,
+  unitOptions,
 }, ref) {
   const formTotal = (Number(form.rate) || 0) * (Number(form.quantity) || 0);
   const isReturn = maxQuantity !== undefined;
@@ -100,6 +105,25 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
             />
           </div>
           {quantityError && <div className="form-error item-row__error">{quantityError}</div>}
+          {unitOptions && (
+            <div className="field-row">
+              <label className="field-row__label" htmlFor={`unit-${item.item_id}`}>
+                Unit
+              </label>
+              <select
+                id={`unit-${item.item_id}`}
+                className="input field-row__input field-row__input--unit"
+                value={form.unit ?? item.unit}
+                onChange={(e) => onFormChange({ ...form, unit: e.target.value })}
+              >
+                {unitOptions.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {isReturn ? (
             <div className="field-row">
               <span className="field-row__label">Rate</span>

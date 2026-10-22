@@ -261,7 +261,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const pickerCart: Cart = {};
   for (const li of displayLineItems) {
     if (pickerCart[li.item_id]) continue;
-    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false };
+    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false, unit: li.unit };
   }
 
   /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
@@ -275,7 +275,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     if (existingIndex >= 0) {
       applyLineItemEdits(
         base.map((li, i) =>
-          i === existingIndex ? { ...li, description: values.description, quantity, rate, item_total: quantity * rate } : li,
+          i === existingIndex ? { ...li, description: values.description, quantity, rate, unit: values.unit || li.unit, item_total: quantity * rate } : li,
         ),
       );
       return;
@@ -290,7 +290,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         name: catalogItem.name,
         description: values.description,
         quantity,
-        unit: catalogItem.unit,
+        unit: values.unit || catalogItem.unit,
         rate,
         item_total: quantity * rate,
       },

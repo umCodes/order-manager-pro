@@ -38,6 +38,7 @@ function cartFromDraftLineItems(lineItems: InvoiceDetailLineItem[], draftId: str
       quantity: item.quantity,
       rate: item.rate,
       excludeFromTelegram,
+      ...(item.unit ? { unit: item.unit } : {}),
       fromDraftId: draftId,
     };
   }
@@ -116,8 +117,8 @@ export default function NewInvoicePage({
       return {
         item_id,
         name: catalogItem?.name ?? "",
-        unit: catalogItem?.unit ?? "",
         ...line,
+        unit: line.unit || catalogItem?.unit || "",
       };
     });
   }, [cart, catalogItems]);
@@ -187,7 +188,7 @@ export default function NewInvoicePage({
 
   function commitItem(
     itemId: string,
-    values: { description: string; quantity: string; rate: string; excludeFromTelegram: boolean },
+    values: { description: string; quantity: string; rate: string; excludeFromTelegram: boolean; unit?: string },
   ) {
     onCartChange({
       ...cart,
@@ -196,6 +197,7 @@ export default function NewInvoicePage({
         quantity: Number(values.quantity) || 0,
         rate: Number(values.rate) || 0,
         excludeFromTelegram: values.excludeFromTelegram,
+        ...(values.unit ? { unit: values.unit } : {}),
         fromDraftId: cart[itemId]?.fromDraftId,
       },
     });

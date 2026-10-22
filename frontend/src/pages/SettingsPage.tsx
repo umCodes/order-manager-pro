@@ -4,6 +4,7 @@ import RefreshButton from "../components/RefreshButton";
 import CategoryOrderSettings from "../components/CategoryOrderSettings";
 import DailyReportWhatsAppSettings from "../components/DailyReportWhatsAppSettings";
 import InvoiceDueSettings from "../components/InvoiceDueSettings";
+import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import {
   fetchNotificationTemplateSettings,
   saveNotificationTemplateSettings,
@@ -220,6 +221,8 @@ export default function SettingsPage({ onBack }: Props) {
       )}
 
       <InvoiceDueSettings />
+
+      <GeneralItemsSettings />
 
       <DailyReportWhatsAppSettings />
     </div>

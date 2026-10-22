@@ -3776,3 +3776,10 @@ button.line-items__header.customer-tx__toggle {
 .customer-locate__result--warn {
   color: #b45309;
 }
+
+/* General items: the line's unit, as compact as the quantity box. */
+.field-row__input--unit {
+  width: 104px;
+  flex: none;
+  margin-left: auto;
+}

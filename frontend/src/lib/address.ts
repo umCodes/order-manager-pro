@@ -147,3 +147,38 @@ export function buildDistrictOptions(customers: Contact[], getAddress: (c: Conta
     return RIYADH_DISTRICTS.indexOf(a) - RIYADH_DISTRICTS.indexOf(b);
   });
 }
+
+/** Other spellings of the cities above (e.g. how OpenStreetMap names them). */
+const CITY_ALIASES: Record<string, string> = {
+  makkah: "Mecca",
+  makkahalmukarramah: "Mecca",
+  madinah: "Medina",
+  almadinah: "Medina",
+  almadinahalmunawwarah: "Medina",
+  buraydah: "Buraidah",
+  unayzah: "Unaizah",
+  hufuf: "Al Hofuf",
+  hofuf: "Al Hofuf",
+  jizan: "Jazan",
+  jazan: "Jazan",
+  kharj: "Al Kharj",
+  bahah: "Al Bahah",
+  khobar: "Khobar",
+  jubayl: "Jubail",
+  qatif: "Qatif",
+};
+
+const cityKey = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/^al(?=[a-z]{3})/, "");
+
+/** The city in SAUDI_CITIES that `name` refers to ("Makkah", "Al Khobar", "Ha'il" …), or null. */
+export function matchSaudiCity(name: string): string | null {
+  const key = cityKey(name);
+  if (!key) return null;
+  const direct = SAUDI_CITIES.find((city) => cityKey(city) === key);
+  if (direct) return direct;
+  return CITY_ALIASES[key] ?? CITY_ALIASES[name.toLowerCase().replace(/[^a-z]/g, "")] ?? null;
+}

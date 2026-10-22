@@ -5,6 +5,7 @@ import { buildScheduleOptions } from "../lib/scheduledDate";
 import { businessDayDate } from "../lib/businessTime";
 import { cancelVisit, completeVisit, scheduleVisit, useVisits, visitDayLabel } from "../lib/visits";
 import { saveCustomerLocation, type DoneVisit } from "../lib/api";
+import { getPosition, positionError } from "../lib/geolocation";
 
 type Props = {
   customerId: string;
@@ -20,25 +21,6 @@ type Step =
   | { kind: "noLocation"; reason: string }
   | { kind: "result"; visit: DoneVisit; canSaveLocation: boolean; position?: { lat: number; lng: number } }
   | { kind: "confirmCancel" };
-
-function getPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
-      reject(new Error("This phone or browser can't share its location"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 });
-  });
-}
-
-function positionError(error: unknown) {
-  if (typeof GeolocationPositionError !== "undefined" && error instanceof GeolocationPositionError) {
-    if (error.code === error.PERMISSION_DENIED) return "Location access was not allowed";
-    if (error.code === error.TIMEOUT) return "The phone took too long to find its location";
-    return "The phone couldn't find its location";
-  }
-  return error instanceof Error ? error.message : "The phone couldn't find its location";
-}
 
 function distanceLabel(metres: number) {
   return metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1)} km`;

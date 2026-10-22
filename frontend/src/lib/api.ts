@@ -1641,3 +1641,14 @@ export async function saveInvoiceDueSetting(setting: InvoiceDueSetting): Promise
   );
   return result.selected;
 }
+
+/** Street, district and city in English for a point (OpenStreetMap, through the backend); empty when unknown. */
+export async function reverseGeocode(lat: number, lng: number): Promise<{ street: string; district: string; city: string; display: string }> {
+  const query = new URLSearchParams({ lat: String(lat), lng: String(lng) }).toString();
+  const response = await apiFetch(`${API_BASE_URL}/api/geocode/reverse?${query}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to look up the address (${response.status})`);
+  }
+  return response.json();
+}

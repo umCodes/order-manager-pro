@@ -134,6 +134,7 @@ All routes are mounted under `/api`.
 - `PUT /customers/:id/visit` — `{ day, customer_name }` → schedule or move the visit; `DELETE` cancels it
 - `POST /customers/:id/visit/done` — `{ method: "location", position: { lat, lng, accuracy } }` compares the phone with the customer's map link (short links are followed and cached; within 200 m counts as at the customer), or `{ method: "not_checked" | "payment" | "delivery" | "return" }`
 - `POST /customers/:id/location` — `{ lat, lng }` → saves a phone position as the customer's map link (on their existing address)
+- `GET /geocode/reverse?lat=&lng=` — `{ street, district, city }` in English for a point, from OpenStreetMap's Nominatim (free, no key; cached a month in Redis) — for the customer form's "Use my location", which also sets the Google Maps link to that point
 
 **Usage**
 - `GET /zoho-usage` — today's Zoho API request count

@@ -1,4 +1,5 @@
-import { todayInBusinessTimezone, oneMonthFromTodayInBusinessTimezone } from "../../../utils/businessDate.js"
+import { todayInBusinessTimezone } from "../../../utils/businessDate.js"
+import { newInvoiceDueDate } from "../../invoiceDueDate.js"
 import { ZohoGetInvoiceById } from "./queries.js"
 import { ZohoCreateInvoice, ZohoUpdateInvoice } from "./mutations.js"
 
@@ -41,7 +42,7 @@ export async function splitInvoiceToSelectedItems(
             newDraft = await ZohoCreateInvoice(headers, {
                 customer_id: invoice.customer_id,
                 date: todayInBusinessTimezone(),
-                due_date: oneMonthFromTodayInBusinessTimezone(),
+                due_date: await newInvoiceDueDate(),
                 line_items: remainingItems.map(toLineItemPayload),
             })
         }

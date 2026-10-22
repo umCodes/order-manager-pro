@@ -8,7 +8,7 @@ import { redisClient } from "../../config/redis.js";
 import { excludeInternalLineItems, stripInternalMarker } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
-import { oneMonthFromTodayInBusinessTimezone } from "../../utils/businessDate.js";
+import { newInvoiceDueDate } from "../../services/invoiceDueDate.js";
 import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
@@ -76,7 +76,7 @@ export async function createInvoice(req: Request, res: Response) {
     const invoice = await ZohoCreateInvoice(access_token, {
       customer_id: contact_id,
       ...(date ? { date } : {}),
-      due_date: oneMonthFromTodayInBusinessTimezone(),
+      due_date: await newInvoiceDueDate(),
       line_items: zohoLineItems,
     });
 

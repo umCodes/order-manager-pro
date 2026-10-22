@@ -13,6 +13,7 @@ import {
     getDailyReportWhatsAppSettings,
     saveDailyReportWhatsAppSettings,
 } from '../services/dailyReport/whatsapp.js';
+import { getInvoiceDueSetting, MAX_DUE_DAYS, saveInvoiceDueSetting } from '../services/invoiceDueDate.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -97,5 +98,18 @@ export async function updateDailyReportWhatsApp(req: Request, res: Response) {
     } catch (error) {
         console.error('Error saving daily report WhatsApp settings:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the daily report settings' });
+    }
+}
+
+/** How long new invoices have before they're overdue: `{ period: "month" }` or `{ period: "days", days }`. */
+export async function getInvoiceDue(_req: Request, res: Response) {
+    res.status(200).json({ selected: await getInvoiceDueSetting(), maxDays: MAX_DUE_DAYS });
+}
+
+export async function updateInvoiceDue(req: Request, res: Response) {
+    try {
+        res.status(200).json({ selected: await saveInvoiceDueSetting(req.body) });
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the overdue period' });
     }
 }

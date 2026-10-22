@@ -1619,3 +1619,25 @@ export async function fetchCustomerTransactions(customerId: string, type: Transa
   }
   return response.json();
 }
+
+/** How long new invoices have before Zoho marks them overdue. */
+export type InvoiceDueSetting = { period: "month" } | { period: "days"; days: number };
+
+export async function fetchInvoiceDueSetting(): Promise<{ selected: InvoiceDueSetting; maxDays: number }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/invoice-due`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the overdue period (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveInvoiceDueSetting(setting: InvoiceDueSetting): Promise<InvoiceDueSetting> {
+  const result = await postJson<{ selected: InvoiceDueSetting }>(
+    `${API_BASE_URL}/api/settings/invoice-due`,
+    "PUT",
+    setting,
+    "Failed to save the overdue period",
+  );
+  return result.selected;
+}

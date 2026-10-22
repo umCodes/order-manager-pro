@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronDown } from "lucide-react";
 import RefreshButton from "../components/RefreshButton";
 import CategoryOrderSettings from "../components/CategoryOrderSettings";
 import DailyReportWhatsAppSettings from "../components/DailyReportWhatsAppSettings";
+import InvoiceDueSettings from "../components/InvoiceDueSettings";
 import {
   fetchNotificationTemplateSettings,
   saveNotificationTemplateSettings,
@@ -217,6 +218,8 @@ export default function SettingsPage({ onBack }: Props) {
           </button>
         </>
       )}
+
+      <InvoiceDueSettings />
 
       <DailyReportWhatsAppSettings />
     </div>

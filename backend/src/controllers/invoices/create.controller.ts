@@ -10,6 +10,7 @@ import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 import { newInvoiceDueDate } from "../../services/invoiceDueDate.js";
 import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
+import { businessDayKey } from "../../utils/businessDate.js";
 
 /**
  * Creates a new invoice, or — when `invoice_id` is given — replaces an
@@ -20,7 +21,9 @@ import { recordReportDraft, refreshReportInvoice } from "../../services/dailyRep
  * message, an updated draft replies to its existing one with only what
  * changed (and marks that one as changed, leaving it otherwise as posted). Pass `skip_telegram` to write to Zoho only and
  * leave the channel untouched. Line items are sorted by category priority,
- * then name, before either sees them.
+ * then name, before either sees them. A new invoice without a date is dated
+ * the current business day (4am to 4am), not Zoho's calendar day — a draft
+ * made at 1am belongs to the day still being worked.
  */
 export async function createInvoice(req: Request, res: Response) {
   const { contact_id, line_items, date, invoice_id, skip_telegram } = req.body ?? {};
@@ -75,7 +78,7 @@ export async function createInvoice(req: Request, res: Response) {
 
     const invoice = await ZohoCreateInvoice(access_token, {
       customer_id: contact_id,
-      ...(date ? { date } : {}),
+      date: date || businessDayKey(),
       due_date: await newInvoiceDueDate(),
       line_items: zohoLineItems,
     });

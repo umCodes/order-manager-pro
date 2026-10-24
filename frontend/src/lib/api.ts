@@ -941,17 +941,23 @@ export async function recordInvoicePayment(
   return response.json();
 }
 
+/** Marks a draft as sent. A `discount` is taken off the invoice's total first (Zoho's invoice-wide discount). */
 export async function markInvoiceAsSent(
   invoiceId: string,
   notify?: boolean,
   notifyContactIds?: string[],
+  discount?: number,
 ): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ notify: !!notify, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
+    body: JSON.stringify({
+      notify: !!notify,
+      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+      ...(discount ? { discount } : {}),
+    }),
   });
 
   if (!response.ok) {

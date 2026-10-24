@@ -8,6 +8,8 @@ export type InvoiceLineItem = {
   quantity: number;
   unit: string;
   rate: number;
+  /** The item's regular price, set only when it's above `rate`: the difference is shown as a discount on that line. */
+  regularRate?: number;
 };
 
 /** Everything a template needs to render an invoice — see toInvoicePdfData for the mapping from a Zoho invoice. */

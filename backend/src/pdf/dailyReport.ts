@@ -232,6 +232,9 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
       const collected = report.payments.reduce((sum, payment) => sum + payment.amount, 0);
       const paidAgainst = report.invoices.reduce((sum, invoice) => sum + invoice.paid, 0);
       const outstanding = report.invoices.reduce((sum, invoice) => sum + invoice.balance, 0);
+      const discounts = report.invoices.reduce((sum, invoice) => sum + invoice.discount, 0);
+      // Shown only on days a discount was given; the items' value less it is the day's sales.
+      const discountRow: [string, string][] = discounts > 0 ? [["የተሰጠ ቅናሽ", `-${money(discounts)} SAR`]] : [];
 
       // ---------- 1. payments collected ----------
       section(1, "የተለቀሙ ጥቅል ክፍያዎች", "በሥራ ቀኑ የተለቀሙ ክፍያዎች በሙሉ፣ በተለቀሙበት ሰዓት ቅደም ተከተል።");
@@ -272,6 +275,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           );
         });
         totalBox([
+          ...discountRow,
           ["ጠቅላላ ሽያጭ", `${money(sales)} SAR`],
           ["ጠቅላላ ኪሎ", `${round3(totalKg)} ኪሎ`],
         ]);
@@ -289,7 +293,12 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           .font("B")
           .fontSize(13)
           .fillColor(INK)
-          .text(`${round3(linesKg(invoice.lines))} ኪሎ   ·   የደረሰኝ ድምር፦  ${money(invoice.total)} SAR`, L, doc.y + 8, { width: W - 6, align: "right" });
+          .text(
+            `${round3(linesKg(invoice.lines))} ኪሎ   ·   ${invoice.discount > 0 ? `ቅናሽ፦  -${money(invoice.discount)} SAR   ·   ` : ""}የደረሰኝ ድምር፦  ${money(invoice.total)} SAR`,
+            L,
+            doc.y + 8,
+            { width: W - 6, align: "right" },
+          );
         doc.y += 4;
       }
 
@@ -304,7 +313,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
             cols,
             [
               { main: invoice.customer, sub: invoice.number },
-              money(invoice.total),
+              { main: money(invoice.total), sub: invoice.discount > 0 ? `ቅናሽ -${money(invoice.discount)}` : undefined },
               money(invoice.paid),
               { main: money(invoice.balance), bold: true },
               { main: "", badge: invoice.status },
@@ -313,6 +322,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           ),
         );
         totalBox([
+          ...discountRow,
           ["ጠቅላላ ሽያጭ", `${money(sales)} SAR`],
           ["የተከፈለ", `${money(paidAgainst)} SAR`],
           ["በዕለቱ ደረሰኞች ላይ ያለ ቀሪ", `${money(outstanding)} SAR`],

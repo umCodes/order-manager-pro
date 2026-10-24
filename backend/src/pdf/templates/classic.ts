@@ -11,7 +11,7 @@ import {
 } from "../assets.js";
 import { LABELS } from "../labels.js";
 import { itemDisplayName, translateUnit, weightQtyText } from "../itemFormatting.js";
-import type { InvoiceLanguage, InvoicePdfData } from "../types.js";
+import type { InvoiceLanguage, InvoiceLineItem, InvoicePdfData } from "../types.js";
 
 /**
  * POS/thermal-receipt style invoice: an 80mm-wide page whose height grows
@@ -167,6 +167,17 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
       .font("Body")
       .fontSize(7.5)
       .text(`  ${money(item.rate, currency)} x ${item.quantity} ${unit}`, MARGIN, doc.y, { width: CONTENT_WIDTH });
+    if (item.regularRate) {
+      doc
+        .font("Body")
+        .fontSize(7.5)
+        .text(
+          `  ${labels.regularPrice}: ${money(item.regularRate, currency)}  ${labels.discount} -${money(lineDiscount(item), currency)}`,
+          MARGIN,
+          doc.y,
+          { width: CONTENT_WIDTH },
+        );
+    }
     doc.moveDown(0.2);
   });
 
@@ -190,13 +201,25 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   doc.font("Body-Bold").fontSize(9).text(labels.thankYou, { align: "center" });
 }
 
-/** A sale's totals block: subtotal, discount, paid, total and balance due. */
+/** What a line sold below its regular price saves the customer (0 when it isn't). */
+function lineDiscount(item: InvoiceLineItem): number {
+  return item.regularRate ? Math.round((item.regularRate - item.rate) * item.quantity * 100) / 100 : 0;
+}
+
+/**
+ * A sale's totals block: subtotal, item and invoice discounts, paid, total
+ * and balance due. With lines sold below their regular price, the subtotal
+ * is at regular prices and their difference is its own row, so the rows
+ * still add up to the total.
+ */
 function drawSaleTotals(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, labels: (typeof LABELS)[InvoiceLanguage], currency: string) {
-  const subTotal = invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0);
+  const itemDiscounts = Math.round(invoice.lineItems.reduce((sum, item) => sum + lineDiscount(item), 0) * 100) / 100;
+  const subTotal = (invoice.subTotal ?? invoice.totalPrice + (invoice.discountAmount ?? 0)) + itemDiscounts;
   const returned = invoice.returnedAmount ?? 0;
   const balanceDue = invoice.totalPrice - invoice.paidAmount - returned;
 
   row(doc, labels.subTotal, money(subTotal, currency));
+  if (itemDiscounts > 0) row(doc, labels.itemDiscounts, "-" + money(itemDiscounts, currency));
   if (invoice.discountAmount) {
     row(doc, labels.discount, "-" + money(invoice.discountAmount, currency));
   }

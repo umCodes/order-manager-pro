@@ -166,10 +166,20 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
       nameBold: true,
     });
     const unit = translateUnit(item.unit, language);
+    const priceLineY = doc.y;
+    // Discounted: the price actually charged x quantity, under the line total, so the total reads at a glance.
+    if (item.regularRate) {
+      doc
+        .font("Body")
+        .fontSize(6.5)
+        .fillColor(DISCOUNT_NOTE_COLOR)
+        .text(`${money(item.rate, currency)} x ${item.quantity}`, MARGIN, priceLineY, { width: CONTENT_WIDTH, align: "right" })
+        .fillColor("black");
+    }
     doc
       .font("Body")
       .fontSize(7.5)
-      .text(`  ${money(item.regularRate ?? item.rate, currency)} x ${item.quantity} ${unit}`, MARGIN, doc.y, { width: CONTENT_WIDTH });
+      .text(`  ${money(item.regularRate ?? item.rate, currency)} x ${item.quantity} ${unit}`, MARGIN, priceLineY, { width: CONTENT_WIDTH });
     // Sold below the regular price: the line above shows the regular price, this the discount per unit.
     if (item.regularRate) {
       doc

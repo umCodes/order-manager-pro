@@ -41,6 +41,9 @@ function shopNameFor(language: InvoiceLanguage): string {
   return language === "am" ? ENV.BUSINESS_NAME_AM ?? "" : ENV.BUSINESS_NAME_EN ?? "";
 }
 
+/** Grey for the small per-unit discount note under a line. */
+const DISCOUNT_NOTE_COLOR = "#777777";
+
 function money(value: number, currency: string): string {
   return `${value.toFixed(2)} ${currency}`;
 }
@@ -166,17 +169,15 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
     doc
       .font("Body")
       .fontSize(7.5)
-      .text(`  ${money(item.rate, currency)} x ${item.quantity} ${unit}`, MARGIN, doc.y, { width: CONTENT_WIDTH });
+      .text(`  ${money(item.regularRate ?? item.rate, currency)} x ${item.quantity} ${unit}`, MARGIN, doc.y, { width: CONTENT_WIDTH });
+    // Sold below the regular price: the line above shows the regular price, this the discount per unit.
     if (item.regularRate) {
       doc
         .font("Body")
-        .fontSize(7.5)
-        .text(
-          `  ${labels.regularPrice}: ${money(item.regularRate, currency)}  ${labels.discount} -${money(lineDiscount(item), currency)}`,
-          MARGIN,
-          doc.y,
-          { width: CONTENT_WIDTH },
-        );
+        .fontSize(6.5)
+        .fillColor(DISCOUNT_NOTE_COLOR)
+        .text(`  ${labels.discount} -${money(item.regularRate - item.rate, currency)} / ${unit}`, MARGIN, doc.y, { width: CONTENT_WIDTH })
+        .fillColor("black");
     }
     doc.moveDown(0.2);
   });

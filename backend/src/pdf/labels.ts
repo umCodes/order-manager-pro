@@ -17,8 +17,7 @@ export type Labels = {
   paid: string;
   balanceDue: string;
   subTotal: string;
-  /** Under a line sold below the item's regular price, and the totals row adding those up. */
-  regularPrice: string;
+  /** Totals row adding up the discounts of lines sold below the item's regular price. */
   itemDiscounts: string;
   /** POS-receipt template's item-table header for its rightmost (line total) column. */
   colTotal: string;
@@ -50,7 +49,6 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "የተከፈለ:",
     balanceDue: "ቀሪ ሂሳብ:",
     subTotal: "ንዑስ ድምር:",
-    regularPrice: "መደበኛ ዋጋ",
     itemDiscounts: "የእቃ ቅናሽ:",
     colTotal: "ድምር",
     thankYou: "እናመሰግናለን!",
@@ -75,7 +73,6 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "Paid:",
     balanceDue: "Balance Due:",
     subTotal: "Subtotal:",
-    regularPrice: "Regular price",
     itemDiscounts: "Item discounts:",
     colTotal: "Total",
     thankYou: "Thank you!",
@@ -100,7 +97,6 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     paid: "Paid:",
     balanceDue: "Balance Due:",
     subTotal: "Subtotal:",
-    regularPrice: "Regular price",
     itemDiscounts: "Item discounts:",
     colTotal: "Total",
     thankYou: "Thank you!",

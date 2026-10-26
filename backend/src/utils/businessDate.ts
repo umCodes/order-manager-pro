@@ -123,7 +123,7 @@ export function businessDayWindow(day: string): { start: Date; end: Date } {
   return { start: new Date(start), end: new Date(start + 24 * 60 * 60 * 1000) };
 }
 
-/** An instant as business-time parts, for printing ("18 Oct 09:02" style) in reports. */
+/** An instant as business-time parts, for printing ("18 Oct 9:02 AM" style, 12-hour) in reports. */
 export function businessTimeParts(at: Date) {
   const shifted = new Date(at.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   return {
@@ -131,6 +131,6 @@ export function businessTimeParts(at: Date) {
     month: shifted.getUTCMonth(),
     day: shifted.getUTCDate(),
     weekday: shifted.getUTCDay(),
-    time: `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`,
+    time: `${shifted.getUTCHours() % 12 || 12}:${String(shifted.getUTCMinutes()).padStart(2, "0")} ${shifted.getUTCHours() < 12 ? "AM" : "PM"}`,
   };
 }

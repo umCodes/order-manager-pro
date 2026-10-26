@@ -6,6 +6,8 @@ type ZohoCatalogItem = {
     name?: string
     status?: string
     item_type?: string
+    /** The item's regular selling price. */
+    rate?: number
     track_inventory?: boolean
     is_inventory_tracked?: boolean
     category_id?: string

@@ -5,10 +5,10 @@ import { businessNow } from "../lib/businessTime";
 import DayPickerRow from "./DayPickerRow";
 import type { ScheduledDate } from "../types";
 
-/** Options are day-of-week labels relative to "now"; stale after midnight business time. */
-function isNearMidnight(date: Date): boolean {
+/** Options are day-of-week labels relative to the business day, which rolls over at 4am business time. */
+function isNearDayRollover(date: Date): boolean {
   const minutes = date.getHours() * 60 + date.getMinutes();
-  return minutes >= 22 * 60 + 30 || minutes <= 30;
+  return minutes >= 2 * 60 + 30 && minutes <= 4 * 60 + 30;
 }
 
 type Props = {
@@ -18,23 +18,23 @@ type Props = {
 
 /**
  * Optional scheduled-date picker for a new invoice. Options are computed
- * relative to "now" and go stale after midnight, so this warns near
- * midnight and offers a manual refresh; it also clears the selection if a
+ * relative to the business day and go stale when it rolls over at 4am, so
+ * this warns near 4am and offers a manual refresh; it also clears the selection if a
  * refresh drops the previously chosen date from the option list.
  */
 export default function SchedulePicker({ value, onChange }: Props) {
   const [options, setOptions] = useState(() => buildScheduleOptions());
-  const [isNearMidnightNow, setIsNearMidnightNow] = useState(() => isNearMidnight(businessNow()));
+  const [isNearDayRolloverNow, setIsNearDayRolloverNow] = useState(() => isNearDayRollover(businessNow()));
 
   useEffect(() => {
-    const id = setInterval(() => setIsNearMidnightNow(isNearMidnight(businessNow())), 30_000);
+    const id = setInterval(() => setIsNearDayRolloverNow(isNearDayRollover(businessNow())), 30_000);
     return () => clearInterval(id);
   }, []);
 
   function refresh() {
     const nextOptions = buildScheduleOptions();
     setOptions(nextOptions);
-    setIsNearMidnightNow(isNearMidnight(businessNow()));
+    setIsNearDayRolloverNow(isNearDayRollover(businessNow()));
     if (value && !nextOptions.some((o) => o.date === value)) {
       onChange(null);
     }
@@ -54,9 +54,9 @@ export default function SchedulePicker({ value, onChange }: Props) {
           <RefreshCw size={14} />
         </button>
       </div>
-      {isNearMidnightNow && (
+      {isNearDayRolloverNow && (
         <div className="day-warning">
-          It's close to midnight — days shown may be stale, refresh before picking one.
+          It's close to 4am, when the day rolls over — days shown may be stale, refresh before picking one.
         </div>
       )}
       <DayPickerRow

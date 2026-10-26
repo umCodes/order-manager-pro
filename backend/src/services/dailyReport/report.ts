@@ -18,7 +18,8 @@ export type DailyReportData = {
     zohoTimezone: ZohoTimezoneCheck
     payments: { at: string; number: string; customer: string; mode: string; amount: number }[]
     items: { name: string; description: string; unit?: string; quantity: number; value: number; low: number; high: number }[]
-    invoices: { number: string; customer: string; at: string; total: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
+    /** `discount` is the invoice-wide discount: its lines' value less its total (0 when none). */
+    invoices: { number: string; customer: string; at: string; total: number; discount: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
     returns: ReportReturn[]
     drafts: { number: string; customer: string; at: string; date?: string; total: number }[]
 }
@@ -138,11 +139,15 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
             if (state?.status === "void") return null
             const total = state ? round2(Number(state.total)) : invoice.total
             const balance = state ? round2(Number(state.balance)) : invoice.balance
+            // Lines are kept at the price charged, so whatever the total is short of them is the
+            // invoice's discount — however it got there (when sent, with a payment, or later).
+            const linesValue = round2(invoice.lines.reduce((sum, line) => sum + line.quantity * line.rate, 0))
             return {
                 number: invoice.number,
                 customer: invoice.customer,
                 at: invoice.at,
                 total,
+                discount: Math.max(0, round2(linesValue - total)),
                 paid: round2(total - balance),
                 balance,
                 status: statusOf(total, balance),

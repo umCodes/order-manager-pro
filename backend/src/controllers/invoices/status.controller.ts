@@ -4,6 +4,8 @@ import {
   ZohoMarkInvoiceAsSent,
   ZohoMarkInvoiceAsVoid,
   recordInvoicePayment,
+  addInvoiceDiscount,
+  removeInvoiceDiscounts,
 } from "../../services/zoho/invoices/index.js";
 import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsapp/invoices.js";
 import { deleteInvoiceTelegramMessage } from "../../services/telegram/invoices/index.js";
@@ -80,7 +82,13 @@ export async function payInvoiceBalance(req: Request, res: Response) {
   }
 }
 
-/** Moves a draft to "sent" in Zoho, optionally WhatsApp-ing the customer the invoice and their balance. */
+/**
+ * Moves a draft to "sent" in Zoho, optionally WhatsApp-ing the customer the
+ * invoice and their balance. An optional `discount` is added to the invoice
+ * first (the same invoice-wide discount a payment can carry), so the sent
+ * invoice, its PDF and the report all show the reduced total; if sending
+ * then fails, the discount is taken back off.
+ */
 export async function markInvoiceAsSent(req: Request, res: Response) {
   const id  = req.params.id as string;
 
@@ -89,8 +97,22 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     if (!id) throw new Error("id not provided");
 
     const { notify, notify_contact_ids } = req.body ?? {};
+    const discount = Number(req.body?.discount) || 0;
+    if (discount < 0) throw new Error("The discount can't be negative");
 
-    await ZohoMarkInvoiceAsSent(access_token, id);
+    if (discount > 0) {
+      const draft = await ZohoGetInvoiceById(access_token, id);
+      if (discount > Number(draft.total)) throw new Error(`The discount can't be more than the invoice total (${draft.total})`);
+      const applied = await addInvoiceDiscount(access_token, draft, discount, `Discount of ${discount} added when sent`);
+      try {
+        await ZohoMarkInvoiceAsSent(access_token, id);
+      } catch (error) {
+        await removeInvoiceDiscounts(access_token, [applied]);
+        throw error;
+      }
+    } else {
+      await ZohoMarkInvoiceAsSent(access_token, id);
+    }
     // A sent invoice now counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);

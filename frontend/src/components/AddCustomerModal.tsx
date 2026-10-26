@@ -12,7 +12,7 @@ import {
   type PreferredLanguage,
   type BusinessType,
 } from "../lib/api";
-import { SAUDI_CITIES, buildDistrictOptions, matchSaudiCity, parseAddress } from "../lib/address";
+import { RIYADH_DISTRICTS, SAUDI_CITIES, buildDistrictOptions, matchDistrict, matchSaudiCity, parseAddress } from "../lib/address";
 import { getPosition, googleMapsLink, positionError } from "../lib/geolocation";
 import type { Contact } from "../types";
 import PhoneInput from "./PhoneInput";
@@ -145,7 +145,8 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
             filled.push("street");
           }
           if (found.district && !district.trim()) {
-            setDistrict(found.district);
+            // In the dropdown's own spelling when one is close enough, never with the word "District".
+            setDistrict(matchDistrict(found.district, districtOptions.length ? districtOptions : RIYADH_DISTRICTS));
             filled.push("district");
           }
           const matchedCity = found.city ? matchSaudiCity(found.city) : null;

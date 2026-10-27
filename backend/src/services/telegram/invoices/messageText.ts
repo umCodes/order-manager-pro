@@ -65,16 +65,16 @@ export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[],
 }
 
 /**
- * An items-only post (a backup list): "ትርፍ" (surplus) and its id where an invoice message has
- * the invoice number, then the same numbered item lines and day line. The
- * day line is left out when no date was picked.
+ * An items-only post (a backup list): its id where an invoice message has
+ * the invoice number, with "ትርፍ" (surplus) under it, then the same numbered
+ * item lines and day line. The day line is left out when no date was picked.
  */
 export function itemsListMessageText(listId: string, line_items: ItemWithQuantity[], date?: string) {
     const items = visible(line_items);
     const numbers = numberItems(items);
     const itemLines = items.map((item) => itemLine(item, numbers));
     const dayLine = invoiceDayLine({ date });
-    return [`ትርፍ ${listId}:`, itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
+    return [`${listId}:\nትርፍ`, itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
 }
 
 /** Sums quantities per item, so an item split over two lines compares as one. */

@@ -1446,6 +1446,7 @@
 
 .invoice-details__customer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 17px;
@@ -3403,4 +3404,382 @@ div.wa-pick-list__row {
 .return-notices__meta {
   font-size: 12px;
   color: var(--color-gray-500);
+}
+
+/* Daily report picker: one button per business day. */
+.daily-report-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.daily-report-options .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Settings → Daily report on WhatsApp: one phone field per number, with a remove button. */
+.daily-report-phones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.daily-report-phones__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.daily-report-phones__row .phone-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Daily report picker: each day with Download and Send. */
+.daily-report-day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.daily-report-day:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.daily-report-day__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.daily-report-day__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.daily-report-day__actions .btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 10px;
+  font-size: 14px;
+}
+
+.daily-report-hint {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+/* Customer visits: the Visit button, its day tag, and the schedule window. */
+.visit-row {
+  margin-bottom: 14px;
+}
+
+.visit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px dashed var(--color-gray-400);
+  border-radius: var(--radius-full);
+  background: var(--color-white);
+  color: var(--color-gray-700);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.visit-button--compact {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.visit-button--scheduled {
+  border: 1px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.visit-button--overdue {
+  border-color: var(--color-red-600);
+  background: #fef2f2;
+  color: var(--color-red-600);
+}
+
+.visit-day-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.visit-day-tag--overdue {
+  background: #fee2e2;
+  color: var(--color-red-600);
+}
+
+.visit-other-date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-gray-600);
+}
+
+.visit-other-date .input {
+  flex: 1;
+}
+
+.visit-done-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.btn.visit-mark-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--color-green-700);
+}
+
+.visit-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--color-gray-700);
+}
+
+/* Customers tab: visits banner, pinned "To visit" section, highlighted cards. */
+.visits-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb;
+  border-radius: var(--radius-md);
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.visits-banner--overdue {
+  border-color: #fca5a5;
+  border-left-color: var(--color-red-600);
+  background: #fef2f2;
+  color: var(--color-red-600);
+}
+
+.customers-section-label {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-gray-500);
+}
+
+.customers-pinned {
+  margin-bottom: 4px;
+}
+
+.draft-card.customer-card--visit {
+  border-color: #93c5fd;
+  border-left: 4px solid #2563eb;
+  background: #f8fbff;
+}
+
+.draft-card.customer-card--visit-overdue {
+  border-color: #fca5a5;
+  border-left-color: var(--color-red-600);
+  background: #fffafa;
+}
+
+.customer-card__visit {
+  margin: 6px 0 4px;
+}
+
+/* Tab badge for visits that are only later (none today or overdue): blue instead of red. */
+.unread-badge--tab.unread-badge--visits-later {
+  background: #2563eb;
+}
+
+/* The PDF's Open file / Share file window: above any window it was opened from. */
+.modal-overlay.pdf-file-menu {
+  z-index: 1000;
+}
+
+.pdf-file-menu__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdf-file-menu__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Customer page: Transactions (any period). */
+button.line-items__header.customer-tx__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-gray-200);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.customer-tx__hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-gray-400);
+}
+
+.customer-tx__types {
+  margin: 12px 14px 8px;
+}
+
+.customer-tx__periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.customer-tx__period {
+  border: 1px solid var(--color-gray-300);
+  background: var(--color-white);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+  color: var(--color-gray-700);
+  cursor: pointer;
+}
+
+.customer-tx__period--active {
+  background: var(--color-gray-900);
+  border-color: var(--color-gray-900);
+  color: var(--color-white);
+}
+
+.customer-tx__dates {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 10px;
+}
+
+.customer-tx__dates label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-gray-500);
+  min-width: 0;
+}
+
+.customer-tx__totals {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gray-800);
+  background: var(--color-gray-50);
+  border-top: 1px solid var(--color-gray-200);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.customer-tx__status--paid {
+  color: #15803d;
+}
+
+.customer-tx__status--overdue {
+  color: #b91c1c;
+}
+
+.customer-tx__more {
+  margin: 10px 14px 14px;
+  width: calc(100% - 28px);
+}
+
+/* Customer page: credit left from returns, under the balance. */
+.customer-credit-row {
+  color: #15803d;
+  font-weight: 500;
+}
+
+/* Settings → Overdue after. */
+.invoice-due__choices {
+  padding: 0 0 10px;
+}
+
+.invoice-due__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+/* New/Edit customer: "Use my location". */
+.customer-locate__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.customer-locate__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.customer-locate__result {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: #15803d;
+}
+
+.customer-locate__result--warn {
+  color: #b45309;
+}
+
+/* General items: the line's unit, as compact as the quantity box. */
+.field-row__input--unit {
+  width: 104px;
+  flex: none;
+  margin-left: auto;
 }

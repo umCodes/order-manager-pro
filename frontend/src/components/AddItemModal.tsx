@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
-import { fetchItemCategorySettings, fetchItems } from "../lib/api";
+import { fetchGeneralItemIds, fetchItemCategorySettings, fetchItems } from "../lib/api";
+import { unitOptions } from "../lib/units";
 import { groupItemsByCategory } from "../lib/itemSummary";
 import AddItemRow, { type DraftForm } from "./AddItemRow";
 import RefreshButton from "./RefreshButton";
@@ -118,6 +119,15 @@ function SheetContent({
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(loadCollapsedCategories);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // General items (Settings): their unit can be changed per line.
+  const [generalItemIds, setGeneralItemIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (returnItems) return;
+    fetchGeneralItemIds()
+      .then((loaded) => setGeneralItemIds(new Set(loaded.item_ids)))
+      .catch(() => setGeneralItemIds(new Set()));
+  }, [returnItems]);
 
   useEffect(() => {
     if (returnItems) return; // fixed list: the invoice's own items
@@ -199,6 +209,7 @@ function SheetContent({
       quantity: String(existing?.quantity ?? (returnItems ? returnItems.maxQuantity[item.item_id] ?? 1 : 1)),
       rate: String(existing?.rate ?? item.rate),
       excludeFromTelegram: existing?.excludeFromTelegram ?? false,
+      unit: existing?.unit ?? item.unit,
     });
     setExpandedId(item.item_id);
   }
@@ -294,6 +305,11 @@ function SheetContent({
                     onRemove={() => remove(item)}
                     showExcludeFromTelegram={showExcludeFromTelegram && !returnItems}
                     maxQuantity={returnItems?.maxQuantity[item.item_id]}
+                    unitOptions={
+                      !returnItems && generalItemIds.has(item.item_id)
+                        ? unitOptions(items, expandedId === item.item_id ? form.unit ?? item.unit : item.unit)
+                        : undefined
+                    }
                   />
                 ))}
             </div>

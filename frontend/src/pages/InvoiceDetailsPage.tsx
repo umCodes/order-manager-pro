@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, Pencil, Plus, Send, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, ChevronRight, Pencil, Plus, Send, TriangleAlert } from "lucide-react";
 import {
   sendInvoiceReturnNotification,
   fetchInvoiceById,
@@ -25,6 +25,8 @@ import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
 import ReturnNotices from "../components/ReturnNotices";
 import PaymentModal from "../components/PaymentModal";
 import ReturnInvoiceFlow from "../components/ReturnInvoiceFlow";
+import VisitButton from "../components/VisitButton";
+import { refreshVisits } from "../lib/visits";
 import type { CreatedInvoiceReturn } from "../lib/api";
 import DayPickerModal from "../components/DayPickerModal";
 import SplitConfirmModal from "../components/SplitConfirmModal";
@@ -96,6 +98,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isMarkingSent, setIsMarkingSent] = useState(false);
+  // Optional discount taken off the invoice as it's marked as sent ("" = none).
+  const [isMarkSentDiscountOpen, setIsMarkSentDiscountOpen] = useState(false);
+  const [markSentDiscount, setMarkSentDiscount] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSplitConfirmOpen, setIsSplitConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
@@ -259,7 +264,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const pickerCart: Cart = {};
   for (const li of displayLineItems) {
     if (pickerCart[li.item_id]) continue;
-    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false };
+    pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false, unit: li.unit };
   }
 
   /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
@@ -273,7 +278,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     if (existingIndex >= 0) {
       applyLineItemEdits(
         base.map((li, i) =>
-          i === existingIndex ? { ...li, description: values.description, quantity, rate, item_total: quantity * rate } : li,
+          i === existingIndex ? { ...li, description: values.description, quantity, rate, unit: values.unit || li.unit, item_total: quantity * rate } : li,
         ),
       );
       return;
@@ -288,7 +293,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         name: catalogItem.name,
         description: values.description,
         quantity,
-        unit: catalogItem.unit,
+        unit: values.unit || catalogItem.unit,
         rate,
         item_total: quantity * rate,
       },
@@ -465,6 +470,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .then(() => recordInvoicePayment(invoice.invoice_id, amount, discount, notify, notifyContactIds))
       .then((result) => {
         setIsPaymentModalOpen(false);
+        refreshVisits();
         if (notify) {
           const succeeded = wasDraft ? result.notified.balance : result.notified.payment;
           setNotifyBanner(succeeded ? "success" : "failed");
@@ -502,18 +508,40 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       return;
     }
     setActionError(null);
+    openMarkSentStep();
+  }
+
+  function openMarkSentStep() {
+    setMarkSentDiscount("");
+    setIsMarkSentDiscountOpen(false);
     setMarkSentNotifyStep("confirmNotify");
+  }
+
+  /** The discount typed in the mark-as-sent step, or an error message when it isn't a usable amount. */
+  function parseMarkSentDiscount(): { discount: number } | { error: string } {
+    if (!markSentDiscount.trim()) return { discount: 0 };
+    const discount = Number(markSentDiscount);
+    if (Number.isNaN(discount) || discount < 0) return { error: "Enter a valid discount" };
+    if (invoice && discount > displayTotal) return { error: `Discount cannot exceed ${currency(displayTotal)}` };
+    return { discount };
   }
 
   function runMarkAsSent(notify: boolean, notifyContactIds?: string[]) {
     if (!invoice) return;
+    const parsed = parseMarkSentDiscount();
+    if ("error" in parsed) {
+      setActionError(parsed.error);
+      setMarkSentNotifyStep("confirmNotify");
+      return;
+    }
     setIsMarkingSent(true);
     setActionError(null);
     setNotifyBanner(null);
     saveLineItemsIfDirty()
-      .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactIds))
+      .then(() => markInvoiceAsSent(invoice.invoice_id, notify, notifyContactIds, parsed.discount || undefined))
       .then((result) => {
         setMarkSentNotifyStep("closed");
+        refreshVisits();
         if (notify) {
           setNotifyBanner(result.notified ? "success" : "failed");
           if (!result.notified) {
@@ -527,6 +555,11 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   }
 
   function handleYesNotifyOnSent() {
+    const parsed = parseMarkSentDiscount();
+    if ("error" in parsed) {
+      setActionError(parsed.error);
+      return;
+    }
     if (!customer) {
       runMarkAsSent(true);
       return;
@@ -586,7 +619,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .then(() => {
         setIsSplitConfirmOpen(false);
         setIsMarkingSent(false);
-        setMarkSentNotifyStep("confirmNotify");
+        openMarkSentStep();
       })
       .catch((e) => {
         setActionError(e instanceof Error ? e.message : "Failed to split invoice");
@@ -693,6 +726,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             >
               Change customer
             </button>
+            {invoice.customer_id && (
+              <VisitButton customerId={String(invoice.customer_id)} customerName={invoice.customer_name} compact />
+            )}
           </div>
 
           {customerBalance !== null && (
@@ -837,6 +873,12 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               <span>Subtotal</span>
               <span>{currency(editedSubtotal)}</span>
             </div>
+            {editedSubtotal - displayTotal > 0.005 && (
+              <div className="invoice-details__totals-row">
+                <span>Discount</span>
+                <span>-{currency(editedSubtotal - displayTotal)}</span>
+              </div>
+            )}
             <div className="invoice-details__totals-row">
               <span>Total</span>
               <span>{currency(displayTotal)}</span>
@@ -1041,6 +1083,40 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
               Send a WhatsApp notification that this invoice was sent?
             </div>
+            <div className="field">
+              <button
+                type="button"
+                className="link-btn"
+                style={{ display: "flex", alignItems: "center", gap: 4, textDecoration: "none" }}
+                onClick={() => setIsMarkSentDiscountOpen((prev) => !prev)}
+              >
+                {isMarkSentDiscountOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Add discount
+              </button>
+              {isMarkSentDiscountOpen && (
+                <>
+                  <input
+                    id="mark-sent-discount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ marginTop: 6 }}
+                    placeholder="Discount amount (optional)"
+                    value={markSentDiscount}
+                    onChange={(e) => {
+                      setMarkSentDiscount(e.target.value);
+                      setActionError(null);
+                    }}
+                  />
+                  {Number(markSentDiscount) > 0 && Number(markSentDiscount) <= displayTotal && (
+                    <div className="invoice-details__summary-row" style={{ marginTop: 6 }}>
+                      New total: {currency(displayTotal - Number(markSentDiscount))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
             {actionError && <div className="form-error">{actionError}</div>}
             <div className="invoice-details__actions" style={{ marginTop: 14 }}>
               <button
@@ -1158,6 +1234,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           onCreated={(created) => {
             setIsReturnOpen(false);
             setCreatedReturn(created);
+            refreshVisits();
             if (invoice.customer_id) {
               setReturnNotify({ creditNoteId: created.creditnote_id, number: created.creditnote_number, step: "confirm" });
             }

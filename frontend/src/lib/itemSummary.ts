@@ -1,5 +1,6 @@
 import type { DraftLineItemSummary, InvoiceDetailLineItem } from "../types";
 import { groupByScheduledDay } from "./scheduledDate";
+import { businessDayDate } from "./businessTime";
 
 const BOX_MULTIPLIER = 10;
 
@@ -52,7 +53,7 @@ export type ItemDayGroup = {
  * counted under today (see effectiveScheduledDate) with their breakdown
  * entries flagged isCarriedOver, matching how the Drafts tab shows them.
  */
-export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Date = new Date()): ItemDayGroup[] {
+export function groupItemsByScheduledDay(items: DraftLineItemSummary[], from: Date = businessDayDate()): ItemDayGroup[] {
   const entries = items.flatMap((item) => item.breakdown.map((entry) => ({ item, entry })));
   const dayGroups = groupByScheduledDay(entries, ({ entry }) => entry.date, from);
 

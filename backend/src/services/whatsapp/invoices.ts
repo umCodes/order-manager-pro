@@ -1,6 +1,6 @@
 import { ZohoGetCustomerById, getContactDisplayName, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
-import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js"
+import { createInvoicePdfBufferForLanguage, regularItemRates, toInvoicePdfData } from "../../pdf/index.js"
 import type { ZohoInvoice } from "../zoho/types.js"
 
 /**
@@ -73,7 +73,7 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         const preferredLanguage = getContactPreferredLanguage(contact)
         const customerName = getContactDisplayName(contact)
         console.log(`[WhatsApp] notifyInvoiceSent: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
-        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, contact), preferredLanguage)
+        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, contact, await regularItemRates(accessToken)), preferredLanguage)
         console.log(`[WhatsApp] notifyInvoiceSent: generated PDF, bytes=${pdf.length}`)
         const paidAmountFromInvoice = invoice.total - invoice.balance
         const balanceAfter = contact.outstanding_receivable_amount

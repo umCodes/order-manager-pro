@@ -22,6 +22,7 @@ import ClickableCard from "../components/ClickableCard";
 import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
+import DailyReportButton from "../components/DailyReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import type { DraftInvoice } from "../types";
@@ -190,6 +191,7 @@ export default function DraftsPage({
       <div className="page-header">
         <h1 className="page-title">{viewMode === "drafts" ? "Draft Invoices" : "Previous Transactions"}</h1>
         <div className="page-header__actions">
+          <DailyReportButton />
           {viewMode === "drafts" ? (
             <>
               <CopyButton getText={copyText} />

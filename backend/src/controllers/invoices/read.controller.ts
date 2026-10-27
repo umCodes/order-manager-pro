@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { ZohoGetDrafts, ZohoGetInvoiceById, ZohoGetRecentNonDraftInvoices } from "../../services/zoho/invoices/index.js";
 import { ZohoGetCustomerById, ZohoGetCustomersCached, getContactPreferredLanguage } from "../../services/zoho/customers/index.js";
-import { createInvoicePdfBufferForLanguage, toInvoicePdfData } from "../../pdf/index.js";
+import { createInvoicePdfBufferForLanguage, regularItemRates, toInvoicePdfData } from "../../pdf/index.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { businessDayKey } from "../../utils/businessDate.js";
 import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyTotals.js";
@@ -143,7 +143,7 @@ export async function getInvoicePdf(req: Request, res: Response) {
     const customer = invoice.customer_id ? await ZohoGetCustomerById(access_token, String(invoice.customer_id)) : undefined;
     const preferredLanguage = customer ? getContactPreferredLanguage(customer) : "am";
 
-    const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, customer), preferredLanguage);
+    const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, customer, await regularItemRates(access_token)), preferredLanguage);
 
     res.setHeader("Content-Type", "application/pdf");
     const disposition = req.query.download === "1" ? "attachment" : "inline";

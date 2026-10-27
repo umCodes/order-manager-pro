@@ -1,6 +1,7 @@
 import { FileText, MessageSquare, FileClock, Package, Users } from "lucide-react";
 import type { TabKey } from "../types";
 import { useUnread } from "../lib/unread";
+import { useVisits, visitSummary } from "../lib/visits";
 
 const TABS: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "invoices", label: "Invoice", icon: FileText },
@@ -20,6 +21,7 @@ type Props = {
 /** Bottom navigation bar for switching between the app's top-level pages. */
 export default function TabBar({ active, onChange, hasHeldInvoice }: Props) {
   const unread = useUnread();
+  const visits = visitSummary(useVisits());
   return (
     <nav className="tab-bar">
       {TABS.map(({ key, label, icon: Icon }) => {
@@ -35,6 +37,14 @@ export default function TabBar({ active, onChange, hasHeldInvoice }: Props) {
               <Icon size={21} />
               {key === "invoices" && hasHeldInvoice && (
                 <span className="held-dot" role="img" aria-label="An invoice is on hold" title="An invoice is on hold" />
+              )}
+              {key === "customers" && visits.total > 0 && (
+                <span
+                  className={`unread-badge unread-badge--tab${visits.overdue || visits.dueToday ? "" : " unread-badge--visits-later"}`}
+                  aria-label={`${visits.total} customers to visit`}
+                >
+                  {visits.total > 99 ? "99+" : visits.total}
+                </span>
               )}
               {key === "messages" && unread.total > 0 && (
                 <span className="unread-badge unread-badge--tab" aria-label={`${unread.total} unread WhatsApp messages`}>

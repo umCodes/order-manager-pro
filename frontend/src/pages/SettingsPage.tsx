@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import RefreshButton from "../components/RefreshButton";
 import CategoryOrderSettings from "../components/CategoryOrderSettings";
+import DailyReportWhatsAppSettings from "../components/DailyReportWhatsAppSettings";
+import InvoiceDueSettings from "../components/InvoiceDueSettings";
+import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import {
   fetchNotificationTemplateSettings,
   saveNotificationTemplateSettings,
@@ -216,6 +219,12 @@ export default function SettingsPage({ onBack }: Props) {
           </button>
         </>
       )}
+
+      <InvoiceDueSettings />
+
+      <GeneralItemsSettings />
+
+      <DailyReportWhatsAppSettings />
     </div>
   );
 }

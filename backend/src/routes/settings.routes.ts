@@ -1,5 +1,16 @@
 import { Router } from "express";
-import { getItemCategories, getNotificationTemplates, updateItemCategoryOrder, updateNotificationTemplates } from "../controllers/settings.controller.js";
+import {
+    getDailyReportWhatsApp,
+    getInvoiceDue,
+    getGeneralItems,
+    getItemCategories,
+    getNotificationTemplates,
+    updateDailyReportWhatsApp,
+    updateInvoiceDue,
+    updateGeneralItems,
+    updateItemCategoryOrder,
+    updateNotificationTemplates,
+} from "../controllers/settings.controller.js";
 
 export const settingsRouter = Router();
 
@@ -7,3 +18,9 @@ settingsRouter.get('/settings/notification-templates', getNotificationTemplates)
 settingsRouter.put('/settings/notification-templates', updateNotificationTemplates);
 settingsRouter.get('/settings/item-categories', getItemCategories);
 settingsRouter.put('/settings/item-categories', updateItemCategoryOrder);
+settingsRouter.get('/settings/daily-report-whatsapp', getDailyReportWhatsApp);
+settingsRouter.put('/settings/daily-report-whatsapp', updateDailyReportWhatsApp);
+settingsRouter.get('/settings/invoice-due', getInvoiceDue);
+settingsRouter.put('/settings/invoice-due', updateInvoiceDue);
+settingsRouter.get('/settings/general-items', getGeneralItems);
+settingsRouter.put('/settings/general-items', updateGeneralItems);

@@ -9,17 +9,18 @@ import {
   updateInvoiceDateTelegramMessage,
 } from "../../services/telegram/invoices/index.js";
 import { redisClient } from "../../config/redis.js";
-import { todayInBusinessTimezone } from "../../utils/businessDate.js";
+import { businessDayKey } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
+import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
  * the team sees the new day on the original message rather than a duplicate.
- * An empty date resets it to today. When the message couldn't be edited a
+ * An empty date resets it to the current business day (4am to 4am). When the message couldn't be edited a
  * fresh one is sent and its id stored instead.
  */
 export async function updateInvoiceDate(req: Request, res: Response) {
@@ -31,7 +32,7 @@ export async function updateInvoiceDate(req: Request, res: Response) {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
 
-    const newDate = date || todayInBusinessTimezone();
+    const newDate = date || businessDayKey();
     await ZohoUpdateInvoice(access_token, id, {
       date: newDate,
       reason: invoiceUpdateReason(reason, `Date changed to ${newDate}`),
@@ -54,6 +55,7 @@ export async function updateInvoiceDate(req: Request, res: Response) {
       await redisClient.set(String(invoice.invoice_id), String(message.message_id));
     }
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -100,6 +102,7 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
     // A sent invoice's total is part of the customer's balance due in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -129,6 +132,7 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
     // Moving a sent invoice shifts balance due between two customers in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
 
+    await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
@@ -161,7 +165,9 @@ export async function splitInvoice(req: Request, res: Response) {
       !!create_new_draft,
     );
 
+    await refreshReportInvoice(invoice);
     if (newDraft) {
+      await recordReportDraft(newDraft);
       const newDraftTelegramLineItems = excludeInternalLineItems(newDraft.line_items);
       const telegramMessage = await sendInvoiceTelegramMessage(newDraft, newDraftTelegramLineItems);
       await redisClient.set(String(newDraft.invoice_id), String(telegramMessage.message_id));

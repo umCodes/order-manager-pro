@@ -310,7 +310,7 @@ export async function deleteTemplate(id: string, protectedNames: Set<string>) {
     const template = (await listTemplates(true)).find((t) => t.id === id)
     if (!template) throw new Error("Template not found")
     if (protectedNames.has(template.name))
-        throw new Error("This template is used for payment / balance notifications and can't be deleted")
+        throw new Error("This template is in use (by a notification or the daily report) and can't be deleted")
     const accountId = await getBusinessAccountId()
     await GraphApi(
         `${accountId}/message_templates?hsm_id=${encodeURIComponent(template.id)}&name=${encodeURIComponent(template.name)}`,

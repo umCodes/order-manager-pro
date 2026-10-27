@@ -1,3 +1,5 @@
+import { businessDayDate } from "./businessTime";
+
 const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export type ScheduleOption = {
@@ -14,7 +16,7 @@ export type ScheduledDayInfo = {
   isPast: boolean;
 };
 
-/** Formats a Date as YYYY-MM-DD using its local calendar date (never UTC — see describeScheduledDay). */
+/** Formats a Date as YYYY-MM-DD using its local calendar date (never UTC). `from` defaults to businessDayDate(), whose local fields are the current business day. */
 function toISODate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -29,8 +31,8 @@ function fromISODate(dateStr: string): Date {
 }
 
 
-/** Builds the next 7 days of pickable schedule options, starting today, labeled Today/Tomorrow/weekday. */
-export function buildScheduleOptions(from: Date = new Date()): ScheduleOption[] {
+/** Builds the next 7 days of pickable schedule options, starting today (the 4am-to-4am business day), labeled Today/Tomorrow/weekday. */
+export function buildScheduleOptions(from: Date = businessDayDate()): ScheduleOption[] {
   const options: ScheduleOption[] = [];
 
   for (let offset = 0; offset < 7; offset++) {
@@ -46,7 +48,7 @@ export function buildScheduleOptions(from: Date = new Date()): ScheduleOption[] 
 }
 
 /** Describes an already-chosen scheduled date for display: label, formatted date, and whether it's overdue. */
-export function describeScheduledDay(dateStr: string, from: Date = new Date()): ScheduledDayInfo {
+export function describeScheduledDay(dateStr: string, from: Date = businessDayDate()): ScheduledDayInfo {
   const date = fromISODate(dateStr);
   const tomorrow = new Date(from);
   tomorrow.setDate(from.getDate() + 1);
@@ -71,7 +73,7 @@ export function describeScheduledDay(dateStr: string, from: Date = new Date()): 
  * never went out) — today, flagged as carried over. Display-only: the
  * invoice's real date in Zoho is never touched.
  */
-export function effectiveScheduledDate(dateStr: string, from: Date = new Date()): { date: string; isCarriedOver: boolean } {
+export function effectiveScheduledDate(dateStr: string, from: Date = businessDayDate()): { date: string; isCarriedOver: boolean } {
   const today = toISODate(from);
   return dateStr < today ? { date: today, isCarriedOver: true } : { date: dateStr, isCarriedOver: false };
 }
@@ -90,7 +92,7 @@ export type ScheduledDayGroup<T> = {
 export function groupByScheduledDay<T>(
   values: T[],
   getDate: (value: T) => string | null | undefined,
-  from: Date = new Date(),
+  from: Date = businessDayDate(),
 ): ScheduledDayGroup<T>[] {
   const groups = new Map<string | null, ScheduledDayGroup<T>>();
 

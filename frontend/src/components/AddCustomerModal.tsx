@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2, MapPin } from "lucide-react";
 import {
   createCustomer,
   updateCustomer,
@@ -7,11 +7,13 @@ import {
   getContactPreferredLanguage,
   getRawContactAddress,
   getRawContactBusinessType,
+  reverseGeocode,
   type CustomerType,
   type PreferredLanguage,
   type BusinessType,
 } from "../lib/api";
-import { SAUDI_CITIES, buildDistrictOptions, parseAddress } from "../lib/address";
+import { RIYADH_DISTRICTS, SAUDI_CITIES, buildDistrictOptions, matchDistrict, matchSaudiCity, parseAddress } from "../lib/address";
+import { getPosition, googleMapsLink, positionError } from "../lib/geolocation";
 import type { Contact } from "../types";
 import PhoneInput from "./PhoneInput";
 
@@ -89,6 +91,8 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
   const [districtOptions, setDistrictOptions] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locateResult, setLocateResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     fetchCustomers()
@@ -117,6 +121,52 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
     district !== (existingAddress?.district ?? "") ||
     street !== (existingAddress?.street ?? "") ||
     locationLink !== (existingAddress?.locationLink ?? "");
+
+  /**
+   * "Use my location": the phone's position becomes the Google Maps link,
+   * and its street, district and city (in English) fill whichever of those
+   * fields are still empty — what's already typed is kept. The city is only
+   * picked when it's still the untouched default and is one of the list's.
+   */
+  function useMyLocation() {
+    if (isLocating) return;
+    setIsLocating(true);
+    setLocateResult(null);
+    getPosition()
+      .then(async (position) => {
+        const { latitude: lat, longitude: lng, accuracy } = position.coords;
+        setLocationLink(googleMapsLink(lat, lng));
+        const rough = accuracy > 100 ? ` The phone's location is rough (±${Math.round(accuracy)} m) — check the pin.` : "";
+        try {
+          const found = await reverseGeocode(lat, lng);
+          const filled: string[] = [];
+          if (found.street && !street.trim()) {
+            setStreet(found.street);
+            filled.push("street");
+          }
+          if (found.district && !district.trim()) {
+            // In the dropdown's own spelling when one is close enough, never with the word "District".
+            setDistrict(matchDistrict(found.district, districtOptions.length ? districtOptions : RIYADH_DISTRICTS));
+            filled.push("district");
+          }
+          const matchedCity = found.city ? matchSaudiCity(found.city) : null;
+          const cityUntouched = !existingAddress?.city && city === SAUDI_CITIES[0];
+          if (matchedCity && cityUntouched && matchedCity !== city) {
+            setCity(matchedCity);
+            filled.push("city");
+          }
+          const missing = !found.street && !street.trim() ? " The street wasn't found — type it in." : "";
+          setLocateResult({
+            ok: !rough && !missing,
+            text: `Map location added${filled.length ? `, and ${filled.join(", ")} filled in` : ""}.${missing}${rough}`,
+          });
+        } catch {
+          setLocateResult({ ok: false, text: `Map location added, but the address couldn't be looked up — type it in.${rough}` });
+        }
+      })
+      .catch((e) => setLocateResult({ ok: false, text: positionError(e) }))
+      .finally(() => setIsLocating(false));
+  }
 
   function handleSubmit() {
     if (isSaving) return;
@@ -263,6 +313,19 @@ function SheetContent({ customer, onClose, onSaved }: SheetContentProps) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="field customer-locate">
+          <button type="button" className="btn btn--secondary customer-locate__button" disabled={isLocating} onClick={useMyLocation}>
+            {isLocating ? <Loader2 size={15} className="refresh-button__icon--spinning" /> : <MapPin size={15} />}
+            {isLocating ? "Finding the address…" : "Use my location"}
+          </button>
+          <div className="customer-locate__hint">
+            At the customer's shop: fills the map link, and the street, district and city if they're empty.
+          </div>
+          {locateResult && (
+            <div className={`customer-locate__result${locateResult.ok ? "" : " customer-locate__result--warn"}`}>{locateResult.text}</div>
+          )}
         </div>
 
         <div className="field">

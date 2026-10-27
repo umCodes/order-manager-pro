@@ -147,3 +147,108 @@ export function buildDistrictOptions(customers: Contact[], getAddress: (c: Conta
     return RIYADH_DISTRICTS.indexOf(a) - RIYADH_DISTRICTS.indexOf(b);
   });
 }
+
+/** Other spellings of the cities above (e.g. how OpenStreetMap names them). */
+const CITY_ALIASES: Record<string, string> = {
+  makkah: "Mecca",
+  makkahalmukarramah: "Mecca",
+  madinah: "Medina",
+  almadinah: "Medina",
+  almadinahalmunawwarah: "Medina",
+  buraydah: "Buraidah",
+  unayzah: "Unaizah",
+  hufuf: "Al Hofuf",
+  hofuf: "Al Hofuf",
+  jizan: "Jazan",
+  jazan: "Jazan",
+  kharj: "Al Kharj",
+  bahah: "Al Bahah",
+  khobar: "Khobar",
+  jubayl: "Jubail",
+  qatif: "Qatif",
+};
+
+const cityKey = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/^al(?=[a-z]{3})/, "");
+
+/** The city in SAUDI_CITIES that `name` refers to ("Makkah", "Al Khobar", "Ha'il" …), or null. */
+export function matchSaudiCity(name: string): string | null {
+  const key = cityKey(name);
+  if (!key) return null;
+  const direct = SAUDI_CITIES.find((city) => cityKey(city) === key);
+  if (direct) return direct;
+  return CITY_ALIASES[key] ?? CITY_ALIASES[name.toLowerCase().replace(/[^a-z]/g, "")] ?? null;
+}
+
+/** A district name without the word "District" (or "Neighbourhood"), as map services add it. */
+export function cleanDistrictName(name: string): string {
+  return name
+    .replace(/\b(district|neighbou?rhood|dist\.)(\s+of)?\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[,\-–\s]+|[,\-–\s]+$/g, "");
+}
+
+/** Arabic articles as they're written in English ("Al", "An", "As" …), dropped before comparing. */
+const ARTICLES = new Set(["al", "el", "an", "ar", "as", "ash", "ad", "adh", "at", "ath", "az"]);
+
+/**
+ * A district name reduced for comparison: lower case, no "District", no
+ * leading article, no hyphens or apostrophes, and the usual spelling
+ * variants merged (ee/i, oo/ou/u, doubled letters, a final h).
+ */
+function districtKey(name: string): string {
+  const words = cleanDistrictName(name)
+    .toLowerCase()
+    .replace(/['’`ʿʾ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  if (words.length > 1 && ARTICLES.has(words[0]!)) words.shift();
+  return words
+    .join(" ")
+    .replace(/ee/g, "i")
+    .replace(/(oo|ou)/g, "u")
+    .replace(/([a-z])\1+/g, "$1")
+    .replace(/q/g, "k")
+    .replace(/h\b/g, "");
+}
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let previous = row[0]!;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const current = row[j]!;
+      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = current;
+    }
+  }
+  return row[b.length]!;
+}
+
+/**
+ * The district from `options` (the District dropdown) most like `found`
+ * (from a map service) — "An Nakheel District" → "Al Nakheel". When none
+ * is close enough, `found` itself, without the word "District".
+ */
+export function matchDistrict(found: string, options: string[]): string {
+  const cleaned = cleanDistrictName(found);
+  const key = districtKey(cleaned);
+  if (!key) return cleaned;
+  const exact = options.find((option) => option.toLowerCase() === cleaned.toLowerCase());
+  if (exact) return exact;
+  let best: { option: string; score: number } | null = null;
+  for (const option of options) {
+    const optionKey = districtKey(option);
+    if (!optionKey) continue;
+    const score = optionKey === key ? 1 : 1 - editDistance(key, optionKey) / Math.max(key.length, optionKey.length);
+    if (!best || score > best.score) best = { option, score };
+  }
+  return best && best.score >= 0.75 ? best.option : cleaned;
+}

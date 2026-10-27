@@ -12,6 +12,8 @@ import {
 import type { LineItem, ZohoInvoice } from "../zoho/types.js"
 import { todayInBusinessTimezone } from "../../utils/businessDate.js"
 import { getAppliedInvoices } from "../../utils/getAppliedInvoices.js"
+import { recordReportReturn } from "../dailyReport/store.js"
+import { confirmVisitByActivity } from "../visits.js"
 
 /**
  * "Return Invoice" in the app = a Zoho credit note against the original
@@ -30,6 +32,11 @@ const returnsKey = (invoiceId: string) => `invoice-returns:${invoiceId}`
 /** Customer's balance due right after each return (credit note id -> amount), for its return notice. */
 const BALANCE_AFTER_KEY = "invoice-returns:balance-after"
 const lockKey = (invoiceId: string) => `invoice-returns:lock:${invoiceId}`
+
+/** Whether the app recorded this credit note as a return of this invoice (so its return notice can be built). */
+export async function isInvoiceReturn(invoiceId: string, creditNoteId: string) {
+    return redisClient.sIsMember(returnsKey(invoiceId), creditNoteId)
+}
 const LOCK_MS = 60_000
 
 /** Quantities are compared with a little slack for decimal units (kg, litres). */
@@ -262,6 +269,8 @@ export async function createInvoiceReturn(
         })
         const creditNoteId = String(creditNote.creditnote_id)
         await redisClient.sAdd(returnsKey(invoiceId), creditNoteId)
+        await recordReportReturn(creditNote, invoice, lineItems)
+        await confirmVisitByActivity(invoice.customer_id, "return")
 
         const warnings: string[] = []
 

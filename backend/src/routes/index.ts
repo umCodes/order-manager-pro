@@ -5,6 +5,9 @@ import { telegramRouter } from "./telegram.routes.js";
 import { zohoUsageRouter } from "./zoho-usage.routes.js";
 import { whatsappRouter } from "./whatsapp.routes.js";
 import { settingsRouter } from "./settings.routes.js";
+import { reportsRouter } from "./reports.routes.js";
+import { visitsRouter } from "./visits.routes.js";
+import { geocodeRouter } from "./geocode.routes.js";
 
 export { waWebhookRouter } from "./wa-webhook.routes.js";
 
@@ -21,4 +24,7 @@ export const apiRouters = [
     zohoUsageRouter,
     whatsappRouter,
     settingsRouter,
+    reportsRouter,
+    visitsRouter,
+    geocodeRouter,
 ];

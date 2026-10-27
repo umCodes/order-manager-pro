@@ -7,7 +7,7 @@
  * stamped with yesterday's date. This computes "today" in the fixed business
  * offset instead, regardless of where the server process runs.
  */
-const BUSINESS_UTC_OFFSET_HOURS = 3;
+export const BUSINESS_UTC_OFFSET_HOURS = 3;
 
 /** Today's date as YYYY-MM-DD in the business's calendar (UTC+3), not the server's. */
 export function todayInBusinessTimezone(): string {
@@ -74,13 +74,13 @@ export function describeBusinessDate(dateStr: string, from: Date = new Date()) {
 /**
  * The "business day" doesn't reset at midnight — the shop is still running
  * its previous day's shift for the first few hours after midnight, so the
- * boundary is 5am business time instead. Used to key the daily estimate/
+ * boundary is 4am business time instead. Used to key the daily estimate/
  * collected-today Redis entries (see services/dailyTotals.ts) so they cover
  * "today" the way staff actually think of it, not the calendar date.
  */
-const BUSINESS_DAY_CUTOFF_HOUR = 5;
+export const BUSINESS_DAY_CUTOFF_HOUR = 4;
 
-/** Today's "business day" (YYYY-MM-DD, business timezone, 5am-to-5am), for keying per-day Redis entries. */
+/** Today's "business day" (YYYY-MM-DD, business timezone, 4am-to-4am), for keying per-day Redis entries. */
 export function businessDayKey(from: Date = new Date()): string {
   const shifted = new Date(from.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   if (shifted.getUTCHours() < BUSINESS_DAY_CUTOFF_HOUR) {
@@ -92,7 +92,7 @@ export function businessDayKey(from: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-/** Seconds from `from` until the next 5am business-day boundary — the TTL for per-day Redis entries. */
+/** Seconds from `from` until the next 4am business-day boundary — the TTL for per-day Redis entries. */
 export function secondsUntilNextBusinessDay(from: Date = new Date()): number {
   const shifted = new Date(from.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   const boundary = new Date(Date.UTC(
@@ -107,4 +107,30 @@ export function secondsUntilNextBusinessDay(from: Date = new Date()): number {
   // boundary was computed in shifted (business) time — shift back to get the real instant.
   const boundaryInstant = boundary.getTime() - BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000;
   return Math.max(1, Math.round((boundaryInstant - from.getTime()) / 1000));
+}
+
+/** The business day before `day` (YYYY-MM-DD). */
+export function previousBusinessDay(day: string): string {
+  const [year = 0, month = 1, date = 1] = day.split("-").map(Number);
+  const previous = new Date(Date.UTC(year, month - 1, date - 1));
+  return previous.toISOString().slice(0, 10);
+}
+
+/** The real instants a business day (YYYY-MM-DD) runs between: its 4am to the next day's 4am, business time. */
+export function businessDayWindow(day: string): { start: Date; end: Date } {
+  const [year = 0, month = 1, date = 1] = day.split("-").map(Number);
+  const start = Date.UTC(year, month - 1, date, BUSINESS_DAY_CUTOFF_HOUR) - BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+  return { start: new Date(start), end: new Date(start + 24 * 60 * 60 * 1000) };
+}
+
+/** An instant as business-time parts, for printing ("18 Oct 9:02 AM" style, 12-hour) in reports. */
+export function businessTimeParts(at: Date) {
+  const shifted = new Date(at.getTime() + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth(),
+    day: shifted.getUTCDate(),
+    weekday: shifted.getUTCDay(),
+    time: `${shifted.getUTCHours() % 12 || 12}:${String(shifted.getUTCMinutes()).padStart(2, "0")} ${shifted.getUTCHours() < 12 ? "AM" : "PM"}`,
+  };
 }

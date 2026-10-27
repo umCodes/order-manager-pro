@@ -4,6 +4,8 @@ import {
   ZohoMarkInvoiceAsSent,
   ZohoMarkInvoiceAsVoid,
   recordInvoicePayment,
+  addInvoiceDiscount,
+  removeInvoiceDiscounts,
 } from "../../services/zoho/invoices/index.js";
 import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsapp/invoices.js";
 import { deleteInvoiceTelegramMessage } from "../../services/telegram/invoices/index.js";
@@ -11,6 +13,9 @@ import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { addToCollectedToday } from "../../services/dailyTotals.js";
 import { deleteCache } from "../../utils/cache.js";
+import { recordReportInvoiceSent, recordReportPayment, removeReportInvoice } from "../../services/dailyReport/store.js";
+import { confirmVisitByActivity } from "../../services/visits.js";
+import { applyUnusedCredits } from "../../services/credits.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -35,6 +40,17 @@ export async function payInvoiceBalance(req: Request, res: Response) {
     // The cached customer list carries each customer's balance due.
     deleteCache("customers");
     await addToCollectedToday(Number(amount));
+    await recordReportPayment(payment, invoiceBeforePayment.customer_name);
+    await confirmVisitByActivity(invoiceBeforePayment.customer_id, "payment");
+    // Leftover credit from returns goes on what's still owed (before the balance is read for the notice).
+    await applyUnusedCredits(access_token, invoiceBeforePayment.customer_id);
+    // Paying a draft sends it: it becomes one of the day's sales.
+    if (wasDraft) {
+      await recordReportInvoiceSent({
+        ...invoiceBeforePayment,
+        balance: Math.max(0, Number(invoiceBeforePayment.total) - Number(amount) - (Number(discount) || 0)),
+      });
+    }
 
     // Once any payment is recorded the invoice is no longer pending
     // fulfillment, so its channel message (if one is still around) no longer applies.
@@ -66,7 +82,13 @@ export async function payInvoiceBalance(req: Request, res: Response) {
   }
 }
 
-/** Moves a draft to "sent" in Zoho, optionally WhatsApp-ing the customer the invoice and their balance. */
+/**
+ * Moves a draft to "sent" in Zoho, optionally WhatsApp-ing the customer the
+ * invoice and their balance. An optional `discount` is added to the invoice
+ * first (the same invoice-wide discount a payment can carry), so the sent
+ * invoice, its PDF and the report all show the reduced total; if sending
+ * then fails, the discount is taken back off.
+ */
 export async function markInvoiceAsSent(req: Request, res: Response) {
   const id  = req.params.id as string;
 
@@ -75,12 +97,31 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     if (!id) throw new Error("id not provided");
 
     const { notify, notify_contact_ids } = req.body ?? {};
+    const discount = Number(req.body?.discount) || 0;
+    if (discount < 0) throw new Error("The discount can't be negative");
 
-    await ZohoMarkInvoiceAsSent(access_token, id);
+    if (discount > 0) {
+      const draft = await ZohoGetInvoiceById(access_token, id);
+      if (discount > Number(draft.total)) throw new Error(`The discount can't be more than the invoice total (${draft.total})`);
+      const applied = await addInvoiceDiscount(access_token, draft, discount, `Discount of ${discount} added when sent`);
+      try {
+        await ZohoMarkInvoiceAsSent(access_token, id);
+      } catch (error) {
+        await removeInvoiceDiscounts(access_token, [applied]);
+        throw error;
+      }
+    } else {
+      await ZohoMarkInvoiceAsSent(access_token, id);
+    }
     // A sent invoice now counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
-    const invoice = await ZohoGetInvoiceById(access_token, id);
+    // Leftover credit from returns goes on the delivered invoice (and any other open ones), before it's read back.
+    const before = await ZohoGetInvoiceById(access_token, id);
+    const credits = await applyUnusedCredits(access_token, before.customer_id);
+    const invoice = credits.length ? await ZohoGetInvoiceById(access_token, id) : before;
+    await recordReportInvoiceSent(invoice);
+    await confirmVisitByActivity(invoice.customer_id, "delivery");
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
 
@@ -105,6 +146,7 @@ export async function voidInvoice(req: Request, res: Response) {
     if (!id) throw new Error("id not provided");
 
     await ZohoMarkInvoiceAsVoid(access_token, id);
+    await removeReportInvoice(id);
     // A voided invoice no longer counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);

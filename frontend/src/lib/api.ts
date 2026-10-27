@@ -299,7 +299,7 @@ export async function fetchCustomerPayments(customerId: string): Promise<Custome
 }
 
 /** Sends the WhatsApp payment confirmation for one of the customer's existing payments. */
-async function postJson<T>(url: string, method: "POST" | "PATCH" | "DELETE", body: unknown, fallbackError: string): Promise<T> {
+async function postJson<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, fallbackError: string): Promise<T> {
   const response = await apiFetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -679,6 +679,121 @@ export async function deleteTelegramMessage(
   return response.json();
 }
 
+export type ScheduledVisit = { customer_id: string; customer_name: string; day: string; scheduled_at: string };
+export type VisitConfirmation =
+  | "at_location"
+  | "away_from_location"
+  | "no_customer_location"
+  | "location_not_checked"
+  | "payment"
+  | "delivery"
+  | "return";
+export type DoneVisit = ScheduledVisit & {
+  visited_at: string;
+  confirmation: VisitConfirmation;
+  distance_m?: number;
+  position?: { lat: number; lng: number; accuracy?: number };
+};
+
+/** Scheduled visits not done yet, and the current business day. */
+export async function fetchVisits(): Promise<{ today: string; visits: ScheduledVisit[]; done: DoneVisit[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/visits`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load visits (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function scheduleCustomerVisit(customerId: string, customerName: string, day: string): Promise<ScheduledVisit> {
+  const result = await postJson<{ visit: ScheduledVisit }>(
+    `${API_BASE_URL}/api/customers/${customerId}/visit`,
+    "PUT",
+    { day, customer_name: customerName },
+    "Failed to schedule the visit",
+  );
+  return result.visit;
+}
+
+export function cancelCustomerVisit(customerId: string): Promise<{ ok: boolean }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/visit`, "DELETE", {}, "Failed to cancel the visit");
+}
+
+/** Marks a customer's visit done, confirmed by the phone's position, without it, or by a payment / delivery / return. */
+export function markCustomerVisited(
+  customerId: string,
+  confirmation:
+    | { method: "location"; position: { lat: number; lng: number; accuracy?: number } }
+    | { method: "not_checked" | "payment" | "delivery" | "return" },
+): Promise<{ visit: DoneVisit; can_save_location: boolean }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/visit/done`, "POST", confirmation, "Failed to mark the visit as done");
+}
+
+/** Saves a phone position as the customer's map location (on their address). */
+export function saveCustomerLocation(customerId: string, position: { lat: number; lng: number }): Promise<{ location_link: string }> {
+  return postJson(`${API_BASE_URL}/api/customers/${customerId}/location`, "POST", position, "Failed to save the location");
+}
+
+export type DailyReportDays = {
+  today: string;
+  previous: string;
+  /** WhatsApp sending as set up in Settings: the template's name (null if none) and how many numbers. */
+  whatsapp?: { template: string | null; recipients: number };
+};
+
+/** The current business day and the one before it (4am to 4am), as YYYY-MM-DD. */
+export async function fetchDailyReportDays(): Promise<DailyReportDays> {
+  const response = await apiFetch(`${API_BASE_URL}/api/reports/daily/days`);
+  if (!response.ok) throw new Error(`Failed to load report days (${response.status})`);
+  return response.json();
+}
+
+export type DailyReportWhatsAppSettings = {
+  template: { name: string; language: string } | null;
+  /** Digits only, international format (e.g. "966512345678"). */
+  recipients: string[];
+};
+export type DailyReportTemplateOption = { id: string; name: string; language: string; status: string };
+
+export async function fetchDailyReportWhatsAppSettings(force = false): Promise<{
+  selected: DailyReportWhatsAppSettings;
+  options: DailyReportTemplateOption[];
+  maxRecipients: number;
+}> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/daily-report-whatsapp${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the daily report settings (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveDailyReportWhatsAppSettings(settings: DailyReportWhatsAppSettings): Promise<DailyReportWhatsAppSettings> {
+  const result = await postJson<{ selected: DailyReportWhatsAppSettings }>(
+    `${API_BASE_URL}/api/settings/daily-report-whatsapp`,
+    "PUT",
+    settings,
+    "Failed to save the daily report settings",
+  );
+  return result.selected;
+}
+
+/** Sends a business day's report on WhatsApp to the numbers chosen in Settings; one result per number. */
+export async function sendDailyReport(day: string): Promise<{ phone: string; ok: boolean; error?: string }[]> {
+  const result = await postJson<{ results: { phone: string; ok: boolean; error?: string }[] }>(
+    `${API_BASE_URL}/api/reports/daily/send`,
+    "POST",
+    { day },
+    "Failed to send the report",
+  );
+  return result.results;
+}
+
+/** URL for a business day's daily report PDF. Append `&download=1` to have it served as an attachment. */
+export function dailyReportUrl(day: string) {
+  return `${API_BASE_URL}/api/reports/daily?day=${encodeURIComponent(day)}`;
+}
+
 /** URL for the invoice's PDF. Append `?download=1` to have it served as an attachment. */
 export function invoicePdfUrl(invoiceId: string): string {
   return `${API_BASE_URL}/api/invoices/${invoiceId}/pdf`;
@@ -826,17 +941,23 @@ export async function recordInvoicePayment(
   return response.json();
 }
 
+/** Marks a draft as sent. A `discount` is taken off the invoice's total first (Zoho's invoice-wide discount). */
 export async function markInvoiceAsSent(
   invoiceId: string,
   notify?: boolean,
   notifyContactIds?: string[],
+  discount?: number,
 ): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ notify: !!notify, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
+    body: JSON.stringify({
+      notify: !!notify,
+      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+      ...(discount ? { discount } : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -1464,4 +1585,91 @@ export async function saveItemCategoryOrder(order: string[]): Promise<string[]> 
   const data = await response.json();
   updateCachedValue<ItemCategorySettings>("itemCategories", (settings) => ({ ...settings, order: data.order }));
   return data.order;
+}
+
+export type TransactionType = "invoices" | "payments" | "returns";
+
+export type InvoiceTransaction = { invoice_id: string; invoice_number: string; date: string; status: string; total: number; balance: number };
+export type PaymentTransaction = {
+  payment_id: string;
+  payment_number?: string;
+  date: string;
+  amount: number;
+  payment_mode?: string;
+  invoice_numbers?: string;
+};
+export type ReturnTransaction = {
+  creditnote_id: string;
+  creditnote_number: string;
+  date: string;
+  status: string;
+  total: number;
+  invoice_number?: string;
+  invoice_id?: string;
+  /** Made in the app, so its return notice PDF exists. */
+  has_notice: boolean;
+};
+
+export type CustomerTransactions =
+  | { type: "invoices"; from: string; to: string; items: InvoiceTransaction[]; totals: { count: number; total: number; balance: number } }
+  | { type: "payments"; from: string; to: string; items: PaymentTransaction[]; totals: { count: number; amount: number } }
+  | { type: "returns"; from: string; to: string; items: ReturnTransaction[]; totals: { count: number; total: number } };
+
+/** The customer's invoices, payments or returns dated from–to (inclusive), with the period's totals. */
+export async function fetchCustomerTransactions(customerId: string, type: TransactionType, from: string, to: string): Promise<CustomerTransactions> {
+  const query = new URLSearchParams({ type, from, to }).toString();
+  const response = await apiFetch(`${API_BASE_URL}/api/customers/${customerId}/transactions?${query}`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load transactions (${response.status})`);
+  }
+  return response.json();
+}
+
+/** How long new invoices have before Zoho marks them overdue. */
+export type InvoiceDueSetting = { period: "month" } | { period: "days"; days: number };
+
+export async function fetchInvoiceDueSetting(): Promise<{ selected: InvoiceDueSetting; maxDays: number }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/invoice-due`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the overdue period (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveInvoiceDueSetting(setting: InvoiceDueSetting): Promise<InvoiceDueSetting> {
+  const result = await postJson<{ selected: InvoiceDueSetting }>(
+    `${API_BASE_URL}/api/settings/invoice-due`,
+    "PUT",
+    setting,
+    "Failed to save the overdue period",
+  );
+  return result.selected;
+}
+
+/** Street, district and city in English for a point (OpenStreetMap, through the backend); empty when unknown. */
+export async function reverseGeocode(lat: number, lng: number): Promise<{ street: string; district: string; city: string; display: string }> {
+  const query = new URLSearchParams({ lat: String(lat), lng: String(lng) }).toString();
+  const response = await apiFetch(`${API_BASE_URL}/api/geocode/reverse?${query}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to look up the address (${response.status})`);
+  }
+  return response.json();
+}
+
+/** The general items: catalog items whose unit can be changed on each invoice line (chosen in Settings). */
+export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: number }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the general items (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveGeneralItemIds(itemIds: string[]): Promise<string[]> {
+  const result = await postJson<{ item_ids: string[] }>(`${API_BASE_URL}/api/settings/general-items`, "PUT", { item_ids: itemIds }, "Failed to save the general items");
+  return result.item_ids;
 }

@@ -8,9 +8,12 @@ import {
     ZohoDeleteCustomerPayment,
 } from '../../services/zoho/customers/index.js';
 import { ZohoGetCustomerCreditNotes } from '../../services/zoho/creditNotes.js';
+import { applyUnusedCredits } from '../../services/credits.js';
 import { notifyCustomerPayment, notifyPaymentCorrected, notifyPaymentDeleted } from '../../services/whatsapp/customers.js';
 import { redisClient } from '../../config/redis.js';
-import { todayInBusinessTimezone } from '../../utils/businessDate.js';
+import { recordReportPayment, removeReportPayment, reportDayOfPayment, updateReportPaymentAmount } from '../../services/dailyReport/store.js';
+import { confirmVisitByActivity } from '../../services/visits.js';
+import { businessDayKey, todayInBusinessTimezone } from '../../utils/businessDate.js';
 import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { addToCollectedToday, adjustCollectedToday } from '../../services/dailyTotals.js';
 import { deleteCache } from '../../utils/cache.js';
@@ -41,6 +44,11 @@ export async function payCustomerBalance(req: Request, res: Response){
         // The cached customer list carries each customer's balance due.
         deleteCache("customers")
         if (amount) await addToCollectedToday(amount)
+        if (payment) await recordReportPayment(payment)
+        // A discount on its own isn't a payment, so it doesn't confirm a visit.
+        if (payment) await confirmVisitByActivity(id as string, "payment")
+        // Leftover credit from returns goes on what's still owed, before the balance is read for the notice.
+        if (payment) await applyUnusedCredits(access_token, id as string)
 
         // A discount on its own isn't a payment to confirm to the customer.
         const notified = notify && payment
@@ -160,9 +168,17 @@ function notifyPaymentChange(accessToken: string, change: PaymentChange, contact
         : notifyPaymentDeleted(accessToken, change.customer_id, change.payment_number, contactIds)
 }
 
-/** A today's-payment's change also moves today's collected total. */
-async function adjustTodayFor(paymentDate: string, delta: number) {
-    if (paymentDate === todayInBusinessTimezone()) await adjustCollectedToday(delta)
+/**
+ * A change to a payment collected in the current business day (4am to 4am)
+ * also moves today's collected total. Which business day a payment belongs
+ * to comes from when it was recorded (the daily report keeps that), not its
+ * Zoho date: Zoho dates by calendar day, so a payment made at 1am carries
+ * the next date while still counting toward the previous business day.
+ * Payments recorded before that existed fall back to their Zoho date.
+ */
+async function adjustTodayFor(paymentId: string, paymentDate: string, delta: number) {
+    const recordedDay = await reportDayOfPayment(paymentId)
+    if ((recordedDay ?? paymentDate) === businessDayKey()) await adjustCollectedToday(delta)
 }
 
 /**
@@ -185,7 +201,8 @@ export async function updateCustomerPayment(req: Request, res: Response) {
         const { before, after } = await ZohoUpdateCustomerPaymentAmount(access_token, id, paymentId, amount)
         deleteCache("customers")
         const oldAmount = Number(before.amount)
-        await adjustTodayFor(before.date, amount - oldAmount)
+        await adjustTodayFor(paymentId, before.date, amount - oldAmount)
+        await updateReportPaymentAmount(paymentId, amount)
 
         const change: PaymentChange = {
             kind: "correction",
@@ -220,7 +237,8 @@ export async function deleteCustomerPayment(req: Request, res: Response) {
 
         const deleted = await ZohoDeleteCustomerPayment(access_token, id, paymentId)
         deleteCache("customers")
-        await adjustTodayFor(deleted.date, -Number(deleted.amount))
+        await adjustTodayFor(paymentId, deleted.date, -Number(deleted.amount))
+        await removeReportPayment(paymentId)
 
         const change: PaymentChange = { kind: "deletion", customer_id: id, payment_number: deleted.payment_number ?? "" }
         await savePaymentChange(paymentId, change)

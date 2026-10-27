@@ -30,8 +30,11 @@ import { formatStatus } from "../lib/status";
 import { getContactList, getPrimaryContact, LEGACY_CONTACT_ID } from "../lib/contacts";
 import ClickableCard from "../components/ClickableCard";
 import DownloadInvoiceButton from "../components/DownloadInvoiceButton";
+import CustomerTransactions from "../components/CustomerTransactions";
 import PaymentModal from "../components/PaymentModal";
 import PaymentChangeModal from "../components/PaymentChangeModal";
+import VisitButton from "../components/VisitButton";
+import { refreshVisits } from "../lib/visits";
 import AddCustomerModal from "../components/AddCustomerModal";
 import ContactCard from "../components/ContactCard";
 import AddContactModal from "../components/AddContactModal";
@@ -114,6 +117,8 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   // Where the last payment's discount landed, e.g. "Discount applied: 500 on INV-102."
   const [discountSummary, setDiscountSummary] = useState<string | null>(null);
   const [notifyRetry, setNotifyRetry] = useState<(() => void) | null>(null);
+  // Bumped when payments change, so the Transactions section reloads too.
+  const [paymentsVersion, setPaymentsVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +164,9 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
     recordCustomerPayment(customer.contact_id, amount, discount, notify, notifyContactIds)
       .then((result) => {
         setIsPaymentModalOpen(false);
+        // A discount on its own isn't a payment the customer made.
+        if (amount > 0) refreshVisits();
+        setPaymentsVersion((v) => v + 1);
         if (result.discounts?.length) {
           setDiscountSummary(
             `Discount applied: ${result.discounts.map((d) => `${currency(d.amount)} on ${d.invoice_number}`).join(", ")}.`,
@@ -204,6 +212,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
   }
 
   function reloadPaymentsAndCustomer() {
+    setPaymentsVersion((v) => v + 1);
     fetchCustomerPayments(customerId)
       .then((list) => {
         setPayments(list.slice(0, RECENT_PAYMENTS_SHOWN));
@@ -502,11 +511,21 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             </div>
           </div>
 
+          <div className="visit-row">
+            <VisitButton customerId={customer.contact_id} customerName={customer.contact_name || customer.company_name} />
+          </div>
+
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row invoice-details__totals-row--balance">
               <span>Outstanding balance</span>
               <span>{currency(customer.outstanding_receivable_amount)}</span>
             </div>
+            {Number(customer.unused_credits_receivable_amount) > 0 && (
+              <div className="invoice-details__totals-row customer-credit-row" title="Taken off the next delivered invoice automatically">
+                <span>Unused credit</span>
+                <span>{currency(Number(customer.unused_credits_receivable_amount))}</span>
+              </div>
+            )}
           </div>
 
           <div className="invoice-details__actions">
@@ -711,6 +730,20 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
               </div>
             )}
           </div>
+
+          <CustomerTransactions
+            customerId={customerId}
+            onSelectInvoice={onSelectInvoice}
+            onEditPayment={(payment) => {
+              setPaymentChangeError(null);
+              setPaymentChange({ mode: "edit", payment });
+            }}
+            onDeletePayment={(payment) => {
+              setPaymentChangeError(null);
+              setPaymentChange({ mode: "delete", payment });
+            }}
+            reloadKey={paymentsVersion}
+          />
         </>
       )}
 

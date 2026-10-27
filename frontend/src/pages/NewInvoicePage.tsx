@@ -101,7 +101,8 @@ export default function NewInvoicePage({
   // submission, and resets back to checked after each one so skipping it
   // is always a deliberate choice, never a leftover setting.
   const [notifyTelegram, setNotifyTelegram] = useState(true);
-  const [itemsSentNotice, setItemsSentNotice] = useState(false);
+  /** The backup list id of the items list just sent, while its notice shows. */
+  const [itemsSentNotice, setItemsSentNotice] = useState<string | null>(null);
   const [heldConfirm, setHeldConfirm] = useState<"replace" | "remove" | null>(null);
   const draftsFetchIdRef = useRef(0);
   const draftItemsFetchIdRef = useRef(0);
@@ -160,7 +161,7 @@ export default function NewInvoicePage({
     setMode(nextMode);
     setDraftId(null);
     setSubmitError(null);
-    setItemsSentNotice(false);
+    setItemsSentNotice(null);
     onCartChange(keepManualLines(cart));
     // Items Only has no customer: drop it rather than keep one hidden.
     if (nextMode === "items") {
@@ -230,14 +231,14 @@ export default function NewInvoicePage({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await sendItemsListToTelegram({
+      const { list } = await sendItemsListToTelegram({
         ...(scheduledDate ? { date: scheduledDate } : {}),
         line_items: lineItems.map(toLinePayload),
       });
       onCartChange({});
       setScheduledDate(null);
       setMode("new");
-      setItemsSentNotice(true);
+      setItemsSentNotice(list.id);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to send items list");
     } finally {
@@ -287,7 +288,7 @@ export default function NewInvoicePage({
     setMode(invoice?.mode ?? "new");
     setDraftId(invoice?.draftId ?? null);
     setSubmitError(null);
-    setItemsSentNotice(false);
+    setItemsSentNotice(null);
     if (invoice?.contactId) {
       loadDraftsForCustomer(invoice.contactId);
     } else {
@@ -476,7 +477,9 @@ export default function NewInvoicePage({
       {submitError && <div className="form-error">{submitError}</div>}
 
       {itemsSentNotice && mode === "new" && lineItems.length === 0 && (
-        <div className="items-sent-notice" role="status">Items list sent to Telegram. No invoice was created.</div>
+        <div className="items-sent-notice" role="status">
+          Backup list {itemsSentNotice} sent to Telegram. No invoice was created.
+        </div>
       )}
 
       <button

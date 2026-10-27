@@ -1,6 +1,7 @@
 import { ZohoApi } from "../zoho/client.js"
 import { redisClient } from "../../config/redis.js"
-import { businessDayKey } from "../../utils/businessDate.js"
+import { businessDayKey, businessDayWindow } from "../../utils/businessDate.js"
+import { backupListsRemainingAt, type BackupList } from "../backupLists.js"
 import { readReportDay, type ReportDraft, type ReportLine, type ReportReturn } from "./store.js"
 import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
 
@@ -22,6 +23,8 @@ export type DailyReportData = {
     invoices: { number: string; customer: string; at: string; total: number; discount: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
     returns: ReportReturn[]
     drafts: { number: string; customer: string; at: string; date?: string; total: number }[]
+    /** Backup lists still open when the day ended (or now, while it's running), oldest first. */
+    backupLists: BackupList[]
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
@@ -126,10 +129,15 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
 
     const ids = new Set(recorded.invoices.map((record) => record.invoice_id))
     const dates = recorded.invoices.map((record) => record.date).filter((date): date is string => !!date)
-    const [states, zohoTimezone, drafts] = await Promise.all([
+    const isComplete = day < businessDayKey()
+    const [states, zohoTimezone, drafts, backupLists] = await Promise.all([
         currentInvoiceStates(accessToken, ids, dates),
         checkZohoTimezone(accessToken),
         undeliveredOrders(accessToken, day, recorded.drafts),
+        backupListsRemainingAt(isComplete ? businessDayWindow(day).end : new Date()).catch((error) => {
+            console.error("Daily report: couldn't read the backup lists", error)
+            return []
+        }),
     ])
 
     // Invoices voided since are dropped; the rest take Zoho's current balance when known.
@@ -173,7 +181,7 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
     return {
         day,
         generatedAt: new Date(),
-        isComplete: day < businessDayKey(),
+        isComplete,
         balancesRefreshed: states !== null,
         zohoTimezone,
         payments: recorded.payments.map((payment) => ({
@@ -187,5 +195,6 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         invoices,
         returns: recorded.returns,
         drafts,
+        backupLists,
     }
 }

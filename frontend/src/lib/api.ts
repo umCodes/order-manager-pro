@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -565,11 +565,11 @@ export async function fetchRecentInvoices(): Promise<DraftInvoice[]> {
   return data.invoices;
 }
 
-/** Posts just a list of items to the Telegram channel ("Items Only" mode): no invoice is created. */
+/** Posts just a list of items to the Telegram channel ("Items Only" mode) and keeps it as a backup list: no invoice is created. */
 export async function sendItemsListToTelegram(payload: {
   date?: string;
   line_items: { item_id: string; description: string; quantity: number; unit: string }[];
-}) {
+}): Promise<{ list: BackupList }> {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/items-list`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -581,6 +581,38 @@ export async function sendItemsListToTelegram(payload: {
     throw new Error(body.error ?? `Failed to send items list (${response.status})`);
   }
 
+  invalidateCache("backupLists");
+  return response.json();
+}
+
+async function fetchBackupListsUncached(): Promise<BackupList[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/backup-lists`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch backup lists (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.lists;
+}
+
+/** The backup lists not removed yet, newest first. */
+export function fetchBackupLists(options?: { force?: boolean }): Promise<BackupList[]> {
+  if (options?.force) invalidateCache("backupLists");
+  return cachedFetch("backupLists", fetchBackupListsUncached);
+}
+
+/** Removes a backup list, deleting its Telegram message too when Telegram allows it. */
+export async function deleteBackupList(id: string): Promise<{ deleted_from_telegram: boolean; telegram_error?: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/backup-lists/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to remove backup list (${response.status})`);
+  }
+
+  invalidateCache("backupLists");
   return response.json();
 }
 

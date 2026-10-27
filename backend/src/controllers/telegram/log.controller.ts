@@ -4,6 +4,7 @@ import {
     TelegramDeleteMessage,
     listTelegramMessages,
 } from '../../services/telegram/index.js';
+import { removeBackupListByMessage } from '../../services/backupLists.js';
 
 /**
  * Lists every message sent to the Telegram channel through this app in the
@@ -56,6 +57,8 @@ export async function deleteMessage(req: Request, res: Response) {
         if (!messageId) throw new Error("messageId not provided")
 
         const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId));
+        // A backup list's message going means the list is done with too.
+        await removeBackupListByMessage(Number(messageId)).catch((err) => console.error('Error removing backup list for deleted message:', err));
         res.status(200).json({ ok: true, deleted_from_telegram: deletedFromTelegram, telegram_error: error });
         return
     } catch (error) {

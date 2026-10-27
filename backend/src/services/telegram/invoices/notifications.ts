@@ -9,13 +9,40 @@ import {
     invoiceMessageText,
     withDayLine,
 } from "./messageText.js"
+import { numberItems, type ItemNumbers } from "./itemNumbers.js"
 
-/** Posts an invoice to the fulfillment channel as a brand-new message. */
+/**
+ * Each invoice's item numbers (see itemNumbers.ts), as a hash of item key →
+ * number, kept as long as its channel thread. An invoice without one was
+ * posted before numbering, so changes to it aren't numbered either.
+ */
+const numbersKey = (invoiceId: string) => `telegram:invoice-numbers:${invoiceId}`
+
+async function readItemNumbers(invoiceId: string): Promise<ItemNumbers | null> {
+    const stored = await redisClient.hGetAll(numbersKey(invoiceId))
+    const entries = Object.entries(stored ?? {})
+    return entries.length ? new Map(entries.map(([key, number]) => [key, Number(number)])) : null
+}
+
+async function saveItemNumbers(invoiceId: string, numbers: ItemNumbers) {
+    if (numbers.size === 0) return
+    await redisClient.hSet(numbersKey(invoiceId), Object.fromEntries([...numbers].map(([key, number]) => [key, String(number)])))
+    await redisClient.expire(numbersKey(invoiceId), THREAD_TTL_SECONDS)
+}
+
+/**
+ * Posts an invoice to the fulfillment channel as a brand-new message, its
+ * items numbered: the numbers the invoice already has, the next free ones
+ * for the rest (all of them, for a new invoice).
+ */
 export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[]) {
     try {
         console.log("Sending a fresh telegram message")
-        const text = invoiceMessageText(invoice, line_items)
-        return await TelegramSendMessage(text);
+        const invoiceId = String(invoice.invoice_id)
+        const numbers = numberItems(line_items, await readItemNumbers(invoiceId))
+        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers));
+        await saveItemNumbers(invoiceId, numbers)
+        return message;
     } catch (error) {
         console.error('Error sending invoice message:', error);
         throw error;
@@ -60,10 +87,14 @@ export async function replyWithInvoiceChangesTelegramMessage(
     line_items: ItemWithQuantity[],
     messageId: number,
 ) {
-    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items)
+    const invoiceId = String(invoice.invoice_id)
+    // Items keep their numbers; one added now takes the next free one.
+    const existingNumbers = await readItemNumbers(invoiceId)
+    const numbers = existingNumbers ? numberItems(line_items, existingNumbers) : null
+
+    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items, numbers)
     if (!text) return null
 
-    const invoiceId = String(invoice.invoice_id)
     let message;
 
     try {
@@ -72,6 +103,8 @@ export async function replyWithInvoiceChangesTelegramMessage(
         console.error('Error replying to previous invoice message, sending a new one instead:', error);
         return await sendInvoiceTelegramMessage(invoice, line_items);
     }
+
+    if (numbers) await saveItemNumbers(invoiceId, numbers)
 
     await addToThread(invoiceId, messageId)
 
@@ -106,7 +139,9 @@ export async function updateInvoiceDateTelegramMessage(
 
     try {
         const currentText = await loggedText(messageId)
-        const text = currentText ? withDayLine(currentText, invoice) : invoiceMessageText(invoice, line_items)
+        const text = currentText
+            ? withDayLine(currentText, invoice)
+            : invoiceMessageText(invoice, line_items, undefined, await readItemNumbers(String(invoice.invoice_id)))
         const message = text === currentText ? null : await TelegramEditMessage(text, messageId);
         await TelegramReplyToMessage(EDITED_NOTICE_AMHARIC, messageId);
         await moveEarlierThreadMessagesToNewDay(invoice)
@@ -149,7 +184,7 @@ export async function deleteInvoiceTelegramMessage(invoiceId: string) {
         for (const id of [...(messageId ? [Number(messageId)] : []), ...earlierIds]) {
             await TelegramDeleteMessage(id)
         }
-        await redisClient.del([invoiceId, threadKey(invoiceId)])
+        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId)])
     } catch (error) {
         console.error('Error deleting invoice message after it left draft:', error);
     }

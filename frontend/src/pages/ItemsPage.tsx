@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchDraftLineItems, fetchItemCategorySettings } from "../lib/api";
+import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings } from "../lib/api";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import SortRow from "../components/SortRow";
@@ -7,7 +7,8 @@ import ItemBreakdownRow from "../components/ItemBreakdownRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import DayGroupHeader from "../components/DayGroupHeader";
-import type { DraftLineItemSummary } from "../types";
+import BackupListsSection from "../components/BackupListsSection";
+import type { BackupList, DraftLineItemSummary } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -21,10 +22,12 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
  * one section per scheduled day (past-due drafts count toward today, as on
  * the Drafts tab), with a per-item source breakdown. Within a day, items are
  * grouped by their Zoho Inventory category, in the order set in Settings.
+ * Backup lists (items sent without an invoice) follow in a section of their own.
  */
 export default function ItemsPage() {
   const [items, setItems] = useState<DraftLineItemSummary[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [backupLists, setBackupLists] = useState<BackupList[]>([]);
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("quantity", "desc");
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -34,6 +37,7 @@ export default function ItemsPage() {
     fetchItemCategorySettings(options)
       .then((settings) => setCategoryOrder(settings.order))
       .catch(() => setCategoryOrder([]));
+    fetchBackupLists(options).then(setBackupLists).catch(() => setBackupLists([]));
     return fetchDraftLineItems(options).then(setItems).catch(() => setItems([]));
   }, []);
 
@@ -135,6 +139,11 @@ export default function ItemsPage() {
           </section>
         ))
       )}
+
+      <BackupListsSection
+        lists={backupLists}
+        onRemoved={() => fetchBackupLists().then(setBackupLists).catch(() => setBackupLists([]))}
+      />
     </div>
   );
 }

@@ -11,7 +11,8 @@ import type { ReportLine } from "../services/dailyReport/store.js";
  * The daily business report (A4, Amharic, large print for easy reading).
  * Each section starts on a page of its own under a large underlined title:
  * payments collected, items sold, invoices issued (orders delivered), the
- * invoice register with balances, returns, and orders not yet delivered.
+ * invoice register with balances, returns, orders not yet delivered, and
+ * the backup lists (BK-) still open when the day ended.
  * Item names are the Amharic description with the English (Zoho) name under
  * it; item tables show the quantity with its unit and the weight in kilograms
  * (from the pack size in the English name, see packWeight.ts). Names in
@@ -220,7 +221,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
     doc.y += 18;
 
-    const nothing = !report.payments.length && !report.invoices.length && !report.returns.length && !report.drafts.length;
+    const nothing = !report.payments.length && !report.invoices.length && !report.returns.length && !report.drafts.length && !report.backupLists.length;
 
     if (nothing) {
       const y = doc.y + 10;
@@ -354,6 +355,26 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           row(cols, [{ main: draft.customer, sub: draft.number }, dateLabel(draft.date), { main: money(draft.total), bold: true }], i % 2 === 1),
         );
         totalBox([["ጠቅላላ ያልደረሰ", `${money(report.drafts.reduce((sum, draft) => sum + draft.total, 0))} SAR`]]);
+      }
+
+      // ---------- 7. remaining backup items ----------
+      section(7, "የቀሩ የመጠባበቂያ እቃዎች", "የሥራ ቀኑ ሲያልቅ ያልተነሱ የመጠባበቂያ ዝርዝሮች (BK) እና እቃዎቻቸው።");
+      if (!report.backupLists.length) empty();
+      else {
+        const cols: Col[] = [{ w: 50, align: "center" }, { w: 250 }, { w: 120, align: "right" }, { w: W - 420, align: "right" }];
+        let totalKg = 0;
+        for (const list of report.backupLists) {
+          ensure(110 + list.items.length * 40);
+          const sent = businessTimeParts(new Date(list.created_at));
+          customerHeading(list.id, `የተላከበት ${sent.day} ${MONTHS[sent.month]} ${sent.time}`);
+          header(cols, ["ቁ.", "እቃ", "ብዛት", "ኪሎ"]);
+          list.items.forEach((item, i) => {
+            const kg = lineWeightKg(item.name, item.quantity);
+            if (kg !== null) totalKg += kg;
+            row(cols, [String(item.number), itemCell(item), qtyWithUnit(item.quantity, item.unit), kgText(kg)], i % 2 === 1);
+          });
+        }
+        totalBox([["ጠቅላላ ኪሎ", `${round3(totalKg)} ኪሎ`]]);
       }
     }
 

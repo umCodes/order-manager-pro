@@ -2,6 +2,7 @@ import { quantityCalc } from "../../../utils/quantity.js"
 import { describeBusinessDate } from "../../../utils/businessDate.js"
 import type { ItemWithQuantity } from "../../zoho/types.js"
 import { INTERNAL_ITEM_MARKER } from "../../../utils/internalLineItems.js"
+import { circledNumber, itemNumberKey, numberItems, type ItemNumbers } from "./itemNumbers.js"
 
 const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
 
@@ -43,32 +44,44 @@ function invoiceMessage(invoice: any, bodyLines: string[], headerNotice?: string
     ].join('\n\n');
 }
 
+/** "① " for a numbered item; nothing when the message isn't numbered (orders posted before numbering). */
+function numberPrefix(item: ItemWithQuantity, numbers?: ItemNumbers | null) {
+    const number = numbers?.get(itemNumberKey(item));
+    return number ? `${circledNumber(number)} ` : "";
+}
+
+const itemLine = (item: ItemWithQuantity, numbers?: ItemNumbers | null) =>
+    `${numberPrefix(item, numbers)}${quantityCalc(item.quantity, item.unit)} ${item.description}`;
+
 /**
  * Builds the message the fulfillment channel actually sees: the invoice
- * number, one line per (non-internal) item, the scheduled day in Amharic
- * with a colour-coded icon, and an optional trailing notice.
+ * number, one line per (non-internal) item — numbered ① ② ③ when `numbers`
+ * is given — the scheduled day in Amharic with a colour-coded icon, and an
+ * optional trailing notice.
  */
-export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[], suffixNotice?: string) {
-    const itemLines = visible(line_items).map((item) => `${quantityCalc(item.quantity, item.unit)} ${item.description}`);
+export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[], suffixNotice?: string, numbers?: ItemNumbers | null) {
+    const itemLines = visible(line_items).map((item) => itemLine(item, numbers));
     return invoiceMessage(invoice, itemLines, undefined, suffixNotice);
 }
 
 /**
- * An items-only post: the same item lines and day line as an invoice
- * message, with nothing above the items (no invoice number, no heading).
- * The day line is left out when no date was picked.
+ * An items-only post (a backup list): its id where an invoice message has
+ * the invoice number, then the same numbered item lines and day line. The
+ * day line is left out when no date was picked.
  */
-export function itemsListMessageText(line_items: ItemWithQuantity[], date?: string) {
-    const itemLines = visible(line_items).map((item) => `${quantityCalc(item.quantity, item.unit)} ${item.description}`);
+export function itemsListMessageText(listId: string, line_items: ItemWithQuantity[], date?: string) {
+    const items = visible(line_items);
+    const numbers = numberItems(items);
+    const itemLines = items.map((item) => itemLine(item, numbers));
     const dayLine = invoiceDayLine({ date });
-    return [itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
+    return [`${listId}:`, itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
 }
 
 /** Sums quantities per item, so an item split over two lines compares as one. */
 function totalsByItem(line_items: ItemWithQuantity[]) {
     const totals = new Map<string, ItemWithQuantity>();
     for (const item of visible(line_items)) {
-        const key = String(item.item_id || item.description);
+        const key = itemNumberKey(item);
         const existing = totals.get(key);
         totals.set(key, existing ? { ...existing, quantity: existing.quantity + item.quantity } : { ...item });
     }
@@ -83,12 +96,14 @@ const round = (quantity: number) => Math.round(quantity * 1000) / 1000;
  * only what differs from that message — new items and raised quantities as
  * `+`, lowered ones as `-`, dropped items marked removed — so the preparers
  * add to what they already prepared instead of preparing the order twice.
+ * With `numbers`, each line starts with the item's number on the order.
  * Null when the visible items didn't change at all.
  */
 export function invoiceChangesMessageText(
     invoice: any,
     previous_line_items: ItemWithQuantity[],
     line_items: ItemWithQuantity[],
+    numbers?: ItemNumbers | null,
 ) {
     const before = totalsByItem(previous_line_items);
     const after = totalsByItem(line_items);
@@ -100,12 +115,12 @@ export function invoiceChangesMessageText(
         const delta = round(item.quantity - (before.get(key)?.quantity ?? 0));
         if (delta === 0) continue;
         if (delta < 0) onlyAdditions = false;
-        lines.push(`${delta > 0 ? "+" : "-"}${quantityCalc(Math.abs(delta), item.unit)} ${item.description}`);
+        lines.push(`${numberPrefix(item, numbers)}${delta > 0 ? "+" : "-"}${quantityCalc(Math.abs(delta), item.unit)} ${item.description}`);
     }
     for (const [key, item] of before) {
         if (after.has(key)) continue;
         onlyAdditions = false;
-        lines.push(`❌ ${item.description} (${REMOVED_ITEM_AMHARIC})`);
+        lines.push(`${numberPrefix(item, numbers)}❌ ${item.description} (${REMOVED_ITEM_AMHARIC})`);
     }
 
     if (lines.length === 0) return null;

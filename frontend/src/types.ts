@@ -131,6 +131,14 @@ export type DraftLineItemSummary = {
   breakdown: DraftItemBreakdownEntry[];
 };
 
+/** Items posted to Telegram without an invoice ("Items Only"), kept 30 days under a BK- id. */
+export type BackupList = {
+  id: string;
+  created_at: string;
+  items: { number: number; item_id: string; name: string; description: string; quantity: number; unit: string }[];
+  message_id: number | null;
+};
+
 export type InvoiceDetail = {
   invoice_id: string;
   invoice_number: string;

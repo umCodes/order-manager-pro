@@ -4,7 +4,7 @@ import { toWaId } from "./whatsapp/chatStore.js"
 import { listTemplates, placeholdersIn, type MetaTemplate } from "./whatsapp/templates.js"
 import { getGeneralItemIds } from "./generalItems.js"
 import { invoiceDayName } from "./telegram/invoices/messageText.js"
-import { toAmharicUnit } from "../utils/units.js"
+import { quantityCalc } from "../utils/quantity.js"
 import { businessDayKey } from "../utils/businessDate.js"
 
 /**
@@ -12,7 +12,8 @@ import { businessDayKey } from "../utils/businessDate.js"
  * generalItems.ts), one message lists them, sent with the template chosen in
  * Settings to the number chosen there. The template's body has exactly:
  *   {{1}} the invoice number,
- *   {{2}} and {{3}} the items ("description — quantity unit", " • " between
+ *   {{2}} and {{3}} the items, each written as on Telegram ("3ኪሎ በርበሬ":
+ *         quantity by its unit, then the Amharic description; " • " between
  *         several), split between the two: with one item {{3}} is "-",
  *   {{4}} the day it's for, as on Telegram ("ለዛሬ", "ለሰኞ").
  * Each line is sent once per invoice — a draft updated later only lists the
@@ -79,14 +80,12 @@ export async function saveGeneralItemsWhatsAppSettings(input: any): Promise<Gene
     return settings
 }
 
-const round3 = (value: number) => Math.round(value * 1000) / 1000
-
 /** WhatsApp refuses template variables with new lines, tabs or more than 4 spaces in a row. */
 const variableText = (value: string) => value.replace(/[\n\t]+/g, " ").replace(/ {4,}/g, "   ").trim() || "-"
 
-/** "Teff 5kg — 3 ከረጢት": the line's description and quantity with its unit in Amharic. */
+/** A line as Telegram writes it (see telegram/invoices/messageText.ts), without the order's item number: "3ኪሎ በርበሬ". */
 function itemText(line: { description: string; quantity: number; unit: string }) {
-    return `${line.description} — ${round3(line.quantity)} ${toAmharicUnit(line.unit)}`.trim()
+    return `${quantityCalc(line.quantity, line.unit)} ${line.description}`.trim()
 }
 
 /** The items split over {{2}} and {{3}}: the first half (rounded up) in one, the rest in the other ("-" if none). */

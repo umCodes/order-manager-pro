@@ -15,6 +15,7 @@ import {
   sendItemsListToTelegram,
 } from "../lib/api";
 import { currency } from "../lib/currency";
+import { cartLineItemId, nextCartKey } from "../lib/cart";
 import type { HeldInvoice } from "../lib/heldInvoice";
 import type {
   CatalogItem,
@@ -33,7 +34,10 @@ function cartFromDraftLineItems(lineItems: InvoiceDetailLineItem[], draftId: str
   const cart: Cart = {};
   for (const item of lineItems) {
     const excludeFromTelegram = item.description.includes(EXCLUDE_MARKER);
-    cart[item.item_id] = {
+    // An item on several lines (e.g. general items) keeps every line.
+    const key = nextCartKey(cart, item.item_id);
+    cart[key] = {
+      ...(key !== item.item_id ? { item_id: item.item_id } : {}),
       description: item.description.replace(new RegExp(EXCLUDE_MARKER, "g"), "").trim(),
       quantity: item.quantity,
       rate: item.rate,
@@ -113,12 +117,14 @@ export default function NewInvoicePage({
   }, []);
 
   const lineItems: InvoiceLineItem[] = useMemo(() => {
-    return Object.entries(cart).map(([item_id, line]) => {
+    return Object.entries(cart).map(([cartKey, line]) => {
+      const item_id = cartLineItemId(cartKey, line);
       const catalogItem = catalogItems.find((i) => i.item_id === item_id);
       return {
-        item_id,
         name: catalogItem?.name ?? "",
         ...line,
+        cartKey,
+        item_id,
         unit: line.unit || catalogItem?.unit || "",
       };
     });
@@ -187,31 +193,34 @@ export default function NewInvoicePage({
       });
   }
 
+  /** Adds or updates the line under `cartKey` (an item id, or "<item_id>~n" for a general item's extra line). */
   function commitItem(
-    itemId: string,
+    cartKey: string,
     values: { description: string; quantity: string; rate: string; excludeFromTelegram: boolean; unit?: string },
+    item: CatalogItem,
   ) {
     onCartChange({
       ...cart,
-      [itemId]: {
+      [cartKey]: {
+        ...(cartKey !== item.item_id ? { item_id: item.item_id } : {}),
         description: values.description,
         quantity: Number(values.quantity) || 0,
         rate: Number(values.rate) || 0,
         excludeFromTelegram: values.excludeFromTelegram,
         ...(values.unit ? { unit: values.unit } : {}),
-        fromDraftId: cart[itemId]?.fromDraftId,
+        fromDraftId: cart[cartKey]?.fromDraftId,
       },
     });
   }
 
-  function removeItem(itemId: string) {
+  function removeItem(cartKey: string) {
     const next = { ...cart };
-    delete next[itemId];
+    delete next[cartKey];
     onCartChange(next);
   }
 
-  function openItemInModal(itemId: string) {
-    setItemToOpen(itemId);
+  function openItemInModal(cartKey: string) {
+    setItemToOpen(cartKey);
     setIsAddItemOpen(true);
   }
 

@@ -15,15 +15,13 @@ const STATUS_LABELS: Record<string, string> = {
   IN_APPEAL: "under appeal",
 };
 
-const VARIABLE_LABELS = ["description", "quantity", "customer", "invoice number"];
-
 const refKey = (ref: { name: string; language: string } | null | undefined) => (ref ? `${ref.name}::${ref.language}` : "");
 
 /**
- * Settings → General items on WhatsApp: the template and number each general
- * item line on an invoice is sent to. Only templates whose body variables run
- * {{1}} to at most {{4}} (description, quantity, customer, invoice number)
- * are offered; one still under review can be picked ahead of approval.
+ * Settings → General items on WhatsApp: the template and number an invoice's
+ * general items are sent to, in one message per invoice. Only templates whose
+ * body has exactly {{1}} invoice number, {{2}} and {{3}} items, {{4}} day are
+ * offered; one still under review can be picked ahead of approval.
  */
 export default function GeneralItemsWhatsAppSettings() {
   const [saved, setSaved] = useState<Settings | null>(null);
@@ -64,6 +62,7 @@ export default function GeneralItemsWhatsAppSettings() {
     saved !== null && (templateKey !== refKey(saved.template) || cleanPhone !== (saved.recipient ?? ""));
   const chosenMissing = !!templateKey && !options.some((t) => refKey(t) === templateKey);
   const chosen = options.find((t) => refKey(t) === templateKey);
+  const variablesHelp = "{{1}} invoice number, {{2}} and {{3}} the items (split between them; {{3}} is \"-\" with one item), {{4}} the day.";
 
   function save() {
     const template = chosen
@@ -91,7 +90,7 @@ export default function GeneralItemsWhatsAppSettings() {
         <RefreshButton onRefresh={() => load(true)} />
       </div>
       <p className="page-subtitle">
-        When an invoice has a general item, its description is sent with this template to this number — once per line.
+        When an invoice has general items, they're sent in one message with this template to this number. A draft update only sends the general items it didn't have.
       </p>
 
       {loadError && <div className="form-error">{loadError}</div>}
@@ -128,13 +127,7 @@ export default function GeneralItemsWhatsAppSettings() {
               <ChevronDown className="select-wrap__chevron" size={16} />
             </div>
             <div className="settings-group__description" style={{ marginTop: 6 }}>
-              {chosen
-                ? `Fills ${VARIABLE_LABELS.slice(0, chosen.variables)
-                    .map((label, i) => `{{${i + 1}}} ${label}`)
-                    .join(", ")}.`
-                : options.length === 0
-                  ? "No template fits yet: its body needs the variables {{1}} description, then optionally {{2}} quantity, {{3}} customer, {{4}} invoice number."
-                  : "Body variables: {{1}} description, then optionally {{2}} quantity, {{3}} customer, {{4}} invoice number."}
+              {options.length === 0 ? `No template fits yet. Its body needs exactly: ${variablesHelp}` : `Fills ${variablesHelp}`}
             </div>
           </div>
 

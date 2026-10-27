@@ -1697,8 +1697,8 @@ export type GeneralItemsWhatsAppSettings = {
   /** Digits only, international format (e.g. "966512345678"). */
   recipient: string | null;
 };
-/** `variables`: how many of {{1}} description, {{2}} quantity, {{3}} customer, {{4}} invoice number it fills. */
-export type GeneralItemsTemplateOption = { id: string; name: string; language: string; status: string; variables: number };
+/** A template whose body has exactly {{1}} invoice number, {{2}} and {{3}} items, {{4}} day. */
+export type GeneralItemsTemplateOption = { id: string; name: string; language: string; status: string };
 
 export async function fetchGeneralItemsWhatsAppSettings(force = false): Promise<{
   selected: GeneralItemsWhatsAppSettings;

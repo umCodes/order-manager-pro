@@ -89,7 +89,8 @@ export async function createInvoice(req: Request, res: Response) {
     });
 
     await recordReportDraft(invoice);
-    void notifyGeneralItems(invoice);
+    // A copy: the date is cleared just below for Telegram, but the notice says the day.
+    void notifyGeneralItems({ ...invoice });
     if (!date) invoice.date = undefined
 
     if (!skip_telegram) {

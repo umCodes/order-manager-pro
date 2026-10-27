@@ -6,7 +6,8 @@ import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { itemsListMessageText } from '../../services/telegram/invoices/messageText.js';
 import { sortLineItemsByCategory } from '../../services/lineItemOrder.js';
 import { excludeInternalLineItems } from '../../utils/internalLineItems.js';
-import { numberItems, itemNumberKey } from '../../services/telegram/invoices/itemNumbers.js';
+import { numberItems, itemKeyFor } from '../../services/telegram/invoices/itemNumbers.js';
+import { getGeneralItemIds } from '../../services/generalItems.js';
 import { getCatalogItems } from '../../services/zoho/items.js';
 import { createBackupList, type BackupListItem } from '../../services/backupLists.js';
 import { ENV } from '../../constants/env.js';
@@ -52,9 +53,10 @@ export async function sendItemsList(req: Request, res: Response) {
         // Catalog names (cached) are kept with the list, for the daily report's kilograms.
         const catalog = await getCatalogItems(access_token).catch(() => []);
         const nameById = new Map(catalog.map((item: any) => [String(item.item_id), String(item.name ?? "")]));
-        const numbers = numberItems(visibleItems);
+        const keyOf = itemKeyFor(await getGeneralItemIds());
+        const numbers = numberItems(visibleItems, null, keyOf);
         const items: BackupListItem[] = visibleItems.map((item: any) => ({
-            number: numbers.get(itemNumberKey(item))!,
+            number: numbers.get(keyOf(item))!,
             item_id: String(item.item_id ?? ""),
             name: nameById.get(String(item.item_id)) ?? String(item.name ?? ""),
             description: String(item.description ?? ""),
@@ -63,7 +65,7 @@ export async function sendItemsList(req: Request, res: Response) {
         }));
 
         const { list, message } = await createBackupList(items, String(ENV.TELEGRAM_CHATID), (id) =>
-            TelegramSendMessage(itemsListMessageText(id, visibleItems, date || undefined)),
+            TelegramSendMessage(itemsListMessageText(id, visibleItems, date || undefined, keyOf)),
         );
         res.status(201).json({ message, list });
     } catch (error) {

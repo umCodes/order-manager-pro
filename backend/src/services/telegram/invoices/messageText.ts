@@ -2,7 +2,7 @@ import { quantityCalc } from "../../../utils/quantity.js"
 import { describeBusinessDate } from "../../../utils/businessDate.js"
 import type { ItemWithQuantity } from "../../zoho/types.js"
 import { INTERNAL_ITEM_MARKER } from "../../../utils/internalLineItems.js"
-import { circledNumber, itemNumberKey, numberItems, type ItemNumbers } from "./itemNumbers.js"
+import { circledNumber, itemNumberKey, numberItems, type ItemKeyOf, type ItemNumbers } from "./itemNumbers.js"
 
 const AMHARIC_WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ሮብ", "ሐሙስ", "ጁምአ", "ቅዳሜ"];
 
@@ -29,8 +29,13 @@ const visible = (line_items: ItemWithQuantity[]) =>
  */
 export function invoiceDayLine(invoice: any) {
     if (!invoice.date) return "";
-    const { isToday, weekday } = describeBusinessDate(invoice.date);
-    return isToday ? "🟢 ለዛሬ" : `🗓️ ለ${AMHARIC_WEEKDAYS[weekday]}`;
+    return `${describeBusinessDate(invoice.date).isToday ? "🟢" : "🗓️"} ${invoiceDayName(invoice.date)}`;
+}
+
+/** The day on its own, as the day line says it: "ለዛሬ" (for today) or "ለሰኞ" (for Monday). */
+export function invoiceDayName(date: string) {
+    const { isToday, weekday } = describeBusinessDate(date);
+    return isToday ? "ለዛሬ" : `ለ${AMHARIC_WEEKDAYS[weekday]}`;
 }
 
 function invoiceMessage(invoice: any, bodyLines: string[], headerNotice?: string, suffixNotice?: string) {
@@ -45,22 +50,28 @@ function invoiceMessage(invoice: any, bodyLines: string[], headerNotice?: string
 }
 
 /** "① " for a numbered item; nothing when the message isn't numbered (orders posted before numbering). */
-function numberPrefix(item: ItemWithQuantity, numbers?: ItemNumbers | null) {
-    const number = numbers?.get(itemNumberKey(item));
+function numberPrefix(item: ItemWithQuantity, numbers?: ItemNumbers | null, keyOf: ItemKeyOf = itemNumberKey) {
+    const number = numbers?.get(keyOf(item));
     return number ? `${circledNumber(number)} ` : "";
 }
 
-const itemLine = (item: ItemWithQuantity, numbers?: ItemNumbers | null) =>
-    `${numberPrefix(item, numbers)}${quantityCalc(item.quantity, item.unit)} ${item.description}`;
+const itemLine = (item: ItemWithQuantity, numbers?: ItemNumbers | null, keyOf?: ItemKeyOf) =>
+    `${numberPrefix(item, numbers, keyOf)}${quantityCalc(item.quantity, item.unit)} ${item.description}`;
 
 /**
  * Builds the message the fulfillment channel actually sees: the invoice
  * number, one line per (non-internal) item — numbered ① ② ③ when `numbers`
  * is given — the scheduled day in Amharic with a colour-coded icon, and an
- * optional trailing notice.
+ * optional trailing notice. `keyOf` tells items apart, as `numbers` was keyed.
  */
-export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[], suffixNotice?: string, numbers?: ItemNumbers | null) {
-    const itemLines = visible(line_items).map((item) => itemLine(item, numbers));
+export function invoiceMessageText(
+    invoice: any,
+    line_items: ItemWithQuantity[],
+    suffixNotice?: string,
+    numbers?: ItemNumbers | null,
+    keyOf?: ItemKeyOf,
+) {
+    const itemLines = visible(line_items).map((item) => itemLine(item, numbers, keyOf));
     return invoiceMessage(invoice, itemLines, undefined, suffixNotice);
 }
 
@@ -69,19 +80,19 @@ export function invoiceMessageText(invoice: any, line_items: ItemWithQuantity[],
  * the invoice number, with "ትርፍ" (surplus) under it, then the same numbered
  * item lines and day line. The day line is left out when no date was picked.
  */
-export function itemsListMessageText(listId: string, line_items: ItemWithQuantity[], date?: string) {
+export function itemsListMessageText(listId: string, line_items: ItemWithQuantity[], date?: string, keyOf?: ItemKeyOf) {
     const items = visible(line_items);
-    const numbers = numberItems(items);
-    const itemLines = items.map((item) => itemLine(item, numbers));
+    const numbers = numberItems(items, null, keyOf);
+    const itemLines = items.map((item) => itemLine(item, numbers, keyOf));
     const dayLine = invoiceDayLine({ date });
     return [`${listId}:\nትርፍ`, itemLines.join('\n'), ...(dayLine ? [dayLine] : [])].join('\n\n');
 }
 
 /** Sums quantities per item, so an item split over two lines compares as one. */
-function totalsByItem(line_items: ItemWithQuantity[]) {
+function totalsByItem(line_items: ItemWithQuantity[], keyOf: ItemKeyOf) {
     const totals = new Map<string, ItemWithQuantity>();
     for (const item of visible(line_items)) {
-        const key = itemNumberKey(item);
+        const key = keyOf(item);
         const existing = totals.get(key);
         totals.set(key, existing ? { ...existing, quantity: existing.quantity + item.quantity } : { ...item });
     }
@@ -104,9 +115,10 @@ export function invoiceChangesMessageText(
     previous_line_items: ItemWithQuantity[],
     line_items: ItemWithQuantity[],
     numbers?: ItemNumbers | null,
+    keyOf: ItemKeyOf = itemNumberKey,
 ) {
-    const before = totalsByItem(previous_line_items);
-    const after = totalsByItem(line_items);
+    const before = totalsByItem(previous_line_items, keyOf);
+    const after = totalsByItem(line_items, keyOf);
 
     const lines: string[] = [];
     let onlyAdditions = true;
@@ -115,12 +127,12 @@ export function invoiceChangesMessageText(
         const delta = round(item.quantity - (before.get(key)?.quantity ?? 0));
         if (delta === 0) continue;
         if (delta < 0) onlyAdditions = false;
-        lines.push(`${numberPrefix(item, numbers)}${delta > 0 ? "+" : "-"}${quantityCalc(Math.abs(delta), item.unit)} ${item.description}`);
+        lines.push(`${numberPrefix(item, numbers, keyOf)}${delta > 0 ? "+" : "-"}${quantityCalc(Math.abs(delta), item.unit)} ${item.description}`);
     }
     for (const [key, item] of before) {
         if (after.has(key)) continue;
         onlyAdditions = false;
-        lines.push(`${numberPrefix(item, numbers)}❌ ${item.description} (${REMOVED_ITEM_AMHARIC})`);
+        lines.push(`${numberPrefix(item, numbers, keyOf)}❌ ${item.description} (${REMOVED_ITEM_AMHARIC})`);
     }
 
     if (lines.length === 0) return null;

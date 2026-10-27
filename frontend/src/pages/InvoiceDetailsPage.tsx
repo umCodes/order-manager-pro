@@ -267,13 +267,18 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false, unit: li.unit };
   }
 
-  /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
-  function handlePickerCommit(itemId: string, values: DraftForm, catalogItem: CatalogItem) {
+  /**
+   * Adds a catalog item as a new line, or updates the existing line for it —
+   * a general item's extra line (a cart key not in pickerCart) is always new.
+   * Unsaved until "Save Changes".
+   */
+  function handlePickerCommit(cartKey: string, values: DraftForm, catalogItem: CatalogItem) {
     if (!invoice) return;
     const base = editedLineItems ?? invoice.line_items;
     const quantity = Number(values.quantity) || 0;
     const rate = Number(values.rate) || 0;
-    const existingIndex = base.findIndex((li) => li.item_id === itemId);
+    const itemId = catalogItem.item_id;
+    const existingIndex = pickerCart[cartKey] ? base.findIndex((li) => li.item_id === itemId) : -1;
 
     if (existingIndex >= 0) {
       applyLineItemEdits(
@@ -288,7 +293,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       ...base,
       {
         // Placeholder id for rendering only; the backend assigns the real one on save.
-        line_item_id: `new-${itemId}-${Date.now()}`,
+        line_item_id: `new-${itemId}-${Date.now()}-${base.length}`,
         item_id: itemId,
         name: catalogItem.name,
         description: values.description,

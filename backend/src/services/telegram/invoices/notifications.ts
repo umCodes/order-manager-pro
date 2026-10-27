@@ -9,7 +9,11 @@ import {
     invoiceMessageText,
     withDayLine,
 } from "./messageText.js"
-import { numberItems, type ItemNumbers } from "./itemNumbers.js"
+import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
+import { getGeneralItemIds } from "../../generalItems.js"
+
+/** How this order's items are told apart: general items by their description too (see itemKeyFor). */
+const orderItemKeys = async () => itemKeyFor(await getGeneralItemIds())
 
 /**
  * Each invoice's item numbers (see itemNumbers.ts), as a hash of item key →
@@ -39,8 +43,9 @@ export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemW
     try {
         console.log("Sending a fresh telegram message")
         const invoiceId = String(invoice.invoice_id)
-        const numbers = numberItems(line_items, await readItemNumbers(invoiceId))
-        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers));
+        const keyOf = await orderItemKeys()
+        const numbers = numberItems(line_items, await readItemNumbers(invoiceId), keyOf)
+        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers, keyOf));
         await saveItemNumbers(invoiceId, numbers)
         return message;
     } catch (error) {
@@ -89,10 +94,11 @@ export async function replyWithInvoiceChangesTelegramMessage(
 ) {
     const invoiceId = String(invoice.invoice_id)
     // Items keep their numbers; one added now takes the next free one.
+    const keyOf = await orderItemKeys()
     const existingNumbers = await readItemNumbers(invoiceId)
-    const numbers = existingNumbers ? numberItems(line_items, existingNumbers) : null
+    const numbers = existingNumbers ? numberItems(line_items, existingNumbers, keyOf) : null
 
-    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items, numbers)
+    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items, numbers, keyOf)
     if (!text) return null
 
     let message;
@@ -141,7 +147,7 @@ export async function updateInvoiceDateTelegramMessage(
         const currentText = await loggedText(messageId)
         const text = currentText
             ? withDayLine(currentText, invoice)
-            : invoiceMessageText(invoice, line_items, undefined, await readItemNumbers(String(invoice.invoice_id)))
+            : invoiceMessageText(invoice, line_items, undefined, await readItemNumbers(String(invoice.invoice_id)), await orderItemKeys())
         const message = text === currentText ? null : await TelegramEditMessage(text, messageId);
         await TelegramReplyToMessage(EDITED_NOTICE_AMHARIC, messageId);
         await moveEarlierThreadMessagesToNewDay(invoice)

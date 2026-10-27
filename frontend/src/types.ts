@@ -51,11 +51,20 @@ export type CartLine = {
   unit?: string;
   /** invoice_id of the draft this line was loaded from, if any. Unset for manually-added lines. */
   fromDraftId?: string;
+  /**
+   * The line's item when its cart key isn't the item id: a second (third…)
+   * line of the same item, keyed "<item_id>~2" and so on. General items
+   * (Settings) can be added any number of times this way. Unset = the key.
+   */
+  item_id?: string;
 };
 
+/** Lines by cart key: an item's id, or "<item_id>~n" for its extra lines (see CartLine.item_id). */
 export type Cart = Record<string, CartLine>;
 
 export type InvoiceLineItem = CartLine & {
+  /** The line's key in the cart. */
+  cartKey: string;
   item_id: string;
   name: string;
   unit: string;

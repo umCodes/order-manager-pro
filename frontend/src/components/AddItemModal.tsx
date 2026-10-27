@@ -3,20 +3,26 @@ import { ChevronDown, Search } from "lucide-react";
 import { fetchGeneralItemIds, fetchItemCategorySettings, fetchItems } from "../lib/api";
 import { unitOptions } from "../lib/units";
 import { groupItemsByCategory } from "../lib/itemSummary";
+import { cartLineItemId, nextCartKey } from "../lib/cart";
 import AddItemRow, { type DraftForm } from "./AddItemRow";
 import RefreshButton from "./RefreshButton";
-import type { Cart, CatalogItem } from "../types";
+import type { Cart, CartLine, CatalogItem } from "../types";
 
 type Props = {
   open: boolean;
   cart: Cart;
-  /** Item to pre-expand and scroll to when the sheet opens, if any. */
+  /** Cart line to pre-expand (its item) and scroll to when the sheet opens, if any: an item id, or "<item_id>~n". */
   initialItemId?: string | null;
   onClose: () => void;
   /** The header's Cancel button; defaults to onClose. */
   onCancel?: () => void;
-  onCommitItem: (itemId: string, values: DraftForm, item: CatalogItem) => void;
-  onRemoveItem: (itemId: string) => void;
+  /**
+   * Adds or updates the cart line `cartKey`: the item's id, or for another
+   * line of a general item "<item_id>~n" (see lib/cart.ts) — `item` says
+   * which item it is either way.
+   */
+  onCommitItem: (cartKey: string, values: DraftForm, item: CatalogItem) => void;
+  onRemoveItem: (cartKey: string) => void;
   /** Called with the fresh catalog after the user refreshes the items list. */
   onItemsRefreshed?: (items: CatalogItem[]) => void;
   /** Whether each item's editor offers the "Exclude from Telegram" toggle. Defaults to true. */
@@ -32,6 +38,9 @@ type Props = {
 /**
  * Bottom-sheet catalog browser for adding/editing invoice line items,
  * grouped by Zoho Inventory category in the priority order set in Settings.
+ * A general item (Settings) opens as a new line every time, so it can be on
+ * an invoice any number of times; one of its lines is edited by opening the
+ * sheet on that line.
  * Remounted (via `key`) each time it opens so its search/expand state
  * always starts fresh.
  */
@@ -113,7 +122,11 @@ function SheetContent({
   returnItems,
 }: SheetContentProps) {
   const [items, setItems] = useState<CatalogItem[]>(returnItems?.items ?? []);
-  const [expandedId, setExpandedId] = useState<string | null>(initialItemId ?? null);
+  const initialLine = initialItemId ? cart[initialItemId] : undefined;
+  const initialCatalogId = initialItemId ? (initialLine ? cartLineItemId(initialItemId, initialLine) : initialItemId) : null;
+  const [expandedId, setExpandedId] = useState<string | null>(initialCatalogId);
+  /** The cart line the open editor changes; null while it's adding a new line of a general item. */
+  const [editingKey, setEditingKey] = useState<string | null>(initialItemId ?? null);
   const [form, setForm] = useState<DraftForm>(EMPTY_FORM);
   const [query, setQuery] = useState("");
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
@@ -138,7 +151,7 @@ function SheetContent({
     fetchItems().then((fetchedItems) => {
       setItems(fetchedItems);
       if (initialItemId) {
-        const item = fetchedItems.find((i) => i.item_id === initialItemId);
+        const item = fetchedItems.find((i) => i.item_id === initialCatalogId);
         const existing = cart[initialItemId];
         if (item) {
           setForm({
@@ -154,8 +167,8 @@ function SheetContent({
   }, []);
 
   useEffect(() => {
-    if (initialItemId && items.length > 0) {
-      rowRefs.current[initialItemId]?.scrollIntoView({ block: "center" });
+    if (initialCatalogId && items.length > 0) {
+      rowRefs.current[initialCatalogId]?.scrollIntoView({ block: "center" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
@@ -190,8 +203,8 @@ function SheetContent({
 
   // While searching every match shows, and the item the sheet opened on is never hidden.
   const isSearching = query.trim() !== "";
-  const initialCategoryKey = initialItemId
-    ? items.find((item) => item.item_id === initialItemId)?.category ?? UNCATEGORIZED_KEY
+  const initialCategoryKey = initialCatalogId
+    ? items.find((item) => item.item_id === initialCatalogId)?.category ?? UNCATEGORIZED_KEY
     : null;
   function isCategoryCollapsed(key: string) {
     return !isSearching && key !== initialCategoryKey && collapsedCategories.has(key);
@@ -202,7 +215,10 @@ function SheetContent({
       setExpandedId(null);
       return;
     }
-    const existing = cart[item.item_id];
+    // A general item always opens as a new line; anything else edits its one line.
+    const key = generalItemIds.has(item.item_id) ? null : item.item_id;
+    const existing = key ? cart[key] : undefined;
+    setEditingKey(key);
     setForm({
       description: existing?.description ?? item.description,
       // A return starts at the full returnable quantity (the common case).
@@ -215,13 +231,29 @@ function SheetContent({
   }
 
   function commit(item: CatalogItem) {
-    onCommitItem(item.item_id, form, item);
+    onCommitItem(editingKey ?? nextCartKey(cart, item.item_id), form, item);
     setExpandedId(null);
   }
 
   function remove(item: CatalogItem) {
-    onRemoveItem(item.item_id);
+    onRemoveItem(editingKey ?? item.item_id);
     setExpandedId(null);
+  }
+
+  /** The cart lines for each item (more than one only for general items). */
+  const linesByItem = useMemo(() => {
+    const lines = new Map<string, CartLine[]>();
+    for (const [key, line] of Object.entries(cart)) {
+      const id = cartLineItemId(key, line);
+      lines.set(id, [...(lines.get(id) ?? []), line]);
+    }
+    return lines;
+  }, [cart]);
+
+  /** The line a row shows as added: the one being edited while open (none for a new line), else its first. */
+  function rowLine(item: CatalogItem): CartLine | undefined {
+    if (expandedId === item.item_id) return editingKey ? cart[editingKey] : undefined;
+    return linesByItem.get(item.item_id)?.[0];
   }
 
   /** Items change rarely, so they're cached (in memory and by the PWA); this pulls the latest catalog. */
@@ -266,7 +298,7 @@ function SheetContent({
         {categoryGroups.map((group) => {
           const key = group.category ?? UNCATEGORIZED_KEY;
           const isCollapsed = showCategories && isCategoryCollapsed(key);
-          const addedCount = group.items.filter((item) => cart[item.item_id]).length;
+          const addedCount = group.items.filter((item) => linesByItem.has(item.item_id)).length;
           return (
             <div key={key}>
               {showCategories && (
@@ -296,7 +328,7 @@ function SheetContent({
                     key={item.item_id}
                     ref={(el) => { rowRefs.current[item.item_id] = el; }}
                     item={item}
-                    inCart={cart[item.item_id]}
+                    inCart={rowLine(item)}
                     isExpanded={expandedId === item.item_id}
                     form={form}
                     onToggleExpand={() => toggleExpand(item)}

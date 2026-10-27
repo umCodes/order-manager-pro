@@ -136,7 +136,7 @@ export async function updateGeneralItems(req: Request, res: Response) {
 /**
  * Sending general item lines on WhatsApp: the chosen template and number
  * (`selected`) and the templates that fit (`options`, approved or still
- * under review, with how many variables each fills).
+ * under review).
  */
 export async function getGeneralItemsWhatsApp(req: Request, res: Response) {
     try {

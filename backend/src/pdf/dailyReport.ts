@@ -12,7 +12,7 @@ import type { ReportLine } from "../services/dailyReport/store.js";
  * Each section starts on a page of its own under a large underlined title:
  * payments collected, items sold, invoices issued (orders delivered), the
  * invoice register with balances, returns, orders not yet delivered, and
- * the backup lists (BK-) still open when the day ended.
+ * the items of the backup lists (BK-) still open when the day ended, totalled.
  * Item names are the Amharic description with the English (Zoho) name under
  * it; item tables show the quantity with its unit and the weight in kilograms
  * (from the pack size in the English name, see packWeight.ts). Names in
@@ -358,22 +358,25 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
       }
 
       // ---------- 7. remaining backup items ----------
-      section(7, "የቀሩ የመጠባበቂያ እቃዎች", "የሥራ ቀኑ ሲያልቅ ያልተነሱ የመጠባበቂያ ዝርዝሮች (BK) እና እቃዎቻቸው።");
+      section(7, "የቀሩ የመጠባበቂያ እቃዎች", "የሥራ ቀኑ ሲያልቅ ያልተነሱ የመጠባበቂያ ዝርዝሮች (BK) እቃዎች፣ በእቃ ተጠቃለው።");
       if (!report.backupLists.length) empty();
       else {
-        const cols: Col[] = [{ w: 50, align: "center" }, { w: 250 }, { w: 120, align: "right" }, { w: W - 420, align: "right" }];
-        let totalKg = 0;
-        for (const list of report.backupLists) {
-          ensure(110 + list.items.length * 40);
-          const sent = businessTimeParts(new Date(list.created_at));
-          customerHeading(list.id, `የተላከበት ${sent.day} ${MONTHS[sent.month]} ${sent.time}`);
-          header(cols, ["ቁ.", "እቃ", "ብዛት", "ኪሎ"]);
-          list.items.forEach((item, i) => {
-            const kg = lineWeightKg(item.name, item.quantity);
-            if (kg !== null) totalKg += kg;
-            row(cols, [String(item.number), itemCell(item), qtyWithUnit(item.quantity, item.unit), kgText(kg)], i % 2 === 1);
-          });
+        // Every open list's items added up per item (and unit), in the order they were sent (by category).
+        const totals = new Map<string, { name: string; description: string; unit: string; quantity: number }>();
+        for (const item of report.backupLists.flatMap((list) => list.items)) {
+          const key = `${item.item_id || item.description}|${item.unit}`;
+          const entry = totals.get(key) ?? { name: item.name, description: item.description, unit: item.unit, quantity: 0 };
+          entry.quantity = round3(entry.quantity + item.quantity);
+          totals.set(key, entry);
         }
+        const cols: Col[] = [{ w: 260 }, { w: 140, align: "right" }, { w: W - 400, align: "right" }];
+        header(cols, ["እቃ", "ብዛት", "ኪሎ"]);
+        let totalKg = 0;
+        [...totals.values()].forEach((item, i) => {
+          const kg = lineWeightKg(item.name, item.quantity);
+          if (kg !== null) totalKg += kg;
+          row(cols, [itemCell(item), qtyWithUnit(item.quantity, item.unit), kgText(kg)], i % 2 === 1);
+        });
         totalBox([["ጠቅላላ ኪሎ", `${round3(totalKg)} ኪሎ`]]);
       }
     }

@@ -3,11 +3,13 @@ import {
     getDailyReportWhatsApp,
     getInvoiceDue,
     getGeneralItems,
+    getGeneralItemsWhatsApp,
     getItemCategories,
     getNotificationTemplates,
     updateDailyReportWhatsApp,
     updateInvoiceDue,
     updateGeneralItems,
+    updateGeneralItemsWhatsApp,
     updateItemCategoryOrder,
     updateNotificationTemplates,
 } from "../controllers/settings.controller.js";
@@ -24,3 +26,5 @@ settingsRouter.get('/settings/invoice-due', getInvoiceDue);
 settingsRouter.put('/settings/invoice-due', updateInvoiceDue);
 settingsRouter.get('/settings/general-items', getGeneralItems);
 settingsRouter.put('/settings/general-items', updateGeneralItems);
+settingsRouter.get('/settings/general-items-whatsapp', getGeneralItemsWhatsApp);
+settingsRouter.put('/settings/general-items-whatsapp', updateGeneralItemsWhatsApp);

@@ -15,6 +15,11 @@ import {
 } from '../services/dailyReport/whatsapp.js';
 import { getInvoiceDueSetting, MAX_DUE_DAYS, saveInvoiceDueSetting } from '../services/invoiceDueDate.js';
 import { getGeneralItemIds, MAX_GENERAL_ITEMS, saveGeneralItemIds } from '../services/generalItems.js';
+import {
+    generalItemsTemplateOptions,
+    getGeneralItemsWhatsAppSettings,
+    saveGeneralItemsWhatsAppSettings,
+} from '../services/generalItemsWhatsApp.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -125,5 +130,32 @@ export async function updateGeneralItems(req: Request, res: Response) {
         res.status(200).json({ item_ids: await saveGeneralItemIds(req.body?.item_ids) });
     } catch (error) {
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the general items' });
+    }
+}
+
+/**
+ * Sending general item lines on WhatsApp: the chosen template and number
+ * (`selected`) and the templates that fit (`options`, approved or still
+ * under review, with how many variables each fills).
+ */
+export async function getGeneralItemsWhatsApp(req: Request, res: Response) {
+    try {
+        const [selected, options] = await Promise.all([
+            getGeneralItemsWhatsAppSettings(),
+            generalItemsTemplateOptions(req.query.refresh === "1"),
+        ]);
+        res.status(200).json({ selected, options });
+    } catch (error) {
+        console.error('Error loading general items WhatsApp settings:', error);
+        res.status(502).json({ error: error instanceof Error ? error.message : 'Failed to load the general items WhatsApp settings' });
+    }
+}
+
+export async function updateGeneralItemsWhatsApp(req: Request, res: Response) {
+    try {
+        res.status(200).json({ selected: await saveGeneralItemsWhatsAppSettings(req.body) });
+    } catch (error) {
+        console.error('Error saving general items WhatsApp settings:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the general items WhatsApp settings' });
     }
 }

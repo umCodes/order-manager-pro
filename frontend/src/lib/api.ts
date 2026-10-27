@@ -1692,6 +1692,36 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ street
 }
 
 /** The general items: catalog items whose unit can be changed on each invoice line (chosen in Settings). */
+export type GeneralItemsWhatsAppSettings = {
+  template: { name: string; language: string } | null;
+  /** Digits only, international format (e.g. "966512345678"). */
+  recipient: string | null;
+};
+/** `variables`: how many of {{1}} description, {{2}} quantity, {{3}} customer, {{4}} invoice number it fills. */
+export type GeneralItemsTemplateOption = { id: string; name: string; language: string; status: string; variables: number };
+
+export async function fetchGeneralItemsWhatsAppSettings(force = false): Promise<{
+  selected: GeneralItemsWhatsAppSettings;
+  options: GeneralItemsTemplateOption[];
+}> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items-whatsapp${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the general items WhatsApp settings (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveGeneralItemsWhatsAppSettings(settings: GeneralItemsWhatsAppSettings): Promise<GeneralItemsWhatsAppSettings> {
+  const result = await postJson<{ selected: GeneralItemsWhatsAppSettings }>(
+    `${API_BASE_URL}/api/settings/general-items-whatsapp`,
+    "PUT",
+    settings,
+    "Failed to save the general items WhatsApp settings",
+  );
+  return result.selected;
+}
+
 export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: number }> {
   const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items`, { cache: "no-store" });
   if (!response.ok) {

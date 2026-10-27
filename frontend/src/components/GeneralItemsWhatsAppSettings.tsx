@@ -83,9 +83,9 @@ export default function GeneralItemsWhatsAppSettings() {
 
   return (
     <>
-      <div className="page-header" style={{ marginTop: 28 }}>
+      <div className="page-header">
         <h2 className="page-title" style={{ fontSize: 16 }}>
-          General items on WhatsApp
+          WhatsApp notice
         </h2>
         <RefreshButton onRefresh={() => load(true)} />
       </div>

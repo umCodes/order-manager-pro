@@ -50,13 +50,13 @@ export default function GeneralItemsSettings() {
 
   return (
     <>
-      <div className="page-header" style={{ marginTop: 28 }}>
+      <div className="page-header">
         <h2 className="page-title" style={{ fontSize: 16 }}>
-          General items
+          Which items
         </h2>
       </div>
       <p className="page-subtitle">
-        Up to {max} items for things you sell now and then. When one is added to an invoice, its unit can be changed for that line.
+        Up to {max} items for things you sell now and then. Each can be added to an invoice several times, one line per thing, and its unit changed for that line.
       </p>
 
       {loadError && <div className="form-error">{loadError}</div>}

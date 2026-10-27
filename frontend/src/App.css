@@ -220,6 +220,69 @@
   color: var(--color-green-700);
 }
 
+/* Settings menu: one row per section, each opening a page of its own. */
+.settings-menu {
+  margin-top: 16px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.settings-menu__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  background: var(--color-white);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.settings-menu__row + .settings-menu__row {
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.settings-menu__row:hover {
+  background: var(--color-gray-50);
+}
+
+.settings-menu__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-menu__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.settings-menu__description {
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.settings-menu__chevron {
+  flex-shrink: 0;
+  color: var(--color-gray-400);
+}
+
+/* A settings section's page: its parts' headings, spaced apart after the first. */
+.settings-section-page {
+  margin-top: 16px;
+}
+
+.settings-section-page > .page-header ~ .page-header {
+  margin-top: 28px;
+}
+
 /* Page */
 
 .page-title {

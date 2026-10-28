@@ -1,0 +1,67 @@
+# Deploys the webhook Lambda (wa-webhook-lambda/) whenever its code changes on
+# the branch below, or on demand from the Actions tab: installs its
+# dependencies, zips it the same way `npm run package` does, and uploads it.
+# The Lambda's environment variables are left as they are.
+#
+# Needs these repository secrets (Settings → Secrets and variables → Actions):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  an IAM user allowed
+#       lambda:UpdateFunctionCode and lambda:GetFunction on the function
+#   AWS_REGION            e.g. eu-north-1
+#   LAMBDA_FUNCTION_NAME  the function's name
+name: Deploy webhook Lambda
+
+on:
+  push:
+    # The branch the Lambda runs from. Switch to main once this work is merged.
+    branches: [claude/daily-report]
+    paths:
+      - "wa-webhook-lambda/**"
+      - ".github/workflows/deploy-lambda.yml"
+  workflow_dispatch: {}
+
+# One deploy at a time; a newer push waits for the running one.
+concurrency:
+  group: deploy-lambda
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: wa-webhook-lambda
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check the secrets are set
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+        run: |
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION LAMBDA_FUNCTION_NAME; do
+            if [ -z "${!name}" ]; then echo "::error::Set the $name repository secret"; exit 1; fi
+          done
+
+      - name: Build the package
+        run: npm run package
+
+      - name: Check the package has its dependencies
+        run: unzip -l function.zip | grep -q "node_modules/ioredis/" || { echo "::error::function.zip has no node_modules"; exit 1; }
+
+      - name: Upload to the Lambda
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          FUNCTION: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION" --zip-file fileb://function.zip --query '{version: Version, size: CodeSize, sha: CodeSha256}'
+          aws lambda wait function-updated --function-name "$FUNCTION"
+          echo "Deployed $FUNCTION"

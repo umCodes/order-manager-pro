@@ -1,5 +1,6 @@
 import { parseWebhookBody } from "../webhook/parseWebhookBody.mjs";
 import { claimUpdate, recordUpdate } from "../state/telegramUpdates.mjs";
+import { acknowledgeMessage } from "./acknowledge.mjs";
 
 const ok = { statusCode: 200, body: JSON.stringify({ ok: true }) };
 
@@ -43,6 +44,7 @@ export async function handleTelegramUpdate(event) {
         }
         console.log(`Telegram update ${update.update_id} (${updateKind(update)}):`, JSON.stringify(update));
         await recordUpdate(update);
+        await acknowledgeMessage(update);
     } catch (error) {
         console.error(`Telegram webhook: failed to record update ${update.update_id}`, error);
     }

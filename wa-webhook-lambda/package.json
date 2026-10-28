@@ -2,7 +2,7 @@
   "name": "wa-webhook-lambda",
   "version": "1.0.0",
   "scripts": {
-    "package": "rm -f function.zip && zip -r function.zip handler.mjs webhook telegram language messages state services node_modules package.json -x '*.DS_Store'"
+    "package": "npm ci --omit=dev && rm -f function.zip && zip -r function.zip handler.mjs webhook telegram language messages state services node_modules package.json -x '*.DS_Store'"
   },
   "dependencies": {
     "ioredis": "^6.0.0",

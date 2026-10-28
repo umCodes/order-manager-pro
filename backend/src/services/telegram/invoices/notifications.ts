@@ -11,6 +11,7 @@ import {
 } from "./messageText.js"
 import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
 import { getGeneralItemIds } from "../../generalItems.js"
+import { changesMessageItems, orderMessageItems, saveGroupOrderMessage } from "../groupOrders.js"
 
 /** How this order's items are told apart: general items by their description too (see itemKeyFor). */
 const orderItemKeys = async () => itemKeyFor(await getGeneralItemIds())
@@ -47,6 +48,13 @@ export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemW
         const numbers = numberItems(line_items, await readItemNumbers(invoiceId), keyOf)
         const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers, keyOf));
         await saveItemNumbers(invoiceId, numbers)
+        await saveGroupOrderMessage(message.group_message_id, {
+            kind: "invoice",
+            order_id: invoiceId,
+            order_number: String(invoice.invoice_number ?? ""),
+            message_type: "order",
+            items: orderMessageItems(line_items, numbers, keyOf),
+        })
         return message;
     } catch (error) {
         console.error('Error sending invoice message:', error);
@@ -110,7 +118,16 @@ export async function replyWithInvoiceChangesTelegramMessage(
         return await sendInvoiceTelegramMessage(invoice, line_items);
     }
 
-    if (numbers) await saveItemNumbers(invoiceId, numbers)
+    if (numbers) {
+        await saveItemNumbers(invoiceId, numbers)
+        await saveGroupOrderMessage(message.group_message_id, {
+            kind: "invoice",
+            order_id: invoiceId,
+            order_number: String(invoice.invoice_number ?? ""),
+            message_type: "changes",
+            items: changesMessageItems(previous_line_items, line_items, numbers, keyOf),
+        })
+    }
 
     await addToThread(invoiceId, messageId)
 

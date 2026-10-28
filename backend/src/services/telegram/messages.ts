@@ -4,7 +4,8 @@ import { recordTelegramMessage, updateTelegramMessageLogText, removeTelegramMess
 import { isMirrored, mirrorDelete, mirrorEdit, mirrorSend } from "./mirror.js"
 
 // Everything done on the channel here is also done on its copy in the
-// preparers' group, when one is set (see mirror.ts).
+// preparers' group, when one is set (see mirror.ts). A sent message comes
+// back with `group_message_id`: its copy's id, or null without one.
 
 /** Posts a message to the channel and records it in the log. */
 export async function TelegramSendMessage(text: string, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
@@ -15,8 +16,8 @@ export async function TelegramSendMessage(text: string, chatId: string | number 
         })
         if (!response.ok) throw response
         await recordTelegramMessage({ message_id: response.result.message_id, chat_id: String(chatId), text })
-        if (isMirrored(chatId)) await mirrorSend(text, response.result.message_id)
-        return response.result;
+        const group_message_id = isMirrored(chatId) ? await mirrorSend(text, response.result.message_id) : null
+        return { ...response.result, group_message_id };
     } catch (error) {
         console.error('Error sending message:', error);
         throw error;
@@ -34,8 +35,8 @@ export async function TelegramReplyToMessage(text: string, replyToMessageId: num
 
         if (!response.ok) throw response
         await recordTelegramMessage({ message_id: response.result.message_id, chat_id: String(chatId), text })
-        if (isMirrored(chatId)) await mirrorSend(text, response.result.message_id, replyToMessageId)
-        return response.result;
+        const group_message_id = isMirrored(chatId) ? await mirrorSend(text, response.result.message_id, replyToMessageId) : null
+        return { ...response.result, group_message_id };
     } catch (error) {
         console.error('Error replying to message:', error);
         throw error;

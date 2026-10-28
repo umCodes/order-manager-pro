@@ -61,11 +61,11 @@ async function read(id: string): Promise<BackupList | null> {
  * Telegram message. The id is claimed before posting; if another list has
  * that second, the next free second is used. A failed post leaves nothing behind.
  */
-export async function createBackupList(
+export async function createBackupList<Message extends { message_id: number }>(
     items: BackupListItem[],
     chatId: string,
-    post: (id: string) => Promise<{ message_id: number }>,
-): Promise<{ list: BackupList; message: { message_id: number } }> {
+    post: (id: string) => Promise<Message>,
+): Promise<{ list: BackupList; message: Message }> {
     const now = Date.now()
     let list: BackupList | null = null
     for (let offset = 0; offset < 60 && !list; offset++) {

@@ -5,6 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
+import { readGroupOrderMessage, listRecognisedGroupReplies } from '../../services/telegram/groupOrders.js';
 
 /**
  * Lists every message sent to the Telegram channel through this app in the
@@ -68,5 +69,34 @@ export async function deleteMessage(req: Request, res: Response) {
             res.status(500).json({ error: 'Failed to delete message' });
         console.error('Error deleting message:', error);
         return
+    }
+}
+
+/**
+ * For checking the group links (no Telegram changes): which order a group
+ * message is and the numbered items it shows, and the latest replies the
+ * webhook recognised as replies to an order message.
+ */
+export async function getGroupOrderMessage(req: Request, res: Response) {
+    try {
+        const messageId = Number(req.params.messageId);
+        if (!Number.isInteger(messageId)) throw new Error("messageId must be a number")
+        const order = await readGroupOrderMessage(messageId);
+        if (!order) {
+            res.status(404).json({ error: `Group message ${messageId} isn't linked to an order` });
+            return
+        }
+        res.status(200).json({ order });
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to read the group message' });
+    }
+}
+
+export async function listGroupReplies(req: Request, res: Response) {
+    try {
+        res.status(200).json({ replies: await listRecognisedGroupReplies() });
+    } catch (error) {
+        console.error('Error listing group replies:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to list group replies' });
     }
 }

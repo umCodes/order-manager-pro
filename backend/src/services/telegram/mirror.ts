@@ -1,6 +1,7 @@
 import { ENV, TELEGRAM_GROUP_CHATID } from "../../constants/env.js"
 import { redisClient } from "../../config/redis.js"
 import { TelegramApi } from "./client.js"
+import { forgetGroupOrderMessage } from "./groupOrders.js"
 
 /**
  * Copies of channel messages in the preparers' group (TELEGRAM_GROUP_CHATID),
@@ -32,8 +33,11 @@ export async function channelMessageIdForGroupMessage(groupMessageId: number): P
     return id ? Number(id) : null
 }
 
-/** Posts the copy of a channel message — as a reply to the copy of its parent, when there's one. */
-export async function mirrorSend(text: string, channelMessageId: number, replyToChannelMessageId?: number) {
+/**
+ * Posts the copy of a channel message — as a reply to the copy of its parent,
+ * when there's one. Returns the copy's message id, or null when it failed.
+ */
+export async function mirrorSend(text: string, channelMessageId: number, replyToChannelMessageId?: number): Promise<number | null> {
     try {
         const replyTo = replyToChannelMessageId ? await groupMessageId(replyToChannelMessageId) : null
         const response = await TelegramApi("sendMessage", "POST", {
@@ -45,8 +49,10 @@ export async function mirrorSend(text: string, channelMessageId: number, replyTo
         const copyId = Number(response.result.message_id)
         await redisClient.set(toGroupKey(channelMessageId), String(copyId), { EX: KEEP_SECONDS })
         await redisClient.set(toChannelKey(copyId), String(channelMessageId), { EX: KEEP_SECONDS })
+        return copyId
     } catch (error) {
         console.error(`Telegram group copy: couldn't post the copy of message ${channelMessageId}:`, error)
+        return null
     }
 }
 
@@ -70,6 +76,7 @@ export async function mirrorDelete(channelMessageId: number) {
         const response = await TelegramApi("deleteMessage", "POST", { chat_id: TELEGRAM_GROUP_CHATID, message_id: copyId })
         if (!response.ok) console.error(`Telegram group copy: couldn't delete the copy of message ${channelMessageId}:`, response.description)
         await redisClient.del([toGroupKey(channelMessageId), toChannelKey(copyId)])
+        await forgetGroupOrderMessage(copyId)
     } catch (error) {
         console.error(`Telegram group copy: couldn't delete the copy of message ${channelMessageId}:`, error)
     }

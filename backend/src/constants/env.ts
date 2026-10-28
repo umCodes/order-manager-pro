@@ -61,3 +61,11 @@ export const CUSTOMER_MANAGER_URL = process.env.CUSTOMER_MANAGER_URL;/**
  * scheduled endpoint refuses every call.
  */
 export const CRON_SECRET = process.env.CRON_SECRET;
+
+/**
+ * The preparers' Telegram group. Optional: while the group features are
+ * being built, every message the app posts to the channel (TELEGRAM_CHATID)
+ * is copied here too — sent, replied to, edited and deleted alongside it.
+ * Unset, nothing is copied.
+ */
+export const TELEGRAM_GROUP_CHATID = process.env.TELEGRAM_GROUP_CHATID;

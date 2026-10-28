@@ -53,6 +53,7 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 | `WA_PAYMENT_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the payment-confirmation message, per customer `preferred_language` |
 | `WA_BALANCE_NOTIFICATION_TEMPLATE_AM` / `_AR` / `_EN` | Approved WhatsApp template name for the invoice-sent/balance message, per customer `preferred_language` |
 | `REDIS_URL` | Redis connection string |
+| `TELEGRAM_GROUP_CHATID` | Optional. The preparers' Telegram group: while the group features are built, every message the app posts to the channel is copied there too (sent, replied to, edited and deleted alongside it — `services/telegram/mirror.ts`, copies mapped both ways in Redis under `telegram:mirror:*` for 30 days). Unset, nothing is copied |
 | `PORT` | Backend port (default `3000`) |
 
 ## Architecture notes

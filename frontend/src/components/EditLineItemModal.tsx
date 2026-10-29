@@ -4,12 +4,16 @@ import type { InvoiceDetailLineItem } from "../types";
 type Props = {
   item: InvoiceDetailLineItem;
   currencySymbol: string;
+  /** An invoice needs at least one line, so its last line can't be removed. */
+  canRemove: boolean;
   onCancel: () => void;
-  onConfirm: (quantity: number, rate: number) => void;
+  onConfirm: (values: { description: string; quantity: number; rate: number }) => void;
+  onRemove: () => void;
 };
 
-/** Small in-page form for editing a single line item's quantity and rate (unit is fixed, from the catalog item). */
-export default function EditLineItemModal({ item, currencySymbol, onCancel, onConfirm }: Props) {
+/** Small in-page form for editing a single line item's description, quantity and rate, or removing it (unit is fixed, from the catalog item). */
+export default function EditLineItemModal({ item, currencySymbol, canRemove, onCancel, onConfirm, onRemove }: Props) {
+  const [description, setDescription] = useState(item.description ?? "");
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [rate, setRate] = useState(String(item.rate));
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -26,7 +30,7 @@ export default function EditLineItemModal({ item, currencySymbol, onCancel, onCo
       return;
     }
     setValidationError(null);
-    onConfirm(parsedQuantity, parsedRate);
+    onConfirm({ description: description.trim(), quantity: parsedQuantity, rate: parsedRate });
   }
 
   return (
@@ -59,6 +63,18 @@ export default function EditLineItemModal({ item, currencySymbol, onCancel, onCo
             onChange={(e) => setRate(e.target.value)}
           />
         </div>
+        <div className="field">
+          <label className="field-label" htmlFor="edit-line-item-description">
+            Description
+          </label>
+          <textarea
+            id="edit-line-item-description"
+            className="textarea"
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
         {validationError && <div className="form-error">{validationError}</div>}
         <div className="invoice-details__actions" style={{ marginTop: 14 }}>
           <button type="button" className="btn btn--secondary" onClick={onCancel}>
@@ -68,6 +84,16 @@ export default function EditLineItemModal({ item, currencySymbol, onCancel, onCo
             Save
           </button>
         </div>
+        <button
+          type="button"
+          className="btn btn--secondary btn--danger-text btn--full"
+          style={{ marginTop: 10 }}
+          disabled={!canRemove}
+          title={canRemove ? undefined : "An invoice needs at least one item"}
+          onClick={onRemove}
+        >
+          Remove item
+        </button>
       </div>
     </div>
   );

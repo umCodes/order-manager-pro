@@ -248,13 +248,28 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const displayTotal = (invoice?.total ?? 0) + subtotalDelta;
   const displayBalance = (invoice?.balance ?? 0) + subtotalDelta;
 
-  function handleEditItemConfirm(quantity: number, rate: number) {
+  function handleEditItemConfirm({ description, quantity, rate }: { description: string; quantity: number; rate: number }) {
     if (!editingItem || !invoice) return;
     const base = editedLineItems ?? invoice.line_items;
     const next = base.map((li) =>
-      li.line_item_id === editingItem.line_item_id ? { ...li, quantity, rate, item_total: quantity * rate } : li,
+      li.line_item_id === editingItem.line_item_id
+        ? { ...li, description, quantity, rate, item_total: quantity * rate }
+        : li,
     );
     applyLineItemEdits(next);
+    setEditingItem(null);
+  }
+
+  /** Removes just the line being edited (not other lines of the same item). Unsaved until "Save Changes". */
+  function handleEditItemRemove() {
+    if (!editingItem || !invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    applyLineItemEdits(base.filter((li) => li.line_item_id !== editingItem.line_item_id));
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      next.delete(editingItem.line_item_id);
+      return next;
+    });
     setEditingItem(null);
   }
 
@@ -1027,8 +1042,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         <EditLineItemModal
           item={editingItem}
           currencySymbol={invoice?.currency_symbol ?? ""}
+          canRemove={displayLineItems.length > 1}
           onCancel={() => setEditingItem(null)}
           onConfirm={handleEditItemConfirm}
+          onRemove={handleEditItemRemove}
         />
       )}
 

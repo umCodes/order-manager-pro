@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { readGroupOrderMessage, listRecognisedGroupReplies } from '../../services/telegram/groupOrders.js';
+import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages } from '../../services/telegram/groupOrders.js';
 
 /**
  * Lists every message sent to the Telegram channel through this app in the
@@ -98,5 +98,17 @@ export async function listGroupReplies(req: Request, res: Response) {
     } catch (error) {
         console.error('Error listing group replies:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to list group replies' });
+    }
+}
+
+/** An order's (invoice id or BK- id) shortages as reported in the group — empty when there are none. */
+export async function getOrderShortages(req: Request, res: Response) {
+    try {
+        const orderId = req.params.orderId;
+        if (!orderId) throw new Error("orderId not provided")
+        res.status(200).json(await orderShortages(String(orderId)));
+    } catch (error) {
+        console.error('Error reading order shortages:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the shortages' });
     }
 }

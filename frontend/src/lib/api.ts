@@ -1,4 +1,4 @@
-import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderShortageItem } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -841,6 +841,19 @@ export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDetail
 
   const data = await response.json();
   return data.invoice;
+}
+
+/** An order's (invoice id or BK- id) shortages as reported in the Telegram group; empty when none were. */
+export async function fetchOrderShortages(orderId: string): Promise<OrderShortageItem[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/shortages`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch shortages (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.items ?? [];
 }
 
 export function invoiceCacheKey(invoiceId: string) {

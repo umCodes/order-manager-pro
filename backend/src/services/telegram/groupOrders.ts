@@ -13,6 +13,7 @@ import type { ItemKeyOf, ItemNumbers } from "./invoices/itemNumbers.js"
  * the channel's workflow doesn't use any of this.
  *
  *   telegram:group-order:<group message id> → GroupOrderMessage (JSON)
+ *   telegram:group-order-messages:<order id> → its group message ids, oldest first
  *
  * The Lambda reads the same keys (wa-webhook-lambda/state/groupOrders.mjs),
  * so the shape is shared: change both together.
@@ -51,6 +52,7 @@ export type GroupOrderMessage = {
 
 const KEEP_SECONDS = 30 * 24 * 60 * 60
 const groupOrderKey = (groupMessageId: number) => `telegram:group-order:${groupMessageId}`
+const orderMessagesKey = (orderId: string) => `telegram:group-order-messages:${orderId}`
 
 const visible = (line_items: ItemWithQuantity[]) =>
     line_items.filter((item) => !String(item.description ?? "").includes(INTERNAL_ITEM_MARKER))
@@ -131,6 +133,8 @@ export async function saveGroupOrderMessage(
             posted_at: new Date().toISOString(),
         }
         await redisClient.set(groupOrderKey(groupMessageId), JSON.stringify(record), { EX: KEEP_SECONDS })
+        await redisClient.rPush(orderMessagesKey(details.order_id), String(groupMessageId))
+        await redisClient.expire(orderMessagesKey(details.order_id), KEEP_SECONDS)
     } catch (error) {
         console.error(`Telegram group: couldn't save which order message ${groupMessageId} is:`, error)
     }
@@ -153,4 +157,157 @@ export async function forgetGroupOrderMessage(groupMessageId: number) {
  */
 export async function listRecognisedGroupReplies(): Promise<unknown[]> {
     return (await redisClient.lRange("telegram:group-replies:recent", 0, -1)).map((entry) => JSON.parse(entry))
+}
+
+/**
+ * Shortage reports, as the webhook Lambda saves them from replies in the
+ * group (wa-webhook-lambda/telegram/shortageReports.mjs; change both
+ * together): one record per report message, holding its current item lines
+ * and every earlier version.
+ *
+ *   telegram:group-report:<report message id> → GroupReport (JSON)
+ *   telegram:group-reports:<order id>         → set of report message ids
+ */
+export type GroupReportLine = {
+    number: number
+    item_id: string
+    item_key: string
+    description: string
+    unit: string
+    /** The quantity on the message replied to. */
+    ordered: number
+    available: number
+    missing: boolean
+    /** The line as typed: "3 M", "3 5". */
+    text: string
+}
+
+export type GroupReport = {
+    chat_id: string
+    message_id: number
+    reply_to_message_id: number
+    kind: GroupOrderMessage["kind"]
+    order_id: string
+    order_number: string
+    from: { id: number | null; name: string; username: string | null }
+    sent_at: string
+    updated_at: string
+    text: string
+    lines: GroupReportLine[]
+    history: { text: string; lines: GroupReportLine[]; updated_at: string }[]
+}
+
+/** One reported item on an order: what the order needs now, what's available, and the reports behind it. */
+export type OrderShortageItem = {
+    number: number
+    item_id: string
+    item_key: string
+    description: string
+    unit: string
+    ordered: number
+    available: number
+    short: number
+    reports: {
+        message_id: number
+        reply_to_message_id: number
+        from: GroupReport["from"]
+        sent_at: string
+        updated_at: string
+        edited: boolean
+        line: string
+        /** The quantity on the message it replied to, and what was reported available of it. */
+        ordered: number
+        available: number
+        missing: boolean
+    }[]
+}
+
+async function readJson<T>(keys: string[]): Promise<T[]> {
+    if (keys.length === 0) return []
+    return (await redisClient.mGet(keys)).filter((raw): raw is string => !!raw).map((raw) => JSON.parse(raw) as T)
+}
+
+/**
+ * An order's shortages, worked out from its group messages and the reports
+ * on them. Only the newest full message counts, with the changes replies
+ * after it (an order sent again starts over). For each item the order now
+ * needs its latest quantity; what's available is the sum, over that message
+ * and the replies that add to it, of what was reported — or the full amount
+ * where nothing was. A report replying to the same message about the same
+ * item as an earlier one replaces it. Only items with a report are listed;
+ * an item whose report no longer leaves it short is listed with short 0.
+ */
+export async function orderShortages(orderId: string): Promise<{ order_id: string; items: OrderShortageItem[] }> {
+    const reportIds = await redisClient.sMembers(`telegram:group-reports:${orderId}`)
+    const allReports = await readJson<GroupReport>(reportIds.map((id) => `telegram:group-report:${id}`))
+
+    // Orders posted before the list of their messages was kept: the messages reported on.
+    const listed = await redisClient.lRange(orderMessagesKey(orderId), 0, -1)
+    const ids = [...new Set(listed.length ? listed.map(Number) : allReports.map((report) => report.reply_to_message_id))]
+    const messages = (await readJson<GroupOrderMessage>(ids.map(groupOrderKey)))
+        .sort((a, b) => a.posted_at.localeCompare(b.posted_at))
+    const lastFull = messages.map((message) => message.message_type).lastIndexOf("order")
+    const current = lastFull === -1 ? messages : messages.slice(lastFull)
+    const currentIds = new Set(current.map((message) => message.message_id))
+
+    const reports = allReports
+        .filter((report) => currentIds.has(report.reply_to_message_id))
+        .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
+
+    // The latest report line per (message replied to, item number).
+    const latest = new Map<string, { report: GroupReport; line: GroupReportLine }>()
+    for (const report of reports) {
+        for (const line of report.lines) latest.set(`${report.reply_to_message_id}:${line.number}`, { report, line })
+    }
+
+    const items = new Map<string, OrderShortageItem & { supply: number }>()
+    for (const message of current) {
+        for (const item of message.items) {
+            const entry = items.get(item.item_key) ?? {
+                number: item.number,
+                item_id: item.item_id,
+                item_key: item.item_key,
+                description: item.description,
+                unit: item.unit,
+                ordered: 0,
+                available: 0,
+                short: 0,
+                reports: [],
+                supply: 0,
+            }
+            entry.ordered = item.change ? (item.order_quantity ?? 0) : item.quantity
+            if (item.change !== "decreased" && item.change !== "removed") {
+                const reported = latest.get(`${message.message_id}:${item.number}`)
+                entry.supply += reported ? reported.line.available : item.quantity
+                if (reported) {
+                    entry.reports.push({
+                        message_id: reported.report.message_id,
+                        reply_to_message_id: message.message_id,
+                        from: reported.report.from,
+                        sent_at: reported.report.sent_at,
+                        updated_at: reported.report.updated_at,
+                        edited: reported.report.history.length > 0,
+                        line: reported.line.text,
+                        ordered: reported.line.ordered,
+                        available: reported.line.available,
+                        missing: reported.line.missing,
+                    })
+                }
+            }
+            items.set(item.item_key, entry)
+        }
+    }
+
+    return {
+        order_id: orderId,
+        items: [...items.values()]
+            .filter((item) => item.reports.length > 0)
+            .map(({ supply, ...item }) => ({
+                ...item,
+                ordered: round(item.ordered),
+                available: round(Math.min(item.ordered, supply)),
+                short: round(Math.max(0, item.ordered - supply)),
+            }))
+            .sort((a, b) => a.number - b.number),
+    }
 }

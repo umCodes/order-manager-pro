@@ -14,6 +14,7 @@ import {
   updateInvoiceDate,
   updateInvoiceLineItems,
   updateInvoiceCustomer,
+  fetchOrderShortages,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -37,8 +38,10 @@ import ConfirmModal from "../components/ConfirmModal";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
+import ShortageNote from "../components/ShortageNote";
+import { matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
-import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderShortageItem } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -184,6 +187,22 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       cancelled = true;
     };
   }, [invoiceId, customerRetryToken]);
+
+  // Shortages the preparers reported in the Telegram group: drafts only (a
+  // sent invoice's preparation is over), re-read whenever the invoice is.
+  const [shortages, setShortages] = useState<OrderShortageItem[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!invoice || invoice.status !== "draft") return;
+    fetchOrderShortages(invoice.invoice_id)
+      .then((items) => {
+        if (!cancelled) setShortages(items);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice]);
 
   /**
    * Re-fetches the invoice plus its customer, after anything that can move
@@ -379,6 +398,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   // (sent ones with an automatic reason, see lib/invoiceChangeReason) —
   // splitting is the one exception, still draft-only.
   const isDraft = invoice?.status === "draft";
+  const { byLine: shortagesByLine, unmatched: unmatchedShortages } = matchShortagesToLines(
+    displayLineItems,
+    isDraft ? shortages : [],
+  );
 
   // A selection only matters if it's a draft (splitting a sent invoice's
   // line items isn't supported) and it's a strict subset of the items —
@@ -833,6 +856,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
             {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
+              const shortage = shortagesByLine.get(item.line_item_id);
               return (
                 <div
                   key={item.line_item_id}
@@ -869,6 +893,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                       <div className="line-item__meta">
                         {item.quantity} {item.unit} × {currency(item.rate)}
                       </div>
+                      {shortage && <ShortageNote shortage={shortage} />}
                     </div>
                   </div>
                   <div className="line-item__right">
@@ -887,6 +912,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               );
             })}
           </div>
+
+          {unmatchedShortages.map((shortage) => (
+            <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "An item no longer on this invoice"} />
+          ))}
 
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">

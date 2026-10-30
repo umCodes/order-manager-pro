@@ -148,6 +148,37 @@ export type BackupList = {
   message_id: number | null;
 };
 
+/**
+ * An item reported short in the preparers' Telegram group (`3 M` / `3 5`
+ * replies to the order's message): what the order needs now, what's
+ * available, and each report behind it. Listed as long as it has a report,
+ * even once it's no longer short.
+ */
+export type OrderShortageItem = {
+  number: number;
+  item_id: string;
+  /** The Zoho item id, plus "|description" for a general item. */
+  item_key: string;
+  description: string;
+  unit: string;
+  ordered: number;
+  available: number;
+  short: number;
+  reports: {
+    message_id: number;
+    from: { id: number | null; name: string; username: string | null };
+    sent_at: string;
+    updated_at: string;
+    edited: boolean;
+    /** The line as typed, e.g. "3 5". */
+    line: string;
+    /** The quantity on the message it replied to, and what was reported available of it. */
+    ordered: number;
+    available: number;
+    missing: boolean;
+  }[];
+};
+
 export type InvoiceDetail = {
   invoice_id: string;
   invoice_number: string;

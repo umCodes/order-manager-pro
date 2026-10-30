@@ -3890,3 +3890,35 @@ button.line-items__header.customer-tx__toggle {
   flex: none;
   margin-left: auto;
 }
+
+/* Shortages reported in the preparers' Telegram group, under a draft's item. */
+.shortage-note {
+  margin-top: 6px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.shortage-note--partial {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.shortage-note--missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.shortage-note--ok {
+  color: var(--color-gray-600);
+  background: var(--color-gray-100);
+}
+
+.shortage-note__summary {
+  font-weight: 600;
+}
+
+.shortage-note__report {
+  margin-top: 2px;
+  opacity: 0.85;
+}

@@ -1,4 +1,5 @@
 import { readGroupOrderMessage, recordGroupReply } from "../state/groupOrders.mjs";
+import { handleShortageReport } from "./shortageReports.mjs";
 
 /**
  * Ties a message in the preparers' group to the order it answers. Only a
@@ -7,11 +8,12 @@ import { readGroupOrderMessage, recordGroupReply } from "../state/groupOrders.mj
  * other chats and bots are ignored. The order message's record holds its
  * group's chat id, so a reply in any other chat never matches it.
  *
- * For now a recognised reply is only recorded (and logged), nothing is
- * answered in the chat: reading shortage reports from it comes next.
+ * A recognised reply is recorded, then read as a shortage report
+ * (shortageReports.mjs) — an edited one too, which replaces the report.
  */
 export async function linkGroupReply(update) {
-    const message = update.message;
+    const edited = !update.message && !!update.edited_message;
+    const message = update.message ?? update.edited_message;
     const repliedTo = message?.reply_to_message;
     if (!repliedTo || message.from?.is_bot) return;
 
@@ -27,6 +29,7 @@ export async function linkGroupReply(update) {
         order_id: order.order_id,
         order_number: order.order_number,
         message_type: order.message_type,
+        edited,
         text: message.text ?? message.caption ?? "",
         from: {
             id: message.from?.id ?? null,
@@ -34,6 +37,7 @@ export async function linkGroupReply(update) {
             username: message.from?.username ?? null,
         },
     };
-    console.log(`Telegram group: message ${message.message_id} is a reply to ${order.order_number} (group message ${repliedTo.message_id})`);
+    console.log(`Telegram group: message ${message.message_id}${edited ? " (edited)" : ""} is a reply to ${order.order_number} (group message ${repliedTo.message_id})`);
     await recordGroupReply(reply);
+    await handleShortageReport(message, order, { edited });
 }

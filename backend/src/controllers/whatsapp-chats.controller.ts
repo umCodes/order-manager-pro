@@ -19,7 +19,18 @@ import {
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
-import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import {
+    buildTemplateSend,
+    createTemplate,
+    deleteTemplate,
+    findCopiedTemplate,
+    findTemplate,
+    listTemplates,
+    renderTemplate,
+    renderedTemplateText,
+    uploadTemplateSample,
+    type RenderedTemplate,
+} from '../services/whatsapp/templates.js';
 import { notificationTemplateNames } from '../services/whatsapp/notificationTemplates.js';
 import { getDailyReportWhatsAppSettings } from '../services/dailyReport/whatsapp.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
@@ -121,15 +132,43 @@ function getMedia(message: StoredChatMessage): { id?: string; mime_type?: string
     return MEDIA_TYPES.includes(message.type) ? message[message.type] : undefined
 }
 
+/**
+ * A template message as the recipient sees it: rendered when it was sent,
+ * or — for messages stored before that — from the app's copy of the
+ * template list. Undefined if the template isn't known.
+ */
+function templateView(message: StoredChatMessage): RenderedTemplate | undefined {
+    if (message.type !== "template") return undefined
+    if (message.rendered) return message.rendered
+    const { name, language, components } = message.template ?? {}
+    const template = name && language ? findCopiedTemplate(name, language) : undefined
+    return template && Array.isArray(components) ? renderTemplate(template, components) : undefined
+}
+
+/** Makes sure the template copy has every template these messages were sent with, if it can (at most one fetch). */
+async function loadTemplatesFor(messages: StoredChatMessage[]) {
+    const missing = messages.find(
+        (m) => m.type === "template" && !m.rendered && m.template?.name && !findCopiedTemplate(m.template.name, m.template.language),
+    )
+    if (!missing) return
+    try {
+        await findTemplate(missing.template.name, missing.template.language)
+    } catch (error) {
+        console.error('Failed to load WhatsApp templates to show sent ones:', error)
+    }
+}
+
 function toMessageView(message: StoredChatMessage) {
     const media = getMedia(message)
+    const template = templateView(message)
     return {
         id: message.id,
         direction: message.direction,
         timestamp: message.timestamp,
         type: message.type,
         // Media bubbles render the file itself, so their text is just the caption.
-        text: media ? media.caption ?? "" : describeChatMessage(message),
+        text: media ? media.caption ?? "" : template ? renderedTemplateText(template) : describeChatMessage(message),
+        ...(template && { template }),
         ...(media?.id && {
             media: {
                 mime_type: media.mime_type,
@@ -368,6 +407,7 @@ export async function removeWhatsAppContact(req: Request, res: Response) {
 /** Builds the chat-history response: messages oldest first, and whether a free-form reply is currently allowed. */
 async function buildConversation(phone: string) {
     const messages = await getChatMessages(phone)
+    await loadTemplatesFor(messages)
     const lastInbound = [...messages].reverse().find((m) => m.direction === "in")
     const windowExpiresAt = lastInbound ? lastInbound.timestamp + REPLY_WINDOW_MS : undefined
     return {

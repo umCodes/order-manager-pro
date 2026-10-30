@@ -164,7 +164,32 @@ export async function listTemplates(force = false): Promise<MetaTemplate[]> {
         if (!after) break
     }
     setTTLCache(TEMPLATES_CACHE_KEY, templates, TEMPLATES_CACHE_SECONDS)
+    templateCopy.clear()
+    for (const template of templates) templateCopy.set(templateKey(template.name, template.language), template)
     return templates
+}
+
+/**
+ * The app's own copy of every template, by name and language, refreshed
+ * whenever the list is fetched from Meta. Kept in memory with no expiry, so
+ * showing a sent template the way it reads costs no call to Meta (or Redis).
+ */
+const templateCopy = new Map<string, MetaTemplate>()
+
+function templateKey(name: string, language: string) {
+    return `${name}:${language}`
+}
+
+/** One template's definition from the copy, fetching the list only when the copy doesn't have it. */
+export async function findTemplate(name: string, language: string): Promise<MetaTemplate | undefined> {
+    const key = templateKey(name, language)
+    if (!templateCopy.has(key)) await listTemplates()
+    return templateCopy.get(key)
+}
+
+/** The copy's definition of a template, without fetching anything (undefined if the copy doesn't have it). */
+export function findCopiedTemplate(name: string, language: string): MetaTemplate | undefined {
+    return templateCopy.get(templateKey(name, language))
 }
 
 export type NewTemplateButton =
@@ -391,4 +416,66 @@ export function buildTemplateSend(template: MetaTemplate, values: TemplateValues
     }
 
     return { components, summary: summary.filter(Boolean).join("\n\n") }
+}
+
+/** A sent template as the recipient sees it: the template's own wording with the sent values filled in. */
+export type RenderedTemplate = {
+    header?: string
+    /** File headers: which kind of file, and its name (documents). */
+    header_media?: { kind: "document" | "image" | "video"; filename?: string }
+    body: string
+    footer?: string
+    buttons?: { type: string; text: string; url?: string }[]
+}
+
+/** The values one send component gave its placeholders: by name for named templates, else {{1}}, {{2}}, … in order. */
+function sentValues(component: TemplateComponent | undefined): Record<string, string> {
+    const values: Record<string, string> = {}
+    component?.parameters.forEach((parameter, index) => {
+        if (parameter.type !== "text") return
+        values[parameter.parameter_name ?? String(index + 1)] = parameter.text
+    })
+    return values
+}
+
+/** Renders a sent template from its definition and the components it was sent with. */
+export function renderTemplate(template: MetaTemplate, components: TemplateComponent[]): RenderedTemplate {
+    const sentHeader = components.find((c) => c.type === "header")
+    const sentBody = components.find((c) => c.type === "body")
+    const rendered: RenderedTemplate = { body: "" }
+
+    for (const component of template.components) {
+        if (component.type === "HEADER") {
+            if (component.format && component.format !== "TEXT") {
+                const kind = component.format.toLowerCase()
+                if (kind !== "document" && kind !== "image" && kind !== "video") continue
+                const parameter: any = sentHeader?.parameters[0]
+                const filename = parameter?.document?.filename
+                rendered.header_media = { kind, ...(filename && { filename }) }
+            } else if (component.text) {
+                rendered.header = fill(component.text, sentValues(sentHeader))
+            }
+        } else if (component.type === "BODY") {
+            rendered.body = fill(component.text, sentValues(sentBody))
+        } else if (component.type === "FOOTER") {
+            if (component.text) rendered.footer = component.text
+        } else if (component.type === "BUTTONS") {
+            const buttons = (component.buttons ?? []).map((button, index) => {
+                const sentButton = components.find((c) => c.type === "button" && c.index === String(index))
+                const url = button.url && fill(button.url, sentValues(sentButton))
+                return { type: button.type, text: button.text, ...(url && { url }) }
+            })
+            if (buttons.length) rendered.buttons = buttons
+        }
+    }
+    return rendered
+}
+
+/** A rendered template as one line of plain text, for chat previews: the file it carries, then the body. */
+export function renderedTemplateText(rendered: RenderedTemplate): string {
+    const media = rendered.header_media
+    const mediaLabel = media
+        ? media.kind === "document" ? `📄 ${media.filename || "Document"}` : media.kind === "image" ? "📷 Photo" : "🎥 Video"
+        : undefined
+    return [mediaLabel ?? rendered.header, rendered.body].filter(Boolean).join("\n")
 }

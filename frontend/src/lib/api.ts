@@ -1138,6 +1138,17 @@ export type WhatsAppMessage = {
   media?: { mime_type?: string; filename?: string; voice?: boolean };
   /** Id of the message this one replies to (quoted above it). */
   reply_to?: string;
+  /** Template messages: the template's own wording with the sent values filled in, as the recipient sees it. */
+  template?: SentWhatsAppTemplate;
+};
+
+/** A sent template, rendered from its definition: header (text or a file), body, footer and buttons. */
+export type SentWhatsAppTemplate = {
+  header?: string;
+  header_media?: { kind: "document" | "image" | "video"; filename?: string };
+  body: string;
+  footer?: string;
+  buttons?: { type: string; text: string; url?: string }[];
 };
 
 /** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */

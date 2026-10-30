@@ -23,7 +23,7 @@ import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
-import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import WhatsAppTemplates, { SendTemplateModal, SentTemplate } from "./WhatsAppTemplates";
 import SaveWhatsAppContactModal from "./SaveWhatsAppContactModal";
 import FilterChip from "./FilterChip";
 
@@ -899,7 +899,9 @@ function MessageBubble({
           </button>
         )}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
-        {message.text && (
+        {message.template ? (
+          <SentTemplate template={message.template} />
+        ) : message.text && (
           <div className="wa-bubble__text" dir="auto">
             {message.text}
           </div>

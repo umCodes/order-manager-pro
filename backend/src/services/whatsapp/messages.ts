@@ -1,5 +1,6 @@
 import { WhatsAppApi, uploadWhatsAppMedia } from "./client.js"
 import { recordFailedOutboundMessage, recordOutboundMessage } from "./chatStore.js"
+import { findTemplate, renderTemplate, renderedTemplateText, type RenderedTemplate } from "./templates.js"
 
 export type TemplateParameter =
     | { type: "text"; text: string; parameter_name?: string }
@@ -16,11 +17,27 @@ export type TemplateComponent = {
 }
 
 /**
+ * The template as the recipient will see it, from the app's copy of the
+ * template list. Undefined if the template can't be found — the chat then
+ * falls back to `chatSummary`.
+ */
+async function renderForChat(templateName: string, languageCode: string, components: TemplateComponent[]): Promise<RenderedTemplate | undefined> {
+    try {
+        const template = await findTemplate(templateName, languageCode)
+        return template && renderTemplate(template, components)
+    } catch (error) {
+        console.error(`[WhatsApp template] couldn't look up "${templateName}" (${languageCode}) to show it in the chat:`, error)
+        return undefined
+    }
+}
+
+/**
  * Sends one of the pre-approved WhatsApp templates, filling in its
- * header/body parameters. `chatSummary` is the readable text shown for this
- * message in the in-app WhatsApp chat history (the template's own wording
- * lives in Meta Business Manager, not here). Every attempt is recorded in
- * the chat history, including ones WhatsApp rejects outright (as failed).
+ * header/body parameters. The chat history records it rendered from the
+ * template's own wording (see renderTemplate), so it reads exactly as the
+ * recipient sees it; `chatSummary` is only the fallback text for when the
+ * template's definition can't be found. Every attempt is recorded in the
+ * chat history, including ones WhatsApp rejects outright (as failed).
  */
 export async function sendWhatsAppTemplate(
     to: string,
@@ -31,10 +48,13 @@ export async function sendWhatsAppTemplate(
 ) {
     // Stored in the chat history with everything needed to send it again
     // from the chat view (see retryWhatsAppChatMessage).
+    const rendered = await renderForChat(templateName, languageCode, components)
+    const summary = rendered ? renderedTemplateText(rendered) : chatSummary
     const chatRecord = {
         type: "template",
         template: { name: templateName, language: languageCode, components },
-        ...(chatSummary && { summary: chatSummary }),
+        ...(rendered && { rendered }),
+        ...(summary && { summary }),
     }
     try {
         console.log(

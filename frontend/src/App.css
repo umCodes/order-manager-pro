@@ -3893,10 +3893,14 @@ button.line-items__header.customer-tx__toggle {
 
 /* Shortages reported in the preparers' Telegram group, under a draft's item. */
 .shortage-note {
-  margin-top: 6px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-top: 4px;
   font-size: 12px;
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  padding: 2px 8px;
 }
 
 .shortage-note--partial {
@@ -3919,6 +3923,6 @@ button.line-items__header.customer-tx__toggle {
 }
 
 .shortage-note__report {
-  margin-top: 2px;
-  opacity: 0.85;
+  font-size: 11px;
+  opacity: 0.8;
 }

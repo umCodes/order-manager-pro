@@ -151,7 +151,8 @@ export type BackupList = {
 /**
  * An item reported short in the preparers' Telegram group (`3 M` / `3 5`
  * replies to the order's message): what the order needs now, what's
- * available, and each report behind it. Listed as long as it has a report,
+ * available, and each report behind it — as the Telegram message counts it,
+ * in `unit` (kg, or "pcs" for a pack). Listed as long as it has a report,
  * even once it's no longer short.
  */
 export type OrderShortageItem = {
@@ -160,7 +161,7 @@ export type OrderShortageItem = {
   /** The Zoho item id, plus "|description" for a general item. */
   item_key: string;
   description: string;
-  unit: string;
+  unit: "kg" | "pcs";
   ordered: number;
   available: number;
   short: number;

@@ -5,7 +5,11 @@ import { readGroupReport, readOrderGroupMessages, saveGroupReport } from "../sta
  * Shortage reports: a preparer replies to an order message in the group with
  * one item per line —
  *   3 M   item ③ is completely missing (m or M)
- *   3 5   only 5 of item ③ is available, in the item's own unit (2.5 or 2,5 too)
+ *   3 5   only 5 of item ③ is available (2.5 or 2,5 too)
+ * Amounts are read as the message shows the item (telegramAmount): kilograms
+ * when it has ኪሎ (a box shows as 10ኪሎ), a plain count when it has no ኪሎ (a
+ * pack); for an item shown in grams (ግራም), a whole number is grams and a
+ * fraction kilograms. Report lines are saved in those Telegram amounts.
  * Lines that don't start with a digit are notes and are left alone; a reply
  * with no item lines isn't a report. Every item line must check out against
  * the message replied to, or nothing in the reply is saved and the bot
@@ -38,6 +42,26 @@ function circledNumber(n) {
 
 const round = (quantity) => Math.round(quantity * 1000) / 1000;
 
+/** "pack" in any case, also "packs", "packet(s)", "pk", "pkt(s)" and "እሽግ" — as backend/src/utils/quantity.ts. */
+const PACK_UNIT = /^\s*(packs?|packets?|pk|pkts?|እሽግ)\.?\s*$/i;
+
+/**
+ * A quantity as the Telegram message counts it: kilograms (a box is 10kg), or
+ * a plain count for a pack. Must match quantityCalc and telegramAmount in
+ * backend/src/utils/quantity.ts.
+ */
+export function telegramAmount(quantity, unit) {
+    if (PACK_UNIT.test(unit ?? "")) return { amount: quantity, unit: "pcs" };
+    if (unit === "box") return { amount: round(quantity * 10), unit: "kg" };
+    return { amount: quantity, unit: "kg" };
+}
+
+/** An amount the way the message writes it: "10ኪሎ", "500ግራም", or just the count. */
+function shown({ amount, unit }) {
+    if (unit === "pcs") return String(amount);
+    return amount < 1 ? `${round(amount * 1000)}ግራም` : `${amount}ኪሎ`;
+}
+
 /** The item lines of a reply, each checked against the order message's items: { lines, errors }. */
 export function parseReport(text, orderMessage) {
     const itemLines = String(text ?? "").split("\n").map((line) => line.trim()).filter((line) => ITEM_LINE.test(line));
@@ -50,28 +74,31 @@ export function parseReport(text, orderMessage) {
         const missing = text.match(MISSING_LINE);
         const amount = missing ? null : text.match(AMOUNT_LINE);
         if (!missing && !amount) {
-            errors.push(`"${text}" isn't a report line`);
+            errors.push(`"${text}" አልገባኝም`);
             continue;
         }
         const number = Number((missing ?? amount)[1]);
         const item = byNumber.get(number);
         if (!item) {
-            errors.push(`${circledNumber(number)} isn't on this message`);
+            errors.push(`${circledNumber(number)} በዚህ መልእክት ላይ የለም`);
             continue;
         }
         if (item.change === "decreased" || item.change === "removed") {
-            errors.push(`${circledNumber(number)} was ${item.change === "removed" ? "removed" : "reduced"} here, so there's nothing to prepare for it`);
+            errors.push(`${circledNumber(number)} እዚህ ${item.change === "removed" ? "ቀርቷል" : "ተቀንሷል"}`);
             continue;
         }
         if (seen.has(number)) {
-            errors.push(`${circledNumber(number)} is written twice`);
+            errors.push(`${circledNumber(number)} ሁለት ጊዜ ተጽፏል`);
             continue;
         }
         seen.add(number);
 
-        const available = missing ? 0 : round(Number(amount[2].replace(",", ".")));
-        if (available > item.quantity) {
-            errors.push(`${circledNumber(number)}: ${available} is more than the ${item.quantity} ${item.unit} on this message`);
+        const onMessage = telegramAmount(item.quantity, item.unit);
+        const typed = missing ? 0 : Number(amount[2].replace(",", "."));
+        // Shown in grams: a whole number is grams, a fraction kilograms.
+        const available = onMessage.unit === "kg" && onMessage.amount < 1 && typed >= 1 ? round(typed / 1000) : round(typed);
+        if (available > onMessage.amount) {
+            errors.push(`${circledNumber(number)}: ${amount[2]} ከ${shown(onMessage)} ይበልጣል`);
             continue;
         }
         lines.push({
@@ -80,8 +107,9 @@ export function parseReport(text, orderMessage) {
             item_key: item.item_key,
             description: item.description,
             unit: item.unit,
-            ordered: item.quantity,
+            ordered: onMessage.amount,
             available,
+            tg_unit: onMessage.unit,
             missing: available === 0,
             text,
         });
@@ -119,7 +147,7 @@ function answer(message, lines) {
     });
 }
 
-const FORMAT_HELP = ["", "One item per line:", "3 M → ③ is missing", "3 5 → only 5 of ③ is available"];
+const FORMAT_HELP = ["", "በአንድ መስመር አንድ እቃ:", "3 M → ③ የለም", "3 5 → ③ 5 ኪሎ ብቻ አለ"];
 
 /**
  * Handles a reply (new or edited) to an order message: `message` is the
@@ -142,12 +170,12 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
     }
 
     if (errors.length === 0 && (await isReplaced(orderMessage))) {
-        errors.push(`${orderMessage.order_number} was sent again since this message; reply to the newest one`);
+        errors.push(`${orderMessage.order_number} እንደገና ተልኳል፤ አዲሱን መልእክት ይመልሱ`);
     }
 
     if (errors.length > 0) {
-        const kept = edited && previous?.lines.length ? " (the earlier version stays)" : "";
-        await answer(message, [`⚠️ Not saved${kept}:`, ...errors.map((error) => `• ${error}`), ...FORMAT_HELP]);
+        const kept = edited && previous?.lines.length ? " (የቀድሞው እንዳለ ነው)" : "";
+        await answer(message, [`⚠️ አልተመዘገበም${kept}:`, ...errors.map((error) => `• ${error}`), ...FORMAT_HELP]);
         console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} refused:`, errors.join("; "));
         return;
     }

@@ -21,8 +21,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 | ✅ | **`TELEGRAM_GROUP_CHATID` set on Render** | setup |
 | ✅ | **Step 2, link group messages to orders:** each order, changes reply and backup list posted to the group saves group message ID → order (invoice ID or BK ID) and its numbered items (number, Zoho item ID, item key, description, unit, quantity; on a changes reply, what changed). Replies to them are recognised and recorded. The bot's temporary answers are removed | backend + Lambda |
 
-| ✅ | **Step 3, shortage replies:** one item per line, `3 M`/`3 m` (missing) or `3 5` (5 available; `2.5`/`2,5` too). Lines not starting with a digit are notes; a reply with no item lines isn't a report. Every item line is checked (item on the message replied to, not reduced/removed there, not more than its quantity, not written twice, message not replaced by a resend), else nothing is saved and the bot replies with what's wrong and the format. A saved report gets 👌. **Editing** a report replaces it: removing a line removes that item's report, removing every line cancels it (👌 taken off); every version is kept. Anyone in the group can report | Lambda |
-| ✅ | **Shortages in the app (draft details part of step 5):** under each reported item, red "Missing", amber "Short X: A of B available", or grey "nothing short now", with every report line, who sent it and when (and "edited"). Reported items no longer on the invoice are listed under the items | backend + app |
+| ✅ | **Step 3, shortage replies:** one item per line, `3 M`/`3 m` (missing) or `3 5` (5 available; `2.5`/`2,5` too). Lines not starting with a digit are notes; a reply with no item lines isn't a report. Every item line is checked (item on the message replied to, not reduced/removed there, not more than its quantity, not written twice, message not replaced by a resend), else nothing is saved and the bot replies (in Amharic) with what's wrong and the format. Amounts are in what the message shows (see Decisions). A saved report gets 👌. **Editing** a report replaces it: removing a line removes that item's report, removing every line cancels it (👌 taken off); every version is kept. Anyone in the group can report | Lambda |
+| ✅ | **Shortages in the app (draft details part of step 5):** under each reported item a short badge: red "Missing 5kg", amber "Short 5kg · 10/15kg", or grey "OK now", with every report line, who sent it and when (✎ edited). Reported items no longer on the invoice are listed under the items | backend + app |
 
 **How shortages add up:** only the newest full order message counts, with the changes replies after it. The order needs each item's latest quantity; what's available is, over that message and the replies that add to it, what was reported (or the full amount where nothing was). A later report on the same message and item replaces the earlier one. So a quantity change after a report is taken into account automatically.
 
@@ -57,6 +57,9 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - The Lambda deploy workflow switches from `claude/daily-report` to `main` after merging.
 
 ## Decisions
+- **Everything in Telegram is in Amharic,** including the bot's replies.
+- **Reports are read in what the Telegram message shows, not Zoho's units:** kilograms by default (a box shows as 10ኪሎ, so `1 15` on it is 15kg); a plain count when the message has no ኪሎ after the number (packs); for an item shown in grams (ግራም), a whole number is grams and a fraction kilograms. The app shows shortages the same way (kg, or a count).
+- **Badges in the app are short:** "Missing 5kg", "Short 5kg · 10/15kg", "OK now", with each report line, who and when (✎ edited).
 - Missing is `m` or `M`, nothing else.
 - Anyone in the group can report shortages and give 👍.
 - Corrections are made by editing the report message (Telegram doesn't tell bots about deletions).

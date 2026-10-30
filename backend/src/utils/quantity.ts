@@ -19,3 +19,15 @@ export function quantityCalc(quantity: number, unit: string){
             return quantity + "ኪሎ"
     }
 }
+
+/**
+ * A quantity as the Telegram message counts it, for reading preparers'
+ * reports against what they saw: kilograms (a box is 10kg; a weight shown in
+ * grams is still kilograms here), or a plain count for a pack. Must match
+ * quantityCalc, and telegramAmount in wa-webhook-lambda/telegram/shortageReports.mjs.
+ */
+export function telegramAmount(quantity: number, unit: string): { amount: number; unit: "kg" | "pcs" } {
+    if (PACK_UNIT.test(unit ?? "")) return { amount: quantity, unit: "pcs" }
+    if (unit === 'box') return { amount: Math.round(quantity * 10 * 1000) / 1000, unit: "kg" }
+    return { amount: quantity, unit: "kg" }
+}

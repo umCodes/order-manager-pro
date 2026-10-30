@@ -2,6 +2,7 @@ import { redisClient } from "../../config/redis.js"
 import { TELEGRAM_GROUP_CHATID } from "../../constants/env.js"
 import type { ItemWithQuantity } from "../zoho/types.js"
 import { INTERNAL_ITEM_MARKER } from "../../utils/internalLineItems.js"
+import { telegramAmount } from "../../utils/quantity.js"
 import type { ItemKeyOf, ItemNumbers } from "./invoices/itemNumbers.js"
 
 /**
@@ -174,9 +175,15 @@ export type GroupReportLine = {
     item_key: string
     description: string
     unit: string
-    /** The quantity on the message replied to. */
+    /**
+     * The quantity on the message replied to, and what's available of it —
+     * as the Telegram message counts it, in `tg_unit` (kg, or a count for a
+     * pack). Reports saved before Telegram amounts were used have no
+     * `tg_unit`: theirs are in the item's Zoho unit.
+     */
     ordered: number
     available: number
+    tg_unit?: "kg" | "pcs"
     missing: boolean
     /** The line as typed: "3 M", "3 5". */
     text: string
@@ -197,13 +204,17 @@ export type GroupReport = {
     history: { text: string; lines: GroupReportLine[]; updated_at: string }[]
 }
 
-/** One reported item on an order: what the order needs now, what's available, and the reports behind it. */
+/**
+ * One reported item on an order: what the order needs now, what's available,
+ * and the reports behind it — all as the Telegram message counts it, in
+ * `unit`: kg, or "pcs" for a pack.
+ */
 export type OrderShortageItem = {
     number: number
     item_id: string
     item_key: string
     description: string
-    unit: string
+    unit: "kg" | "pcs"
     ordered: number
     available: number
     short: number
@@ -260,6 +271,10 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
         for (const line of report.lines) latest.set(`${report.reply_to_message_id}:${line.number}`, { report, line })
     }
 
+    // Everything in what the Telegram message shows: kg, or a count for a pack.
+    const tg = (quantity: number, unit: string) => telegramAmount(quantity, unit).amount
+    const lineAmount = (line: GroupReportLine, quantity: number) => (line.tg_unit ? quantity : tg(quantity, line.unit))
+
     const items = new Map<string, OrderShortageItem & { supply: number }>()
     for (const message of current) {
         for (const item of message.items) {
@@ -268,17 +283,17 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
                 item_id: item.item_id,
                 item_key: item.item_key,
                 description: item.description,
-                unit: item.unit,
+                unit: telegramAmount(0, item.unit).unit,
                 ordered: 0,
                 available: 0,
                 short: 0,
                 reports: [],
                 supply: 0,
             }
-            entry.ordered = item.change ? (item.order_quantity ?? 0) : item.quantity
+            entry.ordered = tg(item.change ? (item.order_quantity ?? 0) : item.quantity, item.unit)
             if (item.change !== "decreased" && item.change !== "removed") {
                 const reported = latest.get(`${message.message_id}:${item.number}`)
-                entry.supply += reported ? reported.line.available : item.quantity
+                entry.supply += reported ? lineAmount(reported.line, reported.line.available) : tg(item.quantity, item.unit)
                 if (reported) {
                     entry.reports.push({
                         message_id: reported.report.message_id,
@@ -288,8 +303,8 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
                         updated_at: reported.report.updated_at,
                         edited: reported.report.history.length > 0,
                         line: reported.line.text,
-                        ordered: reported.line.ordered,
-                        available: reported.line.available,
+                        ordered: lineAmount(reported.line, reported.line.ordered),
+                        available: lineAmount(reported.line, reported.line.available),
                         missing: reported.line.missing,
                     })
                 }

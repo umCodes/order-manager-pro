@@ -914,7 +914,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           </div>
 
           {unmatchedShortages.map((shortage) => (
-            <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "An item no longer on this invoice"} />
+            <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "Removed item"} />
           ))}
 
           <div className="invoice-details__totals">

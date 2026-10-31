@@ -3970,3 +3970,20 @@ button.line-items__header.customer-tx__toggle {
 .item-breakdown__quantity .shortage-badge {
   margin-top: 0;
 }
+
+/* "Use 1.5 box" / "Remove" on a shortage note: sets the invoice to the reported amount, after a confirm. */
+.shortage-note__apply {
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.shortage-note__apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

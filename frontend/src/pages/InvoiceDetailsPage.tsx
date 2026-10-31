@@ -15,6 +15,7 @@ import {
   updateInvoiceLineItems,
   updateInvoiceCustomer,
   fetchOrderPreparation,
+  recordAppliedShortage,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -40,9 +41,9 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
-import { matchShortagesToLines } from "../lib/shortages";
+import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
-import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation } from "../types";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -204,6 +205,42 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       cancelled = true;
     };
   }, [invoice]);
+
+  // Applying a shortage report: the item it's for, while its confirm is open.
+  const [applyingShortage, setApplyingShortage] = useState<{ shortage: OrderShortageItem; line: InvoiceDetailLineItem } | null>(null);
+  const [isApplyingShortage, setIsApplyingShortage] = useState(false);
+  const [applyShortageError, setApplyShortageError] = useState<string | null>(null);
+
+  /**
+   * Sets the invoice to what the preparers reported available for one item
+   * (removing it when it's missing) — only on this deliberate confirm, saved
+   * to Zoho straight away like any item edit — then records it as applied so
+   * the item stops showing as short.
+   */
+  function handleApplyShortageConfirm() {
+    if (!invoice || !applyingShortage) return;
+    const { shortage } = applyingShortage;
+    const next = linesWithReportApplied(invoice.line_items, shortage);
+    if (!next) {
+      setApplyShortageError("This item isn't on the invoice any more.");
+      return;
+    }
+    setIsApplyingShortage(true);
+    setApplyShortageError(null);
+    updateInvoiceLineItems(
+      invoice.invoice_id,
+      next.map((li) => ({ item_id: li.item_id, description: li.description, quantity: li.quantity, rate: li.rate, unit: li.unit })),
+      lineItemsChangeReason(invoice.line_items, next),
+    )
+      .then(async (updatedInvoice) => {
+        // The invoice is changed either way; failing to record it only leaves the badge up.
+        await recordAppliedShortage(invoice.invoice_id, shortage.item_key, shortage.available, shortage.unit).catch(() => {});
+        setInvoice(updatedInvoice);
+        setApplyingShortage(null);
+      })
+      .catch((e) => setApplyShortageError(e instanceof Error ? e.message : "Failed to change the invoice"))
+      .finally(() => setIsApplyingShortage(false));
+  }
 
   /**
    * Re-fetches the invoice plus its customer, after anything that can move
@@ -902,7 +939,20 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                       <div className="line-item__meta">
                         {item.quantity} {item.unit} × {currency(item.rate)}
                       </div>
-                      {shortage && <ShortageNote shortage={shortage} />}
+                      {shortage && (
+                        <ShortageNote
+                          shortage={shortage}
+                          onApply={
+                            isDraft
+                              ? () => {
+                                  setApplyShortageError(null);
+                                  setApplyingShortage({ shortage, line: item });
+                                }
+                              : undefined
+                          }
+                          applyDisabledReason={isLineItemsDirty ? "Save or discard your other item changes first" : undefined}
+                        />
+                      )}
                     </div>
                   </div>
                   <div className="line-item__right">
@@ -1107,6 +1157,24 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           isConfirming={isVoiding}
           onConfirm={handleVoidConfirm}
           onCancel={() => setIsVoidConfirmOpen(false)}
+        />
+      )}
+
+      {applyingShortage && invoice && (
+        <ConfirmModal
+          title={applyingShortage.shortage.available === 0 ? `Remove ${applyingShortage.line.name}?` : `Change ${applyingShortage.line.name}?`}
+          message={
+            applyingShortage.shortage.available === 0
+              ? `Preparers reported it missing. ${applyingShortage.line.name} will be removed from ${invoice.invoice_number} in Zoho.`
+              : `Preparers reported ${applyingShortage.shortage.available} of ${applyingShortage.shortage.ordered} ${applyingShortage.shortage.unit} available. ${applyingShortage.line.name} will be changed to ${applyingShortage.shortage.available} ${applyingShortage.shortage.unit} on ${invoice.invoice_number} in Zoho, at the same price.`
+          }
+          confirmLabel={
+            isApplyingShortage ? "Saving..." : applyingShortage.shortage.available === 0 ? "Remove" : `Change to ${applyingShortage.shortage.available} ${applyingShortage.shortage.unit}`
+          }
+          error={applyShortageError}
+          isConfirming={isApplyingShortage}
+          onConfirm={handleApplyShortageConfirm}
+          onCancel={() => setApplyingShortage(null)}
         />
       )}
 

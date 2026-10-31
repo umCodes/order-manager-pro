@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation } from '../../services/telegram/groupOrders.js';
+import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
  * Lists every message sent to the Telegram channel through this app in the
@@ -136,5 +136,25 @@ export async function listOrderPreparationStatuses(req: Request, res: Response) 
     } catch (error) {
         console.error('Error reading preparation statuses:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the statuses' });
+    }
+}
+
+/**
+ * Records that an order's item was set to what the preparers reported (after
+ * the app saved that change to the invoice), so it stops showing as short:
+ * body { item_key, quantity, unit }. Changes nothing in Zoho itself.
+ */
+export async function postAppliedReport(req: Request, res: Response) {
+    try {
+        const orderId = req.params.orderId;
+        const { item_key, quantity, unit } = req.body ?? {};
+        if (!orderId) throw new Error("orderId not provided")
+        if (typeof item_key !== "string" || !item_key) throw new Error("item_key is required")
+        if (typeof quantity !== "number" || quantity < 0) throw new Error("quantity must be a number, 0 or more")
+        const applied = await recordAppliedReport(String(orderId), item_key, quantity, String(unit ?? ""));
+        res.status(200).json({ applied });
+    } catch (error) {
+        console.error('Error recording an applied report:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to record the change' });
     }
 }

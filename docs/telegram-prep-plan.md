@@ -4,7 +4,7 @@
 Preparers work in a Telegram **group**. They reply to an order to report missing items, and react 👍 when it's prepared. The app shows each order's preparation status and its shortages.
 
 **Ground rules**
-- **Zoho is never touched by any of this:** no invoice, quantity, total, payment or stock changes.
+- **Zoho is never changed automatically.** Telegram reports, 👍 and everything they show are read-only. The one exception is a deliberate, confirmed action by someone in the app: setting a short item to its reported amount (below). More permissions may come after a period of use, only when the owner says so.
 - **The group is the new workflow; the channel is not part of it.** The channel keeps doing its current job unchanged until the switch-over, but no new feature reads from it or depends on it, unless the owner asks for that feature to include the channel.
 - **Only a real reply counts:** a message sent with Telegram's Reply on a specific order message in the group. Plain text in the group is ignored.
 - **The bot doesn't answer in the chat** unless a step says so (e.g. the confirmation reaction in step 3).
@@ -29,6 +29,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 | ✅ | **Step 5, Items tab:** an item short on any draft gets a badge under its name with the total short across drafts (red "Missing" when none is available anywhere, amber "Short" otherwise); in its breakdown, each short draft gets its own badge by its quantity. Each draft's shortage is counted once | backend + app |
 
 | ✅ | **Step 6, backup lists:** `3 M` / `3 5` replies on a `BK-` list are saved like an order's. The Items tab's backup lists show each reported item's available amount with a Short/Missing badge; the daily report's "remaining backup items" counts only what was reported available (missing items left out) | backend + app |
+
+| ✅ | **Apply a report to the invoice (owner's request after testing):** a short item on a draft gets a "Use 1.5 box" button ("Remove" when missing). After a confirm saying exactly what changes, the invoice is changed in Zoho (same save as any item edit, with a Zoho reason), and the item stops showing as short. A newer report line on that item (or a newer message with it) reopens it; an edit that leaves the item's line as it was doesn't. Disabled while there are other unsaved item edits. Nothing in Telegram changes | backend + app |
 
 **Setup for step 4 (owner):** the bot must be an admin of the group, and the webhook must ask for reactions (`allowed_updates` including `message_reaction`); the group's allowed reactions must include 👍 and 👌.
 

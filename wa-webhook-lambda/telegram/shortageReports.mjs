@@ -191,9 +191,9 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
               order_number: orderMessage.order_number,
               from: sender(message),
               sent_at: new Date(message.date * 1000).toISOString(),
-              updated_at: new Date().toISOString(),
+              updated_at: new Date(message.date * 1000).toISOString(),
               text,
-              lines,
+              lines: lines.map((line) => ({ ...line, updated_at: new Date(message.date * 1000).toISOString() })),
               history: [],
           };
     await saveGroupReport(report);
@@ -203,11 +203,18 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
 
 function nextVersion(previous, message, text, lines) {
     const { history = [], ...current } = previous;
+    const updatedAt = new Date((message.edit_date ?? message.date) * 1000).toISOString();
+    // A line the edit left as it was keeps its own time, so only what changed counts as new.
+    const before = new Map(previous.lines.map((line) => [line.number, line]));
     return {
         ...current,
         text,
-        lines,
-        updated_at: new Date((message.edit_date ?? message.date) * 1000).toISOString(),
+        lines: lines.map((line) => {
+            const old = before.get(line.number);
+            const unchanged = old && old.available === line.available;
+            return { ...line, updated_at: unchanged ? (old.updated_at ?? previous.updated_at) : updatedAt };
+        }),
+        updated_at: updatedAt,
         history: [...history, { text: previous.text, lines: previous.lines, updated_at: previous.updated_at }],
     };
 }

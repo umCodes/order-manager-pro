@@ -177,7 +177,10 @@ export type OrderShortageItem = {
   unit: string;
   ordered: number;
   available: number;
+  /** 0 once the report was applied to the invoice here (see `applied`), until a newer report about the item. */
   short: number;
+  /** When the invoice was set to the reported amount from the app, and to what. */
+  applied?: { at: string; quantity: number; unit: string } | null;
   reports: {
     message_id: number;
     from: { id: number | null; name: string; username: string | null };

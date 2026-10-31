@@ -187,6 +187,8 @@ export type GroupReportLine = {
     missing: boolean
     /** The line as typed: "3 M", "3 5". */
     text: string
+    /** When this line last changed (an edit that leaves it as it was keeps it); older reports have none — use the report's. */
+    updated_at?: string
 }
 
 export type GroupReport = {
@@ -218,7 +220,10 @@ export type OrderShortageItem = {
     unit: string
     ordered: number
     available: number
+    /** 0 once the report was applied to the invoice in the app (see applied), until a newer report or message about the item. */
     short: number
+    /** When someone in the app set the invoice to the reported amount, and to what. */
+    applied: AppliedReport | null
     reports: {
         message_id: number
         reply_to_message_id: number
@@ -249,6 +254,29 @@ async function readJson<T>(keys: string[]): Promise<T[]> {
  * item as an earlier one replaces it. Only items with a report are listed;
  * an item whose report no longer leaves it short is listed with short 0.
  */
+/**
+ * Reports applied to the invoice in the app: someone chose to set an item's
+ * quantity to what the preparers reported available (or remove a missing
+ * one). Recorded per order and item, so the item stops counting as short —
+ * until a newer report or message about it. Kept 30 days.
+ *
+ *   telegram:group-applied:<order id> → hash of item key → AppliedReport (JSON)
+ */
+export type AppliedReport = { at: string; quantity: number; unit: string }
+const appliedKey = (orderId: string) => `telegram:group-applied:${orderId}`
+
+async function readAppliedReports(orderId: string): Promise<Record<string, AppliedReport>> {
+    const stored = await redisClient.hGetAll(appliedKey(orderId))
+    return Object.fromEntries(Object.entries(stored ?? {}).map(([key, raw]) => [key, JSON.parse(raw) as AppliedReport]))
+}
+
+export async function recordAppliedReport(orderId: string, itemKey: string, quantity: number, unit: string) {
+    const record: AppliedReport = { at: new Date().toISOString(), quantity, unit }
+    await redisClient.hSet(appliedKey(orderId), itemKey, JSON.stringify(record))
+    await redisClient.expire(appliedKey(orderId), KEEP_SECONDS)
+    return record
+}
+
 export async function orderShortages(orderId: string): Promise<{ order_id: string; items: OrderShortageItem[] }> {
     const { items } = await shortagesAndMessages(orderId)
     return { order_id: orderId, items }
@@ -271,6 +299,8 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
         .filter((report) => currentIds.has(report.reply_to_message_id))
         .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
 
+    const applied = await readAppliedReports(orderId)
+
     // The latest report line per (message replied to, item number).
     const latest = new Map<string, { report: GroupReport; line: GroupReportLine }>()
     for (const report of reports) {
@@ -281,7 +311,7 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
     const tg = (quantity: number, unit: string) => telegramAmount(quantity, unit).amount
     const lineAmount = (line: GroupReportLine, quantity: number) => (line.tg_unit ? quantity : tg(quantity, line.unit))
 
-    const items = new Map<string, OrderShortageItem & { supply: number }>()
+    const items = new Map<string, OrderShortageItem & { supply: number; changed_at: string }>()
     for (const message of current) {
         for (const item of message.items) {
             const entry = items.get(item.item_key) ?? {
@@ -293,14 +323,19 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
                 ordered: 0,
                 available: 0,
                 short: 0,
+                applied: null,
                 reports: [],
                 supply: 0,
+                changed_at: "",
             }
+            if (message.posted_at > entry.changed_at) entry.changed_at = message.posted_at
             entry.ordered = tg(item.change ? (item.order_quantity ?? 0) : item.quantity, item.unit)
             if (item.change !== "decreased" && item.change !== "removed") {
                 const reported = latest.get(`${message.message_id}:${item.number}`)
                 entry.supply += reported ? lineAmount(reported.line, reported.line.available) : tg(item.quantity, item.unit)
                 if (reported) {
+                    const lineChangedAt = reported.line.updated_at ?? reported.report.updated_at
+                    if (lineChangedAt > entry.changed_at) entry.changed_at = lineChangedAt
                     entry.reports.push({
                         message_id: reported.report.message_id,
                         reply_to_message_id: message.message_id,
@@ -324,12 +359,18 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
         items: [...items.values()]
             .filter((item) => item.reports.length > 0)
             // Worked out in Telegram amounts, shown in the item's own unit.
-            .map(({ supply, ...item }) => ({
-                ...item,
-                ordered: round(fromTelegramAmount(item.ordered, item.unit)),
-                available: round(fromTelegramAmount(Math.min(item.ordered, supply), item.unit)),
-                short: round(fromTelegramAmount(Math.max(0, item.ordered - supply), item.unit)),
-            }))
+            .map(({ supply, changed_at, ...item }) => {
+                // Applied after the item's latest report or message: the invoice already matches what's there.
+                const appliedNow = applied[item.item_key]
+                const isApplied = !!appliedNow && appliedNow.at > changed_at
+                return {
+                    ...item,
+                    ordered: round(fromTelegramAmount(item.ordered, item.unit)),
+                    available: round(fromTelegramAmount(Math.min(item.ordered, supply), item.unit)),
+                    short: isApplied ? 0 : round(fromTelegramAmount(Math.max(0, item.ordered - supply), item.unit)),
+                    applied: isApplied ? appliedNow : null,
+                }
+            })
             .sort((a, b) => a.number - b.number),
     }
 }

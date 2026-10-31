@@ -855,6 +855,23 @@ export async function fetchOrderPreparation(orderId: string): Promise<OrderPrepa
   return response.json();
 }
 
+/**
+ * Records that an order's item was set to what the preparers reported, after
+ * that change was saved to the invoice — so it stops showing as short.
+ */
+export async function recordAppliedShortage(orderId: string, itemKey: string, quantity: number, unit: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/applied`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_key: itemKey, quantity, unit }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to record the change (${response.status})`);
+  }
+}
+
 /** Several orders' preparation at once, by order id (for the drafts list and the Items tab). */
 export async function fetchPreparationStatuses(
   orderIds: string[],

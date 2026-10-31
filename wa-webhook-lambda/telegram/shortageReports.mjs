@@ -4,7 +4,7 @@ import { readGroupReport, readOrderGroupMessages, saveGroupReport } from "../sta
 /**
  * Shortage reports: a preparer replies to an order message in the group with
  * one item per line —
- *   3 M   item ③ is completely missing (m or M)
+ *   3 M   item ③ is completely missing (m or M; 3 0 says the same)
  *   3 5   only 5 of item ③ is available (2.5 or 2,5 too)
  * Amounts are read as the message shows the item (telegramAmount): kilograms
  * when it has ኪሎ (a box shows as 10ኪሎ), a plain count when it has no ኪሎ (a
@@ -147,7 +147,7 @@ function answer(message, lines) {
     });
 }
 
-const FORMAT_HELP = ["", "በአንድ መስመር አንድ እቃ:", "3 M → ③ የለም", "3 5 → ③ 5 ኪሎ ብቻ አለ"];
+const FORMAT_HELP = ["", "በአንድ መስመር አንድ እቃ:", "3 M ወይም 3 0 → ③ የለም", "3 5 → ③ 5 ኪሎ ብቻ አለ"];
 
 /**
  * Handles a reply (new or edited) to an order message: `message` is the

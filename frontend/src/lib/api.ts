@@ -1,4 +1,4 @@
-import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
+import type { BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -585,7 +585,7 @@ export async function sendItemsListToTelegram(payload: {
   return response.json();
 }
 
-async function fetchBackupListsUncached(): Promise<BackupList[]> {
+async function fetchBackupListsUncached(): Promise<{ lists: BackupList[]; missing: BackupMissingItem[] }> {
   const response = await apiFetch(`${API_BASE_URL}/api/backup-lists`);
 
   if (!response.ok) {
@@ -594,11 +594,14 @@ async function fetchBackupListsUncached(): Promise<BackupList[]> {
   }
 
   const data = await response.json();
-  return data.lists;
+  return { lists: data.lists ?? [], missing: data.missing ?? [] };
 }
 
-/** The backup lists not removed yet, newest first. */
-export function fetchBackupLists(options?: { force?: boolean }): Promise<BackupList[]> {
+/**
+ * The backup lists not removed yet, newest first (with what was reported
+ * and taken), and today's items quick invoices sent that no list had.
+ */
+export function fetchBackupLists(options?: { force?: boolean }): Promise<{ lists: BackupList[]; missing: BackupMissingItem[] }> {
   if (options?.force) invalidateCache("backupLists");
   return cachedFetch("backupLists", fetchBackupListsUncached);
 }

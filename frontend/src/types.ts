@@ -157,8 +157,25 @@ export type BackupList = {
     unit: string;
     available?: number;
     short?: number;
+    /** How much quick invoices (sent within 15 minutes of being created) took from it, and which. */
+    taken?: number;
+    taken_by?: { invoice_number: string; customer_name: string; quantity: number }[];
+    /** What's left: reported available (or the quantity), less what was taken. Absent from older responses. */
+    remaining?: number;
   }[];
   message_id: number | null;
+};
+
+/** An item a quick invoice sent today that no backup list had, in the invoice's unit. */
+export type BackupMissingItem = {
+  item_id: string;
+  name: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  invoice_number: string;
+  customer_name: string;
+  at: string;
 };
 
 /**

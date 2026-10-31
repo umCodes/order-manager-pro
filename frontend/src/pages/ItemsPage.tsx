@@ -9,7 +9,7 @@ import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
-import type { BackupList, DraftLineItemSummary, OrderShortageItem } from "../types";
+import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderShortageItem } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -28,7 +28,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 export default function ItemsPage() {
   const [items, setItems] = useState<DraftLineItemSummary[]>([]);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
-  const [backupLists, setBackupLists] = useState<BackupList[]>([]);
+  const [backupLists, setBackupLists] = useState<{ lists: BackupList[]; missing: BackupMissingItem[] }>({ lists: [], missing: [] });
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("quantity", "desc");
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -40,7 +40,7 @@ export default function ItemsPage() {
     fetchItemCategorySettings(options)
       .then((settings) => setCategoryOrder(settings.order))
       .catch(() => setCategoryOrder([]));
-    fetchBackupLists(options).then(setBackupLists).catch(() => setBackupLists([]));
+    fetchBackupLists(options).then(setBackupLists).catch(() => setBackupLists({ lists: [], missing: [] }));
     return fetchDraftLineItems(options)
       .then((list) => {
         setItems(list);
@@ -155,8 +155,9 @@ export default function ItemsPage() {
       )}
 
       <BackupListsSection
-        lists={backupLists}
-        onRemoved={() => fetchBackupLists().then(setBackupLists).catch(() => setBackupLists([]))}
+        lists={backupLists.lists}
+        missing={backupLists.missing}
+        onRemoved={() => fetchBackupLists().then(setBackupLists).catch(() => setBackupLists({ lists: [], missing: [] }))}
       />
     </div>
   );

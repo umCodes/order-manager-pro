@@ -1,7 +1,8 @@
 import { ZohoApi } from "../zoho/client.js"
 import { redisClient } from "../../config/redis.js"
 import { businessDayKey, businessDayWindow } from "../../utils/businessDate.js"
-import { asActuallyAvailable, backupListsRemainingAt, type BackupList } from "../backupLists.js"
+import { backupListsRemainingAt, type BackupList } from "../backupLists.js"
+import { remainingBackup } from "../backupUsage.js"
 import { readReportDay, type ReportDraft, type ReportLine, type ReportReturn } from "./store.js"
 import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
 
@@ -23,7 +24,7 @@ export type DailyReportData = {
     invoices: { number: string; customer: string; at: string; total: number; discount: number; paid: number; balance: number; status: InvoiceStatus; lines: ReportLine[] }[]
     returns: ReportReturn[]
     drafts: { number: string; customer: string; at: string; date?: string; total: number }[]
-    /** Backup lists still open when the day ended (or now, while it's running), oldest first — each item cut to what was reported available. */
+    /** Backup lists still open when the day ended (or now, while it's running), oldest first — each item cut to what's left (reported available, less what quick invoices took). */
     backupLists: BackupList[]
 }
 
@@ -134,8 +135,8 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         currentInvoiceStates(accessToken, ids, dates),
         checkZohoTimezone(accessToken),
         undeliveredOrders(accessToken, day, recorded.drafts),
-        // As reported available in the Telegram group: items reported missing aren't remaining.
-        backupListsRemainingAt(isComplete ? businessDayWindow(day).end : new Date()).then(asActuallyAvailable).catch((error) => {
+        // What's actually left: as reported available in the Telegram group, less what quick invoices took.
+        backupListsRemainingAt(isComplete ? businessDayWindow(day).end : new Date()).then(remainingBackup).catch((error) => {
             console.error("Daily report: couldn't read the backup lists", error)
             return []
         }),

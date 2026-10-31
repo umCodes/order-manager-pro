@@ -32,6 +32,9 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 
 | ✅ | **Apply a report to the invoice (owner's request after testing):** a short item on a draft gets a "Use 1.5 box" button ("Remove" when missing). After a confirm saying exactly what changes, the invoice is changed in Zoho (same save as any item edit, with a Zoho reason), and the item stops showing as short. A newer report line on that item (or a newer message with it) reopens it; an edit that leaves the item's line as it was doesn't. Disabled while there are other unsaved item edits. Nothing in Telegram changes | backend + app |
 
+| ✅ | **Step 7, backup stock used by quick invoices (owner's rules):** an invoice marked as sent (or a draft paid) **within 15 minutes of being created** was handed over from backup stock, whether or not it went to Telegram; anything slower was prepared and takes nothing. Its items are taken from the backup lists **oldest list first** (same item, a general item by its description too; kg/box converted, packs by count; partial amounts allowed; never taken twice). What no list has is recorded as **missing**. Each list item starts from what was reported available. Items tab: each backup item shows what's left and "−2 box · INV-… · customer" per invoice; a "Missing from backup (today)" list. The daily report's remaining backup items subtract what was taken. Voiding an invoice gives its stock back. Nothing in Zoho changes | backend + app |
+| ✅ | **Voided invoices leave Telegram:** voiding in the app already deleted the messages; now invoices voided, sent, paid or deleted in Zoho itself are caught too — when the drafts list loads (at most every 10 minutes), every invoice still holding Telegram messages that's no longer a draft has them deleted (channel and group) | backend |
+
 **Setup for step 4 (owner):** the bot must be an admin of the group, and the webhook must ask for reactions (`allowed_updates` including `message_reaction`); the group's allowed reactions must include 👍 and 👌.
 
 **How shortages add up:** only the newest full order message counts, with the changes replies after it. The order needs each item's latest quantity; what's available is, over that message and the replies that add to it, what was reported (or the full amount where nothing was). A later report on the same message and item replaces the earlier one. So a quantity change after a report is taken into account automatically.
@@ -39,10 +42,6 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 **Checking step 2** (no Telegram changes): `GET /api/telegram/group/messages/<group message id>` shows the order and items saved for a group message; `GET /api/telegram/group/replies` lists the latest recognised replies. Orders posted before step 2 was deployed have no link.
 
 ## Next steps
-
-### Step 7: allocate backup stock to orders (needs decisions first)
-- Take available backup quantities and assign them to new orders' items: matched by item ID and unit, partial amounts allowed, never assigned twice, every assignment recorded.
-- Not started until the open questions below are answered.
 
 ### Step 8: switch over
 - Orders go to the group only, and the channel copy ends.
@@ -59,8 +58,4 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - Everything in a report must show in the app.
 
 ## Open questions
-1. **Allocation (step 7):**
-   - What makes backup stock usable: a 👍 on the list?
-   - Does an order's Telegram message still ask preparers for the allocated part?
-   - What happens to allocations when a draft is edited, deleted or voided?
-2. **Redis durability:** reports and lists must survive restarts. Does the Redis plan save to disk? The provider and plan in `REDIS_URL` tell.
+1. **Redis durability:** reports and lists must survive restarts. Does the Redis plan save to disk? The provider and plan in `REDIS_URL` tell.

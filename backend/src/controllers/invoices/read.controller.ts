@@ -5,6 +5,8 @@ import { createInvoicePdfBufferForLanguage, regularItemRates, toInvoicePdfData }
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { businessDayKey } from "../../utils/businessDate.js";
 import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyTotals.js";
+import { cleanUpLeftoverInvoiceMessages } from "../../services/telegram/invoices/index.js";
+import { releaseBackupUsage } from "../../services/backupUsage.js";
 
 /**
  * Lists every invoice currently in draft status, each with its customer's
@@ -16,6 +18,9 @@ import { getCollectedToday, reconcileDailyEstimate } from "../../services/dailyT
  * joined in from the cached customer list — at most one extra Zoho request
  * (to warm that cache), never one per customer. A failure there only drops
  * the fields; the drafts themselves still come back.
+ *
+ * Also starts the (throttled) clean-up of Telegram messages left by invoices
+ * that left draft in Zoho itself — see cleanUpLeftoverInvoiceMessages.
  */
 export async function getDraftInvoices(req: Request, res: Response) {
   try {
@@ -28,6 +33,14 @@ export async function getDraftInvoices(req: Request, res: Response) {
         return [];
       }),
     ]);
+
+    // In the background: Telegram messages of invoices voided/sent/deleted in Zoho itself (see the function).
+    void cleanUpLeftoverInvoiceMessages(new Set(drafts.map((draft: any) => String(draft.invoice_id))), async (invoiceId) => {
+      const status = String((await ZohoGetInvoiceById(access_token, invoiceId))?.status ?? "")
+      // A void in Zoho gives back any backup stock the invoice took, as voiding in the app does.
+      if (status === "void") await releaseBackupUsage(invoiceId)
+      return status
+    });
 
     const customFieldsByCustomerId = new Map<string, unknown[]>(
       customers.map((c: any) => [String(c.contact_id), c.custom_fields ?? []]),

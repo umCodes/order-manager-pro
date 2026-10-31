@@ -212,3 +212,48 @@ export async function deleteInvoiceTelegramMessage(invoiceId: string) {
         console.error('Error deleting invoice message after it left draft:', error);
     }
 }
+
+const CLEANUP_LOCK_KEY = "telegram:invoice-cleanup"
+const CLEANUP_EVERY_SECONDS = 10 * 60
+
+/**
+ * Catches invoices that left draft outside the app — voided, sent, paid or
+ * deleted in Zoho itself — whose Telegram messages (channel and group) would
+ * otherwise stay up: every invoice still holding item numbers (that is,
+ * posted and not cleaned up) that isn't among `draftIds` is looked up in
+ * Zoho, and its thread is deleted unless it's still a draft. Runs at most
+ * once every CLEANUP_EVERY_SECONDS; best-effort, errors are logged. A lookup
+ * that fails for any reason but "doesn't exist" leaves the invoice for the
+ * next run.
+ */
+export async function cleanUpLeftoverInvoiceMessages(
+    draftIds: Set<string>,
+    statusOf: (invoiceId: string) => Promise<string | null>,
+) {
+    try {
+        if (!(await redisClient.set(CLEANUP_LOCK_KEY, "1", { NX: true, EX: CLEANUP_EVERY_SECONDS }))) return
+        const prefix = numbersKey("")
+        const leftovers: string[] = []
+        for await (const batch of redisClient.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) {
+            for (const key of Array.isArray(batch) ? batch : [batch]) {
+                const invoiceId = String(key).slice(prefix.length)
+                if (invoiceId && !draftIds.has(invoiceId)) leftovers.push(invoiceId)
+            }
+        }
+        for (const invoiceId of leftovers) {
+            let status: string | null
+            try {
+                status = await statusOf(invoiceId)
+            } catch (error: any) {
+                if (!/does not exist|not found/i.test(String(error?.message ?? ""))) continue
+                status = null
+            }
+            if (status === "draft") continue
+            console.log(`Telegram: invoice ${invoiceId} is ${status ?? "gone"} in Zoho, removing its messages`)
+            await deleteInvoiceTelegramMessage(invoiceId)
+            await redisClient.del(numbersKey(invoiceId))
+        }
+    } catch (error) {
+        console.error("Telegram: couldn't clean up messages of invoices no longer in draft", error)
+    }
+}

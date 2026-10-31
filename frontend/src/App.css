@@ -3987,3 +3987,12 @@ button.line-items__header.customer-tx__toggle {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Backup list items taken by quick invoices: who took how much, and an item with nothing left. */
+.backup-taken {
+  font-size: 11px;
+}
+
+.backup-used-up {
+  color: var(--color-gray-400);
+}

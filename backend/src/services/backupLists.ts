@@ -166,13 +166,3 @@ export async function withReportedAvailability(lists: BackupList[]): Promise<(Ba
         }),
     )
 }
-
-/** The lists with each item's quantity cut to what was reported available, and items with none left out — what's actually there. */
-export async function asActuallyAvailable(lists: BackupList[]): Promise<BackupList[]> {
-    return (await withReportedAvailability(lists)).map((list) => ({
-        ...list,
-        items: list.items
-            .map(({ available, short: _short, ...item }: BackupListItemWithReport) => (available === undefined ? item : { ...item, quantity: available }))
-            .filter((item) => item.quantity > 0),
-    }))
-}

@@ -180,6 +180,20 @@ export type OrderShortageItem = {
   }[];
 };
 
+/**
+ * Where an order's preparation stands in the Telegram group: "not_reported"
+ * until it has a 👍, then "ready" (nothing short) or "partial" (something
+ * short). `confirmed` is the 👍 that completed it.
+ */
+export type PreparationStatus = "not_reported" | "ready" | "partial";
+export type PreparationConfirmation = { name: string; at: string };
+export type OrderPreparation = {
+  order_id: string;
+  status: PreparationStatus;
+  confirmed: PreparationConfirmation | null;
+  items: OrderShortageItem[];
+};
+
 export type InvoiceDetail = {
   invoice_id: string;
   invoice_number: string;

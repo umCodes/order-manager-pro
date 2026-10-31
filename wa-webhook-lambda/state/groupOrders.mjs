@@ -63,3 +63,24 @@ export async function readOrderGroupMessages(orderId) {
     const raw = await redis.mget(ids.map((id) => `telegram:group-order:${id}`));
     return raw.filter(Boolean).map((entry) => JSON.parse(entry));
 }
+
+/**
+ * 👍 on order messages: per order message, who has one on it now and since
+ * when (the backend reads these to tell an order is prepared:
+ * backend/src/services/telegram/groupOrders.ts; change both together).
+ *
+ *   telegram:group-thumbs:<group message id> → hash of reactor id → { name, at } (JSON)
+ */
+const thumbsKey = (messageId) => `telegram:group-thumbs:${messageId}`;
+
+export async function setThumb(messageId, reactorId, thumb) {
+    await getRedisClient()
+        .multi()
+        .hset(thumbsKey(messageId), String(reactorId), JSON.stringify(thumb))
+        .expire(thumbsKey(messageId), REPORT_KEEP_SECONDS)
+        .exec();
+}
+
+export async function removeThumb(messageId, reactorId) {
+    await getRedisClient().hdel(thumbsKey(messageId), String(reactorId));
+}

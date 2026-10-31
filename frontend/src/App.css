@@ -3913,11 +3913,6 @@ button.line-items__header.customer-tx__toggle {
   background: #fee2e2;
 }
 
-.shortage-note--ok {
-  color: var(--color-gray-600);
-  background: var(--color-gray-100);
-}
-
 .shortage-note__summary {
   font-weight: 600;
 }
@@ -3925,4 +3920,38 @@ button.line-items__header.customer-tx__toggle {
 .shortage-note__report {
   font-size: 11px;
   opacity: 0.8;
+}
+
+/* An order's preparation in the Telegram group: drafts list and draft details. */
+.preparation-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.preparation-badge--ready {
+  color: var(--color-green-700);
+  background: #dcfce7;
+}
+
+.preparation-badge--partial {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.preparation-badge--not_reported {
+  color: var(--color-gray-500);
+  background: var(--color-gray-100);
+  font-weight: 500;
+}
+
+.preparation-badge__by {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
 }

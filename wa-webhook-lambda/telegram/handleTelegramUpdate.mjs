@@ -1,6 +1,7 @@
 import { parseWebhookBody } from "../webhook/parseWebhookBody.mjs";
 import { claimUpdate, recordUpdate } from "../state/telegramUpdates.mjs";
 import { linkGroupReply } from "./groupReplies.mjs";
+import { handleReaction } from "./thumbsUp.mjs";
 
 const ok = { statusCode: 200, body: JSON.stringify({ ok: true }) };
 
@@ -16,8 +17,9 @@ function updateKind(update) {
  * unset refuses everything). Each update is recorded once; Telegram's
  * repeats are answered 200 and ignored. Always answers 200 once the secret
  * checks out, so a bad update is never retried forever. Replies to order
- * messages in the preparers' group are tied to their order (groupReplies.mjs);
- * nothing is answered in the chat.
+ * messages in the preparers' group are tied to their order and read as
+ * shortage reports (groupReplies.mjs), and 👍 on them marks the order
+ * prepared (thumbsUp.mjs).
  */
 export async function handleTelegramUpdate(event) {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -47,6 +49,7 @@ export async function handleTelegramUpdate(event) {
         console.log(`Telegram update ${update.update_id} (${updateKind(update)}):`, JSON.stringify(update));
         await recordUpdate(update);
         await linkGroupReply(update);
+        await handleReaction(update);
     } catch (error) {
         console.error(`Telegram webhook: failed to record update ${update.update_id}`, error);
     }

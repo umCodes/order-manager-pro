@@ -249,6 +249,11 @@ async function readJson<T>(keys: string[]): Promise<T[]> {
  * an item whose report no longer leaves it short is listed with short 0.
  */
 export async function orderShortages(orderId: string): Promise<{ order_id: string; items: OrderShortageItem[] }> {
+    const { items } = await shortagesAndMessages(orderId)
+    return { order_id: orderId, items }
+}
+
+async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShortageItem[]; current: GroupOrderMessage[] }> {
     const reportIds = await redisClient.sMembers(`telegram:group-reports:${orderId}`)
     const allReports = await readJson<GroupReport>(reportIds.map((id) => `telegram:group-report:${id}`))
 
@@ -314,7 +319,7 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
     }
 
     return {
-        order_id: orderId,
+        current,
         items: [...items.values()]
             .filter((item) => item.reports.length > 0)
             .map(({ supply, ...item }) => ({
@@ -324,5 +329,54 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
                 short: round(Math.max(0, item.ordered - supply)),
             }))
             .sort((a, b) => a.number - b.number),
+    }
+}
+
+/**
+ * 👍 on order messages in the group, as the webhook Lambda saves them from
+ * reaction updates (wa-webhook-lambda/state/groupOrders.mjs; change both
+ * together): per order message, who has a 👍 on it now and since when.
+ *
+ *   telegram:group-thumbs:<group message id> → hash of reactor id → { name, at } (JSON)
+ */
+export type Thumb = { name: string; at: string }
+
+async function thumbsOn(messageId: number): Promise<Thumb[]> {
+    const stored = await redisClient.hGetAll(`telegram:group-thumbs:${messageId}`)
+    return Object.values(stored ?? {}).map((raw) => JSON.parse(raw) as Thumb)
+}
+
+/**
+ * Where an order's preparation stands:
+ *   not_reported  no 👍 yet — on the newest full message, and on every
+ *                 changes reply after it that adds to the order (a reply
+ *                 that only lowers or removes needs none)
+ *   ready         👍 on all of those, and nothing short
+ *   partial       👍 on all of those, with one or more items short
+ * `confirmed` is the latest 👍 that completed it (null while not reported).
+ */
+export type PreparationStatus = "not_reported" | "ready" | "partial"
+export type OrderPreparation = {
+    order_id: string
+    status: PreparationStatus
+    confirmed: Thumb | null
+    items: OrderShortageItem[]
+}
+
+export async function orderPreparation(orderId: string): Promise<OrderPreparation> {
+    const { items, current } = await shortagesAndMessages(orderId)
+    const toConfirm = current.filter(
+        (message) => message.message_type === "order" || message.items.some((item) => item.change === "added" || item.change === "increased"),
+    )
+    const thumbs = await Promise.all(toConfirm.map((message) => thumbsOn(message.message_id)))
+    const confirmed = toConfirm.length > 0 && thumbs.every((list) => list.length > 0)
+    const latest = confirmed
+        ? thumbs.map((list) => list.reduce((a, b) => (a.at > b.at ? a : b))).reduce((a, b) => (a.at > b.at ? a : b))
+        : null
+    return {
+        order_id: orderId,
+        status: !confirmed ? "not_reported" : items.some((item) => item.short > 0) ? "partial" : "ready",
+        confirmed: latest,
+        items,
     }
 }

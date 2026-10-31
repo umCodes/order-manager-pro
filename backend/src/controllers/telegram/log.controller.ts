@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages } from '../../services/telegram/groupOrders.js';
+import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation } from '../../services/telegram/groupOrders.js';
 
 /**
  * Lists every message sent to the Telegram channel through this app in the
@@ -110,5 +110,31 @@ export async function getOrderShortages(req: Request, res: Response) {
     } catch (error) {
         console.error('Error reading order shortages:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the shortages' });
+    }
+}
+
+/** An order's preparation (invoice id or BK- id): its status, who confirmed it, and its shortages. */
+export async function getOrderPreparation(req: Request, res: Response) {
+    try {
+        const orderId = req.params.orderId;
+        if (!orderId) throw new Error("orderId not provided")
+        res.status(200).json(await orderPreparation(String(orderId)));
+    } catch (error) {
+        console.error('Error reading order preparation:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });
+    }
+}
+
+/** Several orders' preparation status at once, for the drafts list: `?ids=a,b,c` → { statuses: { id: { status, confirmed } } }. */
+export async function listOrderPreparationStatuses(req: Request, res: Response) {
+    try {
+        const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
+        const results = await Promise.all(ids.map((id) => orderPreparation(id)));
+        res.status(200).json({
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed }) => [order_id, { status, confirmed }])),
+        });
+    } catch (error) {
+        console.error('Error reading preparation statuses:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the statuses' });
     }
 }

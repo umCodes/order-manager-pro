@@ -22,3 +22,10 @@ export function matchShortagesToLines(lines: InvoiceDetailLineItem[], shortages:
   }
   return { byLine, unmatched };
 }
+
+/** When something was reported: the time today, or the weekday and time. */
+export function reportTime(iso: string) {
+  const at = new Date(iso);
+  const today = at.toDateString() === new Date().toDateString();
+  return at.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}

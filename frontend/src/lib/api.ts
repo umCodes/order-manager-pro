@@ -1,4 +1,4 @@
-import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderShortageItem } from "../types";
+import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation, PreparationConfirmation, PreparationStatus } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -843,17 +843,32 @@ export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDetail
   return data.invoice;
 }
 
-/** An order's (invoice id or BK- id) shortages as reported in the Telegram group; empty when none were. */
-export async function fetchOrderShortages(orderId: string): Promise<OrderShortageItem[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/shortages`);
+/** An order's (invoice id or BK- id) preparation in the Telegram group: its status, who confirmed it, its shortages. */
+export async function fetchOrderPreparation(orderId: string): Promise<OrderPreparation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/preparation`);
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to fetch shortages (${response.status})`);
+    throw new Error(body.error ?? `Failed to fetch preparation (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** Several orders' preparation status at once, by order id (for the drafts list). */
+export async function fetchPreparationStatuses(
+  orderIds: string[],
+): Promise<Record<string, { status: PreparationStatus; confirmed: PreparationConfirmation | null }>> {
+  if (orderIds.length === 0) return {};
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/preparation?ids=${orderIds.map(encodeURIComponent).join(",")}`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch preparation statuses (${response.status})`);
   }
 
   const data = await response.json();
-  return data.items ?? [];
+  return data.statuses ?? {};
 }
 
 export function invoiceCacheKey(invoiceId: string) {

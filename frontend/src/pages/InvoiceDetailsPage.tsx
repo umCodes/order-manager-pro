@@ -14,7 +14,7 @@ import {
   updateInvoiceDate,
   updateInvoiceLineItems,
   updateInvoiceCustomer,
-  fetchOrderShortages,
+  fetchOrderPreparation,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -39,9 +39,10 @@ import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
+import PreparationBadge from "../components/PreparationBadge";
 import { matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
-import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderShortageItem } from "../types";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -188,15 +189,15 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     };
   }, [invoiceId, customerRetryToken]);
 
-  // Shortages the preparers reported in the Telegram group: drafts only (a
-  // sent invoice's preparation is over), re-read whenever the invoice is.
-  const [shortages, setShortages] = useState<OrderShortageItem[]>([]);
+  // The order's preparation in the Telegram group (👍 and shortages): drafts
+  // only (a sent invoice's preparation is over), re-read whenever the invoice is.
+  const [preparation, setPreparation] = useState<OrderPreparation | null>(null);
   useEffect(() => {
     let cancelled = false;
     if (!invoice || invoice.status !== "draft") return;
-    fetchOrderShortages(invoice.invoice_id)
-      .then((items) => {
-        if (!cancelled) setShortages(items);
+    fetchOrderPreparation(invoice.invoice_id)
+      .then((result) => {
+        if (!cancelled) setPreparation(result);
       })
       .catch(() => {});
     return () => {
@@ -400,7 +401,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const isDraft = invoice?.status === "draft";
   const { byLine: shortagesByLine, unmatched: unmatchedShortages } = matchShortagesToLines(
     displayLineItems,
-    isDraft ? shortages : [],
+    isDraft && preparation?.order_id === invoice?.invoice_id ? preparation.items : [],
   );
 
   // A selection only matters if it's a draft (splitting a sent invoice's
@@ -848,7 +849,15 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
           <div className="line-items">
             <div className="line-items__header line-items__header--with-action">
-              <span>Items ({displayLineItems.length})</span>
+              <span>
+                Items ({displayLineItems.length})
+                {isDraft && preparation?.order_id === invoice.invoice_id && (
+                  <>
+                    {" "}
+                    <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
+                  </>
+                )}
+              </span>
               <button type="button" className="link-btn line-items__add" onClick={() => setIsAddItemOpen(true)}>
                 <Plus size={14} />
                 Add items

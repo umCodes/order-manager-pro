@@ -1,35 +1,28 @@
 import type { OrderShortageItem } from "../types";
+import { reportTime } from "../lib/shortages";
 
 const amount = (value: number, unit: OrderShortageItem["unit"]) => (unit === "pcs" ? `${value}` : `${value}kg`);
 
-const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-
 /**
- * What the preparers reported for an item, kept short: red "Missing", amber
- * "Short 5kg · 10/15kg", or grey "OK now" once a report no longer leaves it
- * short (e.g. the order was lowered). Under it, every report line as typed,
- * who sent it and when (✎ when edited).
+ * An item the preparers reported short, kept short: red "Missing 5kg" or
+ * amber "Short 5kg · 10/15kg", then who reported it and when. Nothing for an
+ * item that isn't short.
  */
 export default function ShortageNote({ shortage, title }: { shortage: OrderShortageItem; title?: string }) {
+  if (shortage.short === 0) return null;
   const { unit } = shortage;
-  const tone = shortage.short === 0 ? "ok" : shortage.available === 0 ? "missing" : "partial";
-  const summary =
-    tone === "ok"
-      ? "OK now"
-      : tone === "missing"
-        ? `Missing ${amount(shortage.ordered, unit)}`
-        : `Short ${amount(shortage.short, unit)} · ${shortage.available}/${amount(shortage.ordered, unit)}`;
+  const missing = shortage.available === 0;
+  const reporters = [...new Map(shortage.reports.map((report) => [report.from.name, report])).values()];
 
   return (
-    <div className={`shortage-note shortage-note--${tone}`}>
+    <div className={`shortage-note shortage-note--${missing ? "missing" : "partial"}`}>
       <span className="shortage-note__summary">
         {title && `${title}: `}
-        {summary}
+        {missing ? `Missing ${amount(shortage.ordered, unit)}` : `Short ${amount(shortage.short, unit)} · ${shortage.available}/${amount(shortage.ordered, unit)}`}
       </span>
-      {shortage.reports.map((report) => (
-        <span key={`${report.message_id}:${report.line}`} className="shortage-note__report">
-          {report.line} · {report.from.name || "?"} {time(report.edited ? report.updated_at : report.sent_at)}
-          {report.edited && " ✎"}
+      {reporters.map((report) => (
+        <span key={report.message_id} className="shortage-note__report">
+          {report.from.name || "?"} {reportTime(report.edited ? report.updated_at : report.sent_at)}
         </span>
       ))}
     </div>

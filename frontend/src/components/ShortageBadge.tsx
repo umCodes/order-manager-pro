@@ -1,11 +1,8 @@
-import type { OrderShortageItem } from "../types";
-
-const amount = (value: number, unit: OrderShortageItem["unit"]) => (unit === "pcs" ? `${Math.round(value * 1000) / 1000}` : `${Math.round(value * 1000) / 1000}kg`);
+const amount = (value: number, unit: string) => `${Math.round(value * 1000) / 1000} ${unit}`.trim();
 
 /**
- * How much is short, as one small badge: red "Missing 5kg" when none of
- * `ordered` is available, amber "Short 2kg" otherwise. Amounts are as the
- * Telegram messages count them (kg, or a count for a pack).
+ * How much is short, as one small badge: red "Missing 5 kg" when none of
+ * `ordered` is available, amber "Short 0.5 box" otherwise, in the item's own unit.
  */
 export default function ShortageBadge({
   short,
@@ -14,7 +11,7 @@ export default function ShortageBadge({
 }: {
   short: number;
   ordered: number;
-  unit: OrderShortageItem["unit"];
+  unit: string;
 }) {
   const missing = short >= ordered;
   return (

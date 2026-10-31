@@ -147,16 +147,26 @@ export type DraftLineItemSummary = {
 export type BackupList = {
   id: string;
   created_at: string;
-  items: { number: number; item_id: string; name: string; description: string; quantity: number; unit: string }[];
+  /** `available` and `short` are set for an item reported short in the Telegram group (in its own unit). */
+  items: {
+    number: number;
+    item_id: string;
+    name: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    available?: number;
+    short?: number;
+  }[];
   message_id: number | null;
 };
 
 /**
  * An item reported short in the preparers' Telegram group (`3 M` / `3 5`
  * replies to the order's message): what the order needs now, what's
- * available, and each report behind it — as the Telegram message counts it,
- * in `unit` (kg, or "pcs" for a pack). Listed as long as it has a report,
- * even once it's no longer short.
+ * available, and each report behind it — in the item's own `unit`, as on the
+ * invoice (preparers report in kg on Telegram; a box is converted back).
+ * Listed as long as it has a report, even once it's no longer short.
  */
 export type OrderShortageItem = {
   number: number;
@@ -164,7 +174,7 @@ export type OrderShortageItem = {
   /** The Zoho item id, plus "|description" for a general item. */
   item_key: string;
   description: string;
-  unit: "kg" | "pcs";
+  unit: string;
   ordered: number;
   available: number;
   short: number;

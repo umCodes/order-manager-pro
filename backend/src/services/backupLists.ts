@@ -1,5 +1,6 @@
 import { redisClient } from "../config/redis.js"
 import { BUSINESS_UTC_OFFSET_HOURS } from "../utils/businessDate.js"
+import { orderShortages } from "./telegram/groupOrders.js"
 
 /**
  * Backup lists: items posted to the channel for preparation without an
@@ -23,6 +24,13 @@ export type BackupListItem = {
     quantity: number
     unit: string
 }
+
+/**
+ * A list item with what the preparers reported in the Telegram group (`3 M` /
+ * `3 5` replies to the list's message), in the item's own unit: `available`
+ * and `short` are set only for an item reported short.
+ */
+export type BackupListItemWithReport = BackupListItem & { available?: number; short?: number }
 
 export type BackupList = {
     id: string
@@ -137,4 +145,34 @@ export async function removeBackupList(id: string): Promise<BackupList | null> {
 export async function removeBackupListByMessage(messageId: number): Promise<void> {
     const list = (await listBackupLists()).find((entry) => entry.message_id === messageId)
     if (list) await removeBackupList(list.id)
+}
+
+/** Each list with what was reported short on it in the Telegram group (see BackupListItemWithReport). */
+export async function withReportedAvailability(lists: BackupList[]): Promise<(BackupList & { items: BackupListItemWithReport[] })[]> {
+    return Promise.all(
+        lists.map(async (list) => {
+            const shortages = await orderShortages(list.id).then((result) => result.items).catch((error) => {
+                console.error(`Backup list ${list.id}: couldn't read its reports`, error)
+                return []
+            })
+            const byNumber = new Map(shortages.filter((item) => item.short > 0).map((item) => [item.number, item]))
+            return {
+                ...list,
+                items: list.items.map((item) => {
+                    const reported = byNumber.get(item.number)
+                    return reported ? { ...item, available: reported.available, short: reported.short } : item
+                }),
+            }
+        }),
+    )
+}
+
+/** The lists with each item's quantity cut to what was reported available, and items with none left out — what's actually there. */
+export async function asActuallyAvailable(lists: BackupList[]): Promise<BackupList[]> {
+    return (await withReportedAvailability(lists)).map((list) => ({
+        ...list,
+        items: list.items
+            .map(({ available, short: _short, ...item }: BackupListItemWithReport) => (available === undefined ? item : { ...item, quantity: available }))
+            .filter((item) => item.quantity > 0),
+    }))
 }

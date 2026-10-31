@@ -2,7 +2,7 @@ import { redisClient } from "../../config/redis.js"
 import { TELEGRAM_GROUP_CHATID } from "../../constants/env.js"
 import type { ItemWithQuantity } from "../zoho/types.js"
 import { INTERNAL_ITEM_MARKER } from "../../utils/internalLineItems.js"
-import { telegramAmount } from "../../utils/quantity.js"
+import { fromTelegramAmount, telegramAmount } from "../../utils/quantity.js"
 import type { ItemKeyOf, ItemNumbers } from "./invoices/itemNumbers.js"
 
 /**
@@ -206,15 +206,16 @@ export type GroupReport = {
 
 /**
  * One reported item on an order: what the order needs now, what's available,
- * and the reports behind it — all as the Telegram message counts it, in
- * `unit`: kg, or "pcs" for a pack.
+ * and the reports behind it — in the item's own unit (`unit`, as on the
+ * invoice: a box stays a box), though preparers report in what the Telegram
+ * message shows (kg).
  */
 export type OrderShortageItem = {
     number: number
     item_id: string
     item_key: string
     description: string
-    unit: "kg" | "pcs"
+    unit: string
     ordered: number
     available: number
     short: number
@@ -288,7 +289,7 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
                 item_id: item.item_id,
                 item_key: item.item_key,
                 description: item.description,
-                unit: telegramAmount(0, item.unit).unit,
+                unit: item.unit,
                 ordered: 0,
                 available: 0,
                 short: 0,
@@ -308,8 +309,8 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
                         updated_at: reported.report.updated_at,
                         edited: reported.report.history.length > 0,
                         line: reported.line.text,
-                        ordered: lineAmount(reported.line, reported.line.ordered),
-                        available: lineAmount(reported.line, reported.line.available),
+                        ordered: fromTelegramAmount(lineAmount(reported.line, reported.line.ordered), item.unit),
+                        available: fromTelegramAmount(lineAmount(reported.line, reported.line.available), item.unit),
                         missing: reported.line.missing,
                     })
                 }
@@ -322,11 +323,12 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
         current,
         items: [...items.values()]
             .filter((item) => item.reports.length > 0)
+            // Worked out in Telegram amounts, shown in the item's own unit.
             .map(({ supply, ...item }) => ({
                 ...item,
-                ordered: round(item.ordered),
-                available: round(Math.min(item.ordered, supply)),
-                short: round(Math.max(0, item.ordered - supply)),
+                ordered: round(fromTelegramAmount(item.ordered, item.unit)),
+                available: round(fromTelegramAmount(Math.min(item.ordered, supply), item.unit)),
+                short: round(fromTelegramAmount(Math.max(0, item.ordered - supply), item.unit)),
             }))
             .sort((a, b) => a.number - b.number),
     }

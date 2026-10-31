@@ -1,11 +1,14 @@
 import type { Request, Response } from 'express';
-import { listBackupLists, removeBackupList } from '../services/backupLists.js';
+import { listBackupLists, removeBackupList, withReportedAvailability } from '../services/backupLists.js';
 import { TelegramDeleteMessage } from '../services/telegram/index.js';
 
-/** The backup lists not removed yet, newest first — the Items tab's "Backup lists" section. */
+/**
+ * The backup lists not removed yet, newest first — the Items tab's "Backup
+ * lists" section — with what was reported short on each in the Telegram group.
+ */
 export async function getBackupLists(_req: Request, res: Response) {
     try {
-        res.status(200).json({ lists: await listBackupLists() });
+        res.status(200).json({ lists: await withReportedAvailability(await listBackupLists()) });
     } catch (error) {
         console.error('Error listing backup lists:', error);
         res.status(500).json({ error: 'Failed to load backup lists' });

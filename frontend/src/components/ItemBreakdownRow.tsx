@@ -17,7 +17,7 @@ type Props = {
  * expandable breakdown of which draft invoices contribute to the total quantity.
  */
 export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggleChecked, onToggleExpanded, shortages = [] }: Props) {
-  // The item's total short across drafts, in one unit (kg, or a count) — mixed units aren't added up.
+  // The item's total short across drafts, in its own unit — mixed units aren't added up.
   const short = shortages.filter((entry): entry is OrderShortageItem => !!entry);
   const totalUnit = short.length > 0 && short.every((entry) => entry.unit === short[0].unit) ? short[0].unit : null;
   const total = totalUnit

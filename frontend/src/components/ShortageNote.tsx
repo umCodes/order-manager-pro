@@ -1,12 +1,12 @@
 import type { OrderShortageItem } from "../types";
 import { reportTime } from "../lib/shortages";
 
-const amount = (value: number, unit: OrderShortageItem["unit"]) => (unit === "pcs" ? `${value}` : `${value}kg`);
+const amount = (value: number, unit: string) => `${value} ${unit}`.trim();
 
 /**
- * An item the preparers reported short, kept short: red "Missing 5kg" or
- * amber "Short 5kg · 10/15kg", then who reported it and when. Nothing for an
- * item that isn't short.
+ * An item the preparers reported short, kept short: red "Missing 5 kg" or
+ * amber "Short 0.5 box · 1.5/2 box" (in the item's own unit), then who
+ * reported it and when. Nothing for an item that isn't short.
  */
 export default function ShortageNote({ shortage, title }: { shortage: OrderShortageItem; title?: string }) {
   if (shortage.short === 0) return null;

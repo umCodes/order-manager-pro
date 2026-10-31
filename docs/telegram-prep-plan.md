@@ -28,6 +28,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 
 | ✅ | **Step 5, Items tab:** an item short on any draft gets a badge under its name with the total short across drafts (red "Missing" when none is available anywhere, amber "Short" otherwise); in its breakdown, each short draft gets its own badge by its quantity. Each draft's shortage is counted once | backend + app |
 
+| ✅ | **Step 6, backup lists:** `3 M` / `3 5` replies on a `BK-` list are saved like an order's. The Items tab's backup lists show each reported item's available amount with a Short/Missing badge; the daily report's "remaining backup items" counts only what was reported available (missing items left out) | backend + app |
+
 **Setup for step 4 (owner):** the bot must be an admin of the group, and the webhook must ask for reactions (`allowed_updates` including `message_reaction`); the group's allowed reactions must include 👍 and 👌.
 
 **How shortages add up:** only the newest full order message counts, with the changes replies after it. The order needs each item's latest quantity; what's available is, over that message and the replies that add to it, what was reported (or the full amount where nothing was). A later report on the same message and item replaces the earlier one. So a quantity change after a report is taken into account automatically.
@@ -35,10 +37,6 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 **Checking step 2** (no Telegram changes): `GET /api/telegram/group/messages/<group message id>` shows the order and items saved for a group message; `GET /api/telegram/group/replies` lists the latest recognised replies. Orders posted before step 2 was deployed have no link.
 
 ## Next steps
-
-### Step 6: backup lists in the group
-- The same `3 M` / `3 5` replies work on `BK-` lists, and the saved list shows what's actually available.
-- The daily report's "remaining backup items" uses the reported amounts.
 
 ### Step 7: allocate backup stock to orders (needs decisions first)
 - Take available backup quantities and assign them to new orders' items: matched by item ID and unit, partial amounts allowed, never assigned twice, every assignment recorded.
@@ -50,8 +48,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 
 ## Decisions
 - **Everything in Telegram is in Amharic,** including the bot's replies.
-- **Reports are read in what the Telegram message shows, not Zoho's units:** kilograms by default (a box shows as 10ኪሎ, so `1 15` on it is 15kg); a plain count when the message has no ኪሎ after the number (packs); for an item shown in grams (ግራም), a whole number is grams and a fraction kilograms. The app shows shortages the same way (kg, or a count).
-- **Badges in the app are short:** item notes "Missing 5kg" / "Short 5kg · 10/15kg" with who reported and when (no report text, nothing for items that aren't short); order status Ready / Partial / Not reported.
+- **Reports are read in what the Telegram message shows, not Zoho's units:** kilograms by default (a box shows as 10ኪሎ, so `1 15` on it is 15kg); a plain count when the message has no ኪሎ after the number (packs); for an item shown in grams (ግራም), a whole number is grams and a fraction kilograms. The app shows shortages in each item's own unit, as on the invoice (a box stays a box: 15kg available of 2 box shows as 1.5 box).
+- **Badges in the app are short:** item notes "Missing 5 kg" / "Short 0.5 box · 1.5/2 box" with who reported and when (no report text, nothing for items that aren't short); order status Ready / Partial / Not reported.
 - Missing is `m`, `M` or `0` (`3 0` is the same as `3 M`), nothing else.
 - Anyone in the group can report shortages and give 👍.
 - Corrections are made by editing the report message (Telegram doesn't tell bots about deletions).

@@ -31,3 +31,10 @@ export function telegramAmount(quantity: number, unit: string): { amount: number
     if (unit === 'box') return { amount: Math.round(quantity * 10 * 1000) / 1000, unit: "kg" }
     return { amount: quantity, unit: "kg" }
 }
+
+/** The reverse of telegramAmount: a Telegram amount (kg, or a count) back in the item's own unit — a box is 10kg. */
+export function fromTelegramAmount(amount: number, unit: string): number {
+    if (PACK_UNIT.test(unit ?? "")) return amount
+    if (unit === 'box') return Math.round((amount / 10) * 1000) / 1000
+    return amount
+}

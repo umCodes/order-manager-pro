@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { deleteBackupList } from "../lib/api";
 import ConfirmModal from "./ConfirmModal";
+import ShortageBadge from "./ShortageBadge";
 import type { BackupList } from "../types";
 
 /** "27 Oct, 3:45 PM" in business time (UTC+3), whatever the device's time zone. */
@@ -19,7 +20,9 @@ function sentLabel(iso: string) {
 /**
  * The Items tab's backup lists: items sent to Telegram without an invoice,
  * each under its BK- id, kept apart from the drafts' items so nothing is
- * counted twice. A list can be removed once it's done with.
+ * counted twice. An item reported short in the Telegram group shows what's
+ * actually available, with how much is short. A list can be removed once
+ * it's done with.
  */
 export default function BackupListsSection({ lists, onRemoved }: { lists: BackupList[]; onRemoved: () => void }) {
   const [removing, setRemoving] = useState<BackupList | null>(null);
@@ -87,10 +90,13 @@ export default function BackupListsSection({ lists, onRemoved }: { lists: Backup
                   {item.name && item.description && item.description !== item.name && (
                     <div className="line-item__meta">{item.description}</div>
                   )}
+                  {item.short !== undefined && item.short > 0 && (
+                    <ShortageBadge short={item.short} ordered={item.quantity} unit={item.unit} />
+                  )}
                 </div>
                 <div className="line-item__right">
                   <span className="line-item__total">
-                    {item.quantity} {item.unit}
+                    {item.available ?? item.quantity} {item.unit}
                   </span>
                 </div>
               </div>

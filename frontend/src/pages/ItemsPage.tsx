@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings } from "../lib/api";
+import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchPreparationStatuses } from "../lib/api";
+import { shortagesForBreakdown } from "../lib/shortages";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import SortRow from "../components/SortRow";
@@ -8,7 +9,7 @@ import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
-import type { BackupList, DraftLineItemSummary } from "../types";
+import type { BackupList, DraftLineItemSummary, OrderShortageItem } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -31,6 +32,8 @@ export default function ItemsPage() {
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("quantity", "desc");
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  // Shortages reported in the Telegram group, by draft — read fresh with every load of the items.
+  const [shortagesByInvoice, setShortagesByInvoice] = useState<Record<string, OrderShortageItem[]>>({});
 
   const loadItems = useCallback((options?: { force?: boolean }) => {
     // The category order only affects how items are arranged; without it they still list.
@@ -38,7 +41,17 @@ export default function ItemsPage() {
       .then((settings) => setCategoryOrder(settings.order))
       .catch(() => setCategoryOrder([]));
     fetchBackupLists(options).then(setBackupLists).catch(() => setBackupLists([]));
-    return fetchDraftLineItems(options).then(setItems).catch(() => setItems([]));
+    return fetchDraftLineItems(options)
+      .then((list) => {
+        setItems(list);
+        const invoiceIds = [...new Set(list.flatMap((item) => item.breakdown.map((entry) => entry.invoice_id)))];
+        fetchPreparationStatuses(invoiceIds)
+          .then((statuses) =>
+            setShortagesByInvoice(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.items ?? []]))),
+          )
+          .catch(() => {});
+      })
+      .catch(() => setItems([]));
   }, []);
 
   useEffect(() => {
@@ -130,6 +143,7 @@ export default function ItemsPage() {
                         isExpanded={expandedItems.has(rowKey)}
                         onToggleChecked={() => toggleChecked(rowKey)}
                         onToggleExpanded={() => toggleExpanded(rowKey)}
+                        shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
                       />
                     );
                   })}

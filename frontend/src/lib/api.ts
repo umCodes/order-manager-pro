@@ -1,4 +1,4 @@
-import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation, PreparationConfirmation, PreparationStatus } from "../types";
+import type { BackupList, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -855,10 +855,10 @@ export async function fetchOrderPreparation(orderId: string): Promise<OrderPrepa
   return response.json();
 }
 
-/** Several orders' preparation status at once, by order id (for the drafts list). */
+/** Several orders' preparation at once, by order id (for the drafts list and the Items tab). */
 export async function fetchPreparationStatuses(
   orderIds: string[],
-): Promise<Record<string, { status: PreparationStatus; confirmed: PreparationConfirmation | null }>> {
+): Promise<Record<string, Omit<OrderPreparation, "order_id">>> {
   if (orderIds.length === 0) return {};
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/preparation?ids=${orderIds.map(encodeURIComponent).join(",")}`);
 

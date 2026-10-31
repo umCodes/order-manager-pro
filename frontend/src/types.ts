@@ -126,6 +126,9 @@ export type DraftItemBreakdownEntry = {
   date: string;
   quantity: number;
   unit: string;
+  /** The line's Zoho item and description, to tie it to the draft's shortage reports (absent from older responses). */
+  item_id?: string;
+  description?: string;
   /** Set client-side when the draft's date has passed and it's shown under today instead. */
   isCarriedOver?: boolean;
 };

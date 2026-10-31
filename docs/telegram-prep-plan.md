@@ -26,6 +26,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 
 | ✅ | **Step 4, 👍 means prepared:** anyone's 👍 on an order message marks it prepared, taking it off undoes it (bots ignored). Status: grey **Not reported** (no 👍), green **Ready** (👍, nothing short), amber **Partial** (👍, something short). After a changes reply that adds items, that reply needs its own 👍 too (one that only lowers or removes doesn't). Shown on each draft in the drafts list, and on the draft page next to "Items" with who gave the 👍 and when. Item notes show only short items: the shortage, who reported it and when (not the report text) | backend + Lambda + app |
 
+| ✅ | **Step 5, Items tab:** an item short on any draft gets a badge under its name with the total short across drafts (red "Missing" when none is available anywhere, amber "Short" otherwise); in its breakdown, each short draft gets its own badge by its quantity. Each draft's shortage is counted once | backend + app |
+
 **Setup for step 4 (owner):** the bot must be an admin of the group, and the webhook must ask for reactions (`allowed_updates` including `message_reaction`); the group's allowed reactions must include 👍 and 👌.
 
 **How shortages add up:** only the newest full order message counts, with the changes replies after it. The order needs each item's latest quantity; what's available is, over that message and the replies that add to it, what was reported (or the full amount where nothing was). A later report on the same message and item replaces the earlier one. So a quantity change after a report is taken into account automatically.
@@ -33,11 +35,6 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 **Checking step 2** (no Telegram changes): `GET /api/telegram/group/messages/<group message id>` shows the order and items saved for a group message; `GET /api/telegram/group/replies` lists the latest recognised replies. Orders posted before step 2 was deployed have no link.
 
 ## Next steps
-
-### Step 5: show it in the app
-- ~~Drafts list badge~~ and ~~draft details~~: done with steps 3 and 4.
-- **Sent invoices:** nothing changes.
-- **Items page:** reported shortages are shown without counting anything twice.
 
 ### Step 6: backup lists in the group
 - The same `3 M` / `3 5` replies work on `BK-` lists, and the saved list shows what's actually available.

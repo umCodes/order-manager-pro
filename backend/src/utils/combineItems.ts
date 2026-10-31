@@ -8,6 +8,9 @@ export type ItemBreakdownEntry = {
   date: string;
   quantity: number;
   unit: string;
+  /** The line's Zoho item and description, to tie it to the order's Telegram shortage reports. */
+  item_id: string;
+  description: string;
 };
 
 export type CombinedItem = {
@@ -47,6 +50,7 @@ export function combineItems(invoices: ZohoInvoice[], catalog: CategorizedItem[]
     const allItems = invoices.flatMap(inv =>
         inv.line_items.map((item: LineItem) => ({
           name: item.name,
+          item_id: String(item.item_id ?? ""),
           quantity: item.quantity,
           unit: item.unit,
           description: item.description,
@@ -71,6 +75,8 @@ export function combineItems(invoices: ZohoInvoice[], catalog: CategorizedItem[]
         date: item.date,
         quantity: item.quantity,
         unit: item.unit,
+        item_id: item.item_id,
+        description: item.description,
       };
 
       // Combine qunatities under the same name (key in lowercase)

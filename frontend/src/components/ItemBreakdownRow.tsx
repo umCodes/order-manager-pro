@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from "lucide-react";
-import type { DraftLineItemSummary } from "../types";
+import type { DraftLineItemSummary, OrderShortageItem } from "../types";
+import ShortageBadge from "./ShortageBadge";
 
 type Props = {
   item: DraftLineItemSummary;
@@ -7,13 +8,22 @@ type Props = {
   isExpanded: boolean;
   onToggleChecked: () => void;
   onToggleExpanded: () => void;
+  /** Each breakdown entry's shortage reported in the Telegram group, by index (see shortagesForBreakdown). */
+  shortages?: (OrderShortageItem | undefined)[];
 };
 
 /**
  * One row in the aggregated items list: a checkable summary line plus an
  * expandable breakdown of which draft invoices contribute to the total quantity.
  */
-export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggleChecked, onToggleExpanded }: Props) {
+export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggleChecked, onToggleExpanded, shortages = [] }: Props) {
+  // The item's total short across drafts, in one unit (kg, or a count) — mixed units aren't added up.
+  const short = shortages.filter((entry): entry is OrderShortageItem => !!entry);
+  const totalUnit = short.length > 0 && short.every((entry) => entry.unit === short[0].unit) ? short[0].unit : null;
+  const total = totalUnit
+    ? { short: short.reduce((sum, entry) => sum + entry.short, 0), ordered: short.reduce((sum, entry) => sum + entry.ordered, 0) }
+    : null;
+
   return (
     <div>
       <div
@@ -35,6 +45,7 @@ export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggle
         <div className="invoice-item-row__main">
           <div className="line-item__name">{item.name}</div>
           {item.description && <div className="line-item__meta">{item.description}</div>}
+          {total && totalUnit && <ShortageBadge short={total.short} ordered={total.ordered} unit={totalUnit} />}
         </div>
         <div className="item-quantity-stack">
           <span className="line-item__total item-quantity">
@@ -56,8 +67,8 @@ export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggle
       </div>
       {isExpanded && (
         <div className="item-breakdown">
-          {item.breakdown.map((entry) => (
-            <div key={entry.invoice_id} className="item-breakdown__row">
+          {item.breakdown.map((entry, index) => (
+            <div key={`${entry.invoice_id}:${index}`} className="item-breakdown__row">
               <span className="item-breakdown__source">
                 {entry.isCarriedOver && (
                   <span className="draft-card__overdue-dot" aria-label="Past due" title="Past due — carried over from an earlier day" />
@@ -65,6 +76,11 @@ export default function ItemBreakdownRow({ item, isChecked, isExpanded, onToggle
                 {entry.customer_name} · {entry.invoice_number}
               </span>
               <span className="item-breakdown__quantity">
+                {shortages[index] && (
+                  <>
+                    <ShortageBadge short={shortages[index].short} ordered={shortages[index].ordered} unit={shortages[index].unit} />{" "}
+                  </>
+                )}
                 {entry.quantity} {entry.unit}
               </span>
             </div>

@@ -29,3 +29,28 @@ export function reportTime(iso: string) {
   const today = at.toDateString() === new Date().toDateString();
   return at.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
+
+/**
+ * Each breakdown entry's shortage on the Items tab: the entry's draft's
+ * shortage for the same Zoho item (and, for a general item, description).
+ * A draft's shortage goes on its first matching entry only, so a draft with
+ * the item on two lines isn't counted twice.
+ */
+export function shortagesForBreakdown(
+  entries: { invoice_id: string; item_id?: string; description?: string }[],
+  byInvoice: Record<string, OrderShortageItem[]>,
+): (OrderShortageItem | undefined)[] {
+  const used = new Set<string>();
+  return entries.map((entry) => {
+    const shortage = (byInvoice[entry.invoice_id] ?? []).find(
+      (candidate) =>
+        candidate.short > 0 &&
+        !used.has(`${entry.invoice_id}:${candidate.item_key}`) &&
+        candidate.item_id === (entry.item_id ?? "") &&
+        (!(candidate.item_key.includes("|") || !candidate.item_id) ||
+          (entry.description ?? "").trim() === candidate.description.trim()),
+    );
+    if (shortage) used.add(`${entry.invoice_id}:${shortage.item_key}`);
+    return shortage;
+  });
+}

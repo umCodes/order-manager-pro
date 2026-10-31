@@ -125,13 +125,13 @@ export async function getOrderPreparation(req: Request, res: Response) {
     }
 }
 
-/** Several orders' preparation status at once, for the drafts list: `?ids=a,b,c` → { statuses: { id: { status, confirmed } } }. */
+/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items } } }. */
 export async function listOrderPreparationStatuses(req: Request, res: Response) {
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
         const results = await Promise.all(ids.map((id) => orderPreparation(id)));
         res.status(200).json({
-            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed }) => [order_id, { status, confirmed }])),
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items }) => [order_id, { status, confirmed, items }])),
         });
     } catch (error) {
         console.error('Error reading preparation statuses:', error);

@@ -3955,3 +3955,18 @@ button.line-items__header.customer-tx__toggle {
   font-weight: 400;
   opacity: 0.85;
 }
+
+/* How much of an item is short, on the Items tab (row total, and per draft in its breakdown). */
+.shortage-badge {
+  display: inline-block;
+  margin-top: 2px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.item-breakdown__quantity .shortage-badge {
+  margin-top: 0;
+}

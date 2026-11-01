@@ -36,7 +36,7 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 | ✅ | **Voided invoices leave Telegram:** voiding in the app already deleted the messages; now invoices voided, sent, paid or deleted in Zoho itself are caught too — when the drafts list loads (at most every 10 minutes), every invoice still holding Telegram messages that's no longer a draft has them deleted (channel and group) | backend |
 
 | ✅ | **Four statuses, backup lists included:** **Ready** (green, nothing short), **Partial** (amber, some items short), **Missing** (red, every item missing), **Not reported** (grey). An invoice is reported by 👍; a **backup list** is reported as soon as anyone replies to or reacts to its message (any emoji) | backend + Lambda + app |
-| ✅ | **Items tab has two tabs, Invoice items and Backups.** Backups has a **Merged** view (all lists as one: the same item in one row with what's left across lists, box and kg added up in kg, each list's part underneath) and a **Grouped** view (one block per list, with its status). "Missing from backup (today)" sits above both | app |
+| ✅ | **Items tab has two tabs, Invoice items and Backups.** Backups has a **Merged** view (all lists as one: the same item in one row with what's left across lists, box and kg added up in kg, each list's part underneath, and for an item reported short a badge with what was reported available: "Short 5 kg · 25/30 kg", or "Missing 5 kg") and a **Grouped** view (one block per list, with its status). "Missing from backup (today)" sits above both | app |
 
 **Setup for step 4 (owner):** the bot must be an admin of the group, and the webhook must ask for reactions (`allowed_updates` including `message_reaction`); the group's allowed reactions must include 👍 and 👌.
 

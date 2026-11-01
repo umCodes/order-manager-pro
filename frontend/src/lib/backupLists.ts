@@ -18,6 +18,10 @@ export type MergedRow = {
   description: string;
   unit: string;
   remaining: number;
+  /** What the lists had, what the preparers reported available of it (the listed amount where nothing was reported), and the difference. */
+  listed: number;
+  reported: number;
+  short: number;
   /** What's left of it on each list. */
   parts: { list_id: string; created_at: string; remaining: number; unit: string }[];
 };
@@ -52,13 +56,20 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
     }
     for (const [unit, unitEntries] of byUnit) {
       const left = (item: BackupList["items"][number]) => item.remaining ?? item.available ?? item.quantity;
+      const sum = (amount: (item: BackupList["items"][number]) => number) =>
+        round(unitEntries.reduce((total, { item }) => total + (asKg ? inKg(amount(item), item.unit) : amount(item)), 0));
+      const listed = sum((item) => item.quantity);
+      const reported = sum((item) => item.available ?? item.quantity);
       const first = unitEntries[0].item;
       rows.push({
         key: `${key}|${unit}`,
         name: first.name || first.description,
         description: first.name && first.description !== first.name ? first.description : "",
         unit,
-        remaining: round(unitEntries.reduce((sum, { item }) => sum + (asKg ? inKg(left(item), item.unit) : left(item)), 0)),
+        remaining: sum(left),
+        listed,
+        reported,
+        short: round(listed - reported),
         parts: unitEntries.map(({ list, item }) => ({ list_id: list.id, created_at: list.created_at, remaining: left(item), unit: item.unit })),
       });
     }

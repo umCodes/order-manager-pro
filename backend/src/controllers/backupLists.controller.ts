@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { listBackupLists, removeBackupList } from '../services/backupLists.js';
 import { missingFromBackupToday, withBackupUse } from '../services/backupUsage.js';
 import { orderPreparation } from '../services/telegram/groupOrders.js';
+import { businessDayKey } from '../utils/businessDate.js';
 import { TelegramDeleteMessage } from '../services/telegram/index.js';
 
 /**
@@ -18,7 +19,8 @@ export async function getBackupLists(_req: Request, res: Response) {
         const withStatus = await Promise.all(
             lists.map(async (list) => {
                 const { status, confirmed } = await orderPreparation(list.id).catch(() => ({ status: "not_reported" as const, confirmed: null }));
-                return { ...list, status, confirmed };
+                // Lists saved before they kept their day: the day they were sent.
+                return { ...list, date: list.date ?? businessDayKey(new Date(list.created_at)), status, confirmed };
             }),
         );
         res.status(200).json({ lists: withStatus, missing });

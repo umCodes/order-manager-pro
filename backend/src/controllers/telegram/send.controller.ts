@@ -11,6 +11,7 @@ import { getGeneralItemIds } from '../../services/generalItems.js';
 import { getCatalogItems } from '../../services/zoho/items.js';
 import { createBackupList, type BackupListItem } from '../../services/backupLists.js';
 import { ENV } from '../../constants/env.js';
+import { businessDayKey } from '../../utils/businessDate.js';
 import { orderMessageItems, saveGroupOrderMessage } from '../../services/telegram/groupOrders.js';
 
 /** Posts a free-text message to the team's channel. */
@@ -65,8 +66,12 @@ export async function sendItemsList(req: Request, res: Response) {
             unit: String(item.unit ?? ""),
         }));
 
-        const { list, message } = await createBackupList(items, String(ENV.TELEGRAM_CHATID), (id) =>
-            TelegramSendMessage(itemsListMessageText(id, visibleItems, date || undefined, keyOf)),
+        const { list, message } = await createBackupList(
+            items,
+            String(ENV.TELEGRAM_CHATID),
+            (id) => TelegramSendMessage(itemsListMessageText(id, visibleItems, date || undefined, keyOf)),
+            // Wanted for the picked day, else the day it's sent — as an invoice's date.
+            date || businessDayKey(),
         );
         await saveGroupOrderMessage(message.group_message_id, {
             kind: "backup_list",

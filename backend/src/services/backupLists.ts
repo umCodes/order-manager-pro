@@ -35,6 +35,8 @@ export type BackupListItemWithReport = BackupListItem & { available?: number; sh
 export type BackupList = {
     id: string
     created_at: string
+    /** The day the items are wanted for (YYYY-MM-DD), as picked when sending — the sending day when none was. Lists saved before this have none. */
+    date?: string
     items: BackupListItem[]
     chat_id: string
     message_id: number | null
@@ -73,6 +75,7 @@ export async function createBackupList<Message extends { message_id: number }>(
     items: BackupListItem[],
     chatId: string,
     post: (id: string) => Promise<Message>,
+    date?: string,
 ): Promise<{ list: BackupList; message: Message }> {
     const now = Date.now()
     let list: BackupList | null = null
@@ -80,6 +83,7 @@ export async function createBackupList<Message extends { message_id: number }>(
         const candidate: BackupList = {
             id: backupListId(new Date(now + offset * 1000)),
             created_at: new Date(now).toISOString(),
+            ...(date ? { date } : {}),
             items,
             chat_id: chatId,
             message_id: null,

@@ -147,6 +147,8 @@ export type DraftLineItemSummary = {
 export type BackupList = {
   id: string;
   created_at: string;
+  /** The day the items are wanted for (YYYY-MM-DD). */
+  date?: string;
   /** `available` and `short` are set for an item reported short in the Telegram group (in its own unit). */
   items: {
     number: number;

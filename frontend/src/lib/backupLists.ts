@@ -18,10 +18,14 @@ export type MergedRow = {
   description: string;
   unit: string;
   remaining: number;
-  /** What the lists had, what the preparers reported available of it (the listed amount where nothing was reported), and the difference. */
-  listed: number;
-  reported: number;
-  short: number;
+  /**
+   * On the lists that were reported (seen to in the Telegram group): what they
+   * had, and what the preparers said is available of it. `not_reported` is
+   * what's on lists nobody has seen to yet — unknown, not short.
+   */
+  needed: number;
+  available: number;
+  not_reported: number;
   /** What's left of it on each list. */
   parts: { list_id: string; created_at: string; remaining: number; unit: string }[];
 };
@@ -58,8 +62,10 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
       const left = (item: BackupList["items"][number]) => item.remaining ?? item.available ?? item.quantity;
       const sum = (amount: (item: BackupList["items"][number]) => number) =>
         round(unitEntries.reduce((total, { item }) => total + (asKg ? inKg(amount(item), item.unit) : amount(item)), 0));
-      const listed = sum((item) => item.quantity);
-      const reported = sum((item) => item.available ?? item.quantity);
+      const seen = unitEntries.filter(({ list }) => list.status && list.status !== "not_reported");
+      const unseen = unitEntries.filter((entry) => !seen.includes(entry));
+      const sumOf = (subset: typeof unitEntries, amount: (item: BackupList["items"][number]) => number) =>
+        round(subset.reduce((total, { item }) => total + (asKg ? inKg(amount(item), item.unit) : amount(item)), 0));
       const first = unitEntries[0].item;
       rows.push({
         key: `${key}|${unit}`,
@@ -67,9 +73,9 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
         description: first.name && first.description !== first.name ? first.description : "",
         unit,
         remaining: sum(left),
-        listed,
-        reported,
-        short: round(listed - reported),
+        needed: sumOf(seen, (item) => item.quantity),
+        available: sumOf(seen, (item) => item.available ?? item.quantity),
+        not_reported: sumOf(unseen, (item) => item.quantity),
         parts: unitEntries.map(({ list, item }) => ({ list_id: list.id, created_at: list.created_at, remaining: left(item), unit: item.unit })),
       });
     }

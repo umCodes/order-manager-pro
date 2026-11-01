@@ -1,4 +1,4 @@
-import { readGroupOrderMessage, removeThumb, setThumb } from "../state/groupOrders.mjs";
+import { readGroupOrderMessage, recordInteraction, removeThumb, setThumb } from "../state/groupOrders.mjs";
 
 const PREPARED = "👍";
 
@@ -8,7 +8,8 @@ const PREPARED = "👍";
  * only sends when the webhook asks for it (allowed_updates) and the bot is
  * an admin of the group. Anyone in the group counts; bots (the bot's own 👌
  * on reports among them) and messages that aren't orders are ignored. An
- * anonymous admin reacts as the group itself (actor_chat).
+ * anonymous admin reacts as the group itself (actor_chat). On a backup list,
+ * any reaction at all also marks the list as seen to (recordInteraction).
  */
 export async function handleReaction(update) {
     const reaction = update.message_reaction;
@@ -19,13 +20,20 @@ export async function handleReaction(update) {
 
     const reactor = reaction.user ?? reaction.actor_chat;
     if (!reactor) return;
+    const reactorName = [reactor.first_name, reactor.last_name].filter(Boolean).join(" ") || reactor.title || reactor.username || "";
+
+    // Any reaction on a backup list counts as having seen to it.
+    if (order.kind === "backup_list" && (reaction.new_reaction ?? []).length > 0) {
+        await recordInteraction(reaction.message_id, reactor.id, { name: reactorName, at: new Date(reaction.date * 1000).toISOString(), kind: "reaction" });
+    }
+
     const has = (list) => (list ?? []).some((entry) => entry.type === "emoji" && entry.emoji === PREPARED);
     const before = has(reaction.old_reaction);
     const now = has(reaction.new_reaction);
     if (before === now) return;
 
     if (now) {
-        const name = [reactor.first_name, reactor.last_name].filter(Boolean).join(" ") || reactor.title || reactor.username || "";
+        const name = reactorName;
         await setThumb(reaction.message_id, reactor.id, { name, at: new Date(reaction.date * 1000).toISOString() });
         console.log(`Telegram group: 👍 on ${order.order_number} (message ${reaction.message_id}) by ${name}`);
     } else {

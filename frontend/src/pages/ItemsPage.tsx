@@ -9,6 +9,8 @@ import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
+import BackupMergedView from "../components/BackupMergedView";
+import BackupMissingSection from "../components/BackupMissingSection";
 import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderShortageItem } from "../types";
 
 type SortKey = "name" | "quantity";
@@ -23,7 +25,8 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
  * one section per scheduled day (past-due drafts count toward today, as on
  * the Drafts tab), with a per-item source breakdown. Within a day, items are
  * grouped by their Zoho Inventory category, in the order set in Settings.
- * Backup lists (items sent without an invoice) follow in a section of their own.
+ * Backup lists (items sent without an invoice) have a tab of their own, as
+ * one merged list or one block per list.
  */
 export default function ItemsPage() {
   const [items, setItems] = useState<DraftLineItemSummary[]>([]);
@@ -32,6 +35,9 @@ export default function ItemsPage() {
   const { sortKey, sortDirection, toggleSort } = useSortState<SortKey>("quantity", "desc");
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  // Invoice items or backups, and for the backups all lists merged into one or one block per list.
+  const [tab, setTab] = useState<"invoices" | "backups">("invoices");
+  const [backupView, setBackupView] = useState<"merged" | "grouped">("merged");
   // Shortages reported in the Telegram group, by draft — read fresh with every load of the items.
   const [shortagesByInvoice, setShortagesByInvoice] = useState<Record<string, OrderShortageItem[]>>({});
 
@@ -101,64 +107,107 @@ export default function ItemsPage() {
           <RefreshButton onRefresh={() => loadItems({ force: true })} />
         </div>
       </div>
-      <p className="page-subtitle">
-        {items.length} item{items.length === 1 ? "" : "s"} across drafts
-      </p>
+      <div className="mode-toggle">
+        <button
+          type="button"
+          className={`mode-toggle__option${tab === "invoices" ? " mode-toggle__option--active" : ""}`}
+          onClick={() => setTab("invoices")}
+        >
+          Invoice items
+        </button>
+        <button
+          type="button"
+          className={`mode-toggle__option${tab === "backups" ? " mode-toggle__option--active" : ""}`}
+          onClick={() => setTab("backups")}
+        >
+          Backups
+        </button>
+      </div>
 
-      <SortRow options={SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
+      {tab === "invoices" ? (
+        <>
+          <p className="page-subtitle">
+            {items.length} item{items.length === 1 ? "" : "s"} across drafts
+          </p>
 
-      {dayGroups.length === 0 ? (
-        <div className="line-items">
-          <div className="items-area__empty">No items in drafts</div>
-        </div>
-      ) : (
-        dayGroups.map((group) => (
-          <section key={group.date ?? "unscheduled"} className="day-group">
-            <DayGroupHeader
-              date={group.date}
-              count={group.items.length}
-              noun="item"
-              carriedOverCount={group.carriedOverDraftCount}
-              actions={<CopyButton getText={() => formatItemsForCopy(group.items)} />}
-            />
-            {group.categories.map((categoryGroup) => (
-              <div key={categoryGroup.category ?? ""} className="category-group">
-                {hasCategories && (
-                  <div className="category-group__header">
-                    <span className="category-group__label">{categoryGroup.category ?? "Uncategorized"}</span>
-                    <span className="category-group__meta">
-                      <span className="category-group__count">{categoryGroup.items.length}</span>
-                      <CopyButton getText={() => formatItemsForCopy(categoryGroup.items)} />
-                    </span>
+          <SortRow options={SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
+
+          {dayGroups.length === 0 ? (
+            <div className="line-items">
+              <div className="items-area__empty">No items in drafts</div>
+            </div>
+          ) : (
+            dayGroups.map((group) => (
+              <section key={group.date ?? "unscheduled"} className="day-group">
+                <DayGroupHeader
+                  date={group.date}
+                  count={group.items.length}
+                  noun="item"
+                  carriedOverCount={group.carriedOverDraftCount}
+                  actions={<CopyButton getText={() => formatItemsForCopy(group.items)} />}
+                />
+                {group.categories.map((categoryGroup) => (
+                  <div key={categoryGroup.category ?? ""} className="category-group">
+                    {hasCategories && (
+                      <div className="category-group__header">
+                        <span className="category-group__label">{categoryGroup.category ?? "Uncategorized"}</span>
+                        <span className="category-group__meta">
+                          <span className="category-group__count">{categoryGroup.items.length}</span>
+                          <CopyButton getText={() => formatItemsForCopy(categoryGroup.items)} />
+                        </span>
+                      </div>
+                    )}
+                    <div className="line-items day-group__line-items">
+                      {categoryGroup.items.map((item) => {
+                        const rowKey = `${group.date ?? ""}|${item.name}`;
+                        return (
+                          <ItemBreakdownRow
+                            key={rowKey}
+                            item={item}
+                            isChecked={checkedItems.has(rowKey)}
+                            isExpanded={expandedItems.has(rowKey)}
+                            onToggleChecked={() => toggleChecked(rowKey)}
+                            onToggleExpanded={() => toggleExpanded(rowKey)}
+                            shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-                <div className="line-items day-group__line-items">
-                  {categoryGroup.items.map((item) => {
-                    const rowKey = `${group.date ?? ""}|${item.name}`;
-                    return (
-                      <ItemBreakdownRow
-                        key={rowKey}
-                        item={item}
-                        isChecked={checkedItems.has(rowKey)}
-                        isExpanded={expandedItems.has(rowKey)}
-                        onToggleChecked={() => toggleChecked(rowKey)}
-                        onToggleExpanded={() => toggleExpanded(rowKey)}
-                        shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
+                ))}
+              </section>
+            ))
+          )}
+        </>
+      ) : (
+        <>
+          <div className="sort-row backup-view-switch">
+            {(["merged", "grouped"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                className={`pill${backupView === view ? " pill--active" : ""}`}
+                onClick={() => setBackupView(view)}
+              >
+                {view === "merged" ? "Merged" : "Grouped"}
+              </button>
             ))}
-          </section>
-        ))
+          </div>
+          <BackupMissingSection missing={backupLists.missing} />
+          {backupView === "merged" ? (
+            <BackupMergedView lists={backupLists.lists} />
+          ) : backupLists.lists.length === 0 ? (
+            <div className="line-items">
+              <div className="items-area__empty">No backup lists</div>
+            </div>
+          ) : (
+            <BackupListsSection
+              lists={backupLists.lists}
+              onRemoved={() => fetchBackupLists().then(setBackupLists).catch(() => setBackupLists({ lists: [], missing: [] }))}
+            />
+          )}
+        </>
       )}
-
-      <BackupListsSection
-        lists={backupLists.lists}
-        missing={backupLists.missing}
-        onRemoved={() => fetchBackupLists().then(setBackupLists).catch(() => setBackupLists({ lists: [], missing: [] }))}
-      />
     </div>
   );
 }

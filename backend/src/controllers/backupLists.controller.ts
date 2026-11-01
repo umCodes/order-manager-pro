@@ -1,18 +1,27 @@
 import type { Request, Response } from 'express';
 import { listBackupLists, removeBackupList } from '../services/backupLists.js';
 import { missingFromBackupToday, withBackupUse } from '../services/backupUsage.js';
+import { orderPreparation } from '../services/telegram/groupOrders.js';
 import { TelegramDeleteMessage } from '../services/telegram/index.js';
 
 /**
  * The backup lists not removed yet, newest first — the Items tab's "Backup
  * lists" section — with what was reported short on each in the Telegram
  * group and what quick invoices took, plus today's items quick invoices
- * sent that no list had (`missing`).
+ * sent that no list had (`missing`). Each list carries its `status` in the
+ * group (see orderPreparation) and who `confirmed` it.
  */
 export async function getBackupLists(_req: Request, res: Response) {
     try {
         const [lists, missing] = await Promise.all([withBackupUse(await listBackupLists()), missingFromBackupToday()]);
-        res.status(200).json({ lists, missing });
+        // Each list's status in the Telegram group (seen to once anyone replies or reacts).
+        const withStatus = await Promise.all(
+            lists.map(async (list) => {
+                const { status, confirmed } = await orderPreparation(list.id).catch(() => ({ status: "not_reported" as const, confirmed: null }));
+                return { ...list, status, confirmed };
+            }),
+        );
+        res.status(200).json({ lists: withStatus, missing });
     } catch (error) {
         console.error('Error listing backup lists:', error);
         res.status(500).json({ error: 'Failed to load backup lists' });

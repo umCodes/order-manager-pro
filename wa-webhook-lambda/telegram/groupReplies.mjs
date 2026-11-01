@@ -1,4 +1,4 @@
-import { readGroupOrderMessage, recordGroupReply } from "../state/groupOrders.mjs";
+import { readGroupOrderMessage, recordGroupReply, recordInteraction } from "../state/groupOrders.mjs";
 import { handleShortageReport } from "./shortageReports.mjs";
 
 /**
@@ -39,5 +39,13 @@ export async function linkGroupReply(update) {
     };
     console.log(`Telegram group: message ${message.message_id}${edited ? " (edited)" : ""} is a reply to ${order.order_number} (group message ${repliedTo.message_id})`);
     await recordGroupReply(reply);
+    // Any reply to a backup list counts as having seen to it.
+    if (order.kind === "backup_list") {
+        await recordInteraction(repliedTo.message_id, reply.from.id ?? message.message_id, {
+            name: reply.from.name,
+            at: new Date((message.edit_date ?? message.date) * 1000).toISOString(),
+            kind: "reply",
+        });
+    }
     await handleShortageReport(message, order, { edited });
 }

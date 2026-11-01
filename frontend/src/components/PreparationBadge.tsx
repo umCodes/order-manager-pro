@@ -4,13 +4,15 @@ import { reportTime } from "../lib/shortages";
 const LABELS: Record<PreparationStatus, string> = {
   ready: "Ready",
   partial: "Partial",
+  missing: "Missing",
   not_reported: "Not reported",
 };
 
 /**
- * An order's preparation in the Telegram group: green "Ready" (👍, nothing
- * short), amber "Partial" (👍, something short), grey "Not reported" (no 👍
- * yet). With `confirmed`, who gave the 👍 and when.
+ * An order's preparation in the Telegram group: green "Ready" (nothing
+ * short), amber "Partial" (some items short), red "Missing" (every item
+ * missing), grey "Not reported" (not seen to yet). With `confirmed`, who saw
+ * to it and when.
  */
 export default function PreparationBadge({
   status,

@@ -183,11 +183,14 @@ export type BackupListItemWithUse = BackupList["items"][number] & {
     taken_by?: { invoice_number: string; customer_name: string; quantity: number }[]
     /** What's left: what was reported available (or the quantity), less what was taken. */
     remaining: number
+    /** How the item is told apart across lists (a general item by its description too), for the merged view. */
+    item_key: string
 }
 
 /** Each list with what was reported short (see withReportedAvailability) and what quick invoices took. */
 export async function withBackupUse(lists: BackupList[]): Promise<(BackupList & { items: BackupListItemWithUse[] })[]> {
-    const [reported, taken] = await Promise.all([withReportedAvailability(lists), takenFromBackup()])
+    const [reported, taken, generalIds] = await Promise.all([withReportedAvailability(lists), takenFromBackup(), getGeneralItemIds()])
+    const keyOf = itemKeyFor(generalIds)
     return reported.map((list) => ({
         ...list,
         items: (list.items as BackupListItemWithReport[]).map((item) => {
@@ -197,6 +200,7 @@ export async function withBackupUse(lists: BackupList[]): Promise<(BackupList & 
                 ...item,
                 ...(use ? { taken: use.quantity, taken_by: use.by } : {}),
                 remaining: round(Math.max(0, start - (use?.quantity ?? 0))),
+                item_key: keyOf(item),
             }
         }),
     }))

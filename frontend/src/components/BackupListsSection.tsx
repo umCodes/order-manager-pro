@@ -2,45 +2,26 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { deleteBackupList } from "../lib/api";
 import ConfirmModal from "./ConfirmModal";
+import PreparationBadge from "./PreparationBadge";
+import { sentLabel } from "../lib/backupLists";
 import ShortageBadge from "./ShortageBadge";
-import type { BackupList, BackupMissingItem } from "../types";
-
-/** "27 Oct, 3:45 PM" in business time (UTC+3), whatever the device's time zone. */
-function sentLabel(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", {
-    timeZone: "Etc/GMT-3",
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
+import type { BackupList } from "../types";
 
 /**
- * The Items tab's backup lists: items sent to Telegram without an invoice,
- * each under its BK- id, kept apart from the drafts' items so nothing is
+ * The Backups tab's Grouped view: one block per backup list (items sent to
+ * Telegram without an invoice), each under its BK- id, kept apart from the drafts' items so nothing is
  * counted twice. Each item shows what's left: what was reported available
  * in the Telegram group (with how much is short), less what quick invoices
  * (sent within 15 minutes of being created) took from it, with which ones.
- * Items quick invoices sent today that no list had are listed as missing.
- * A list can be removed once it's done with.
+ * Each list shows its status in the Telegram group (seen to once anyone
+ * replies or reacts). A list can be removed once it's done with.
  */
-export default function BackupListsSection({
-  lists,
-  missing = [],
-  onRemoved,
-}: {
-  lists: BackupList[];
-  /** Today's items quick invoices sent that no backup list had. */
-  missing?: BackupMissingItem[];
-  onRemoved: () => void;
-}) {
+export default function BackupListsSection({ lists, onRemoved }: { lists: BackupList[]; onRemoved: () => void }) {
   const [removing, setRemoving] = useState<BackupList | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (lists.length === 0 && missing.length === 0) return null;
+  if (lists.length === 0) return null;
 
   async function confirmRemove() {
     if (!removing) return;
@@ -69,34 +50,12 @@ export default function BackupListsSection({
           </span>
         </div>
       </div>
-      {missing.length > 0 && (
-        <div className="category-group">
-          <div className="category-group__header">
-            <span className="category-group__label">Missing from backup (today)</span>
-          </div>
-          <div className="line-items day-group__line-items">
-            {missing.map((item, index) => (
-              <div key={`${item.invoice_number}:${item.item_id}:${index}`} className="line-item">
-                <div className="line-item__main">
-                  <div className="line-item__name">
-                    <span className="line-item__name-text">{item.name || item.description}</span>
-                  </div>
-                  <div className="line-item__meta">
-                    {item.customer_name} · {item.invoice_number}
-                  </div>
-                </div>
-                <div className="line-item__right">
-                  <ShortageBadge short={item.quantity} ordered={item.quantity} unit={item.unit} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       {lists.map((list) => (
         <div key={list.id} className="category-group">
           <div className="category-group__header">
-            <span className="category-group__label">{list.id}</span>
+            <span className="category-group__label">
+              {list.id} {list.status && <PreparationBadge status={list.status} confirmed={list.confirmed} />}
+            </span>
             <span className="category-group__meta">
               <span className="category-group__count">{sentLabel(list.created_at)}</span>
               <button

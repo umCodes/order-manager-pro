@@ -390,15 +390,29 @@ async function thumbsOn(messageId: number): Promise<Thumb[]> {
 }
 
 /**
- * Where an order's preparation stands:
- *   not_reported  no 👍 yet — on the newest full message, and on every
- *                 changes reply after it that adds to the order (a reply
- *                 that only lowers or removes needs none)
- *   ready         👍 on all of those, and nothing short
- *   partial       👍 on all of those, with one or more items short
- * `confirmed` is the latest 👍 that completed it (null while not reported).
+ * Interactions with a backup list's message, as the webhook Lambda saves
+ * them (wa-webhook-lambda/state/groupOrders.mjs; change both together):
+ * anyone who replied to it or reacted to it at all.
+ *
+ *   telegram:group-interactions:<group message id> → hash of person id → { name, at, kind } (JSON)
  */
-export type PreparationStatus = "not_reported" | "ready" | "partial"
+async function interactionsOn(messageId: number): Promise<Thumb[]> {
+    const stored = await redisClient.hGetAll(`telegram:group-interactions:${messageId}`)
+    return Object.values(stored ?? {}).map((raw) => JSON.parse(raw) as Thumb)
+}
+
+/**
+ * Where an order's preparation stands:
+ *   not_reported  not seen to yet. An invoice: no 👍 on the newest full
+ *                 message, or on a changes reply after it that adds to the
+ *                 order (one that only lowers or removes needs none). A
+ *                 backup list: nobody has replied or reacted to it at all.
+ *   ready         seen to, and nothing short
+ *   partial       seen to, with some items short
+ *   missing       seen to, and every item on it missing
+ * `confirmed` is the latest 👍 (or, for a backup list, interaction) that completed it.
+ */
+export type PreparationStatus = "not_reported" | "ready" | "partial" | "missing"
 export type OrderPreparation = {
     order_id: string
     status: PreparationStatus
@@ -406,20 +420,39 @@ export type OrderPreparation = {
     items: OrderShortageItem[]
 }
 
+const latestOf = (list: Thumb[]) => list.reduce((a, b) => (a.at > b.at ? a : b))
+
 export async function orderPreparation(orderId: string): Promise<OrderPreparation> {
     const { items, current } = await shortagesAndMessages(orderId)
-    const toConfirm = current.filter(
-        (message) => message.message_type === "order" || message.items.some((item) => item.change === "added" || item.change === "increased"),
-    )
-    const thumbs = await Promise.all(toConfirm.map((message) => thumbsOn(message.message_id)))
-    const confirmed = toConfirm.length > 0 && thumbs.every((list) => list.length > 0)
-    const latest = confirmed
-        ? thumbs.map((list) => list.reduce((a, b) => (a.at > b.at ? a : b))).reduce((a, b) => (a.at > b.at ? a : b))
-        : null
+    const isBackupList = current.some((message) => message.kind === "backup_list")
+
+    let confirmed: Thumb | null = null
+    if (isBackupList) {
+        const seen = (await Promise.all(current.map((message) => interactionsOn(message.message_id)))).flat()
+        confirmed = seen.length > 0 ? latestOf(seen) : null
+    } else {
+        const toConfirm = current.filter(
+            (message) => message.message_type === "order" || message.items.some((item) => item.change === "added" || item.change === "increased"),
+        )
+        const thumbs = await Promise.all(toConfirm.map((message) => thumbsOn(message.message_id)))
+        if (toConfirm.length > 0 && thumbs.every((list) => list.length > 0)) confirmed = latestOf(thumbs.map(latestOf))
+    }
+
+    // Everything the order still needs (its latest quantity above 0), to tell "missing" from "partial".
+    const needed = new Map<string, number>()
+    for (const message of current) {
+        for (const item of message.items) needed.set(item.item_key, item.change ? (item.order_quantity ?? 0) : item.quantity)
+    }
+    const neededKeys = [...needed].filter(([, quantity]) => quantity > 0).map(([key]) => key)
+    const short = items.filter((item) => item.short > 0)
+    const allMissing =
+        neededKeys.length > 0 &&
+        neededKeys.every((key) => short.some((item) => item.item_key === key && item.available === 0))
+
     return {
         order_id: orderId,
-        status: !confirmed ? "not_reported" : items.some((item) => item.short > 0) ? "partial" : "ready",
-        confirmed: latest,
+        status: !confirmed ? "not_reported" : allMissing ? "missing" : short.length > 0 ? "partial" : "ready",
+        confirmed,
         items,
     }
 }

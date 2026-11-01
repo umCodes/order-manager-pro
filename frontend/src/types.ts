@@ -162,7 +162,12 @@ export type BackupList = {
     taken_by?: { invoice_number: string; customer_name: string; quantity: number }[];
     /** What's left: reported available (or the quantity), less what was taken. Absent from older responses. */
     remaining?: number;
+    /** How the item is told apart across lists, for the merged view. */
+    item_key?: string;
   }[];
+  /** The list's status in the Telegram group, and who saw to it. */
+  status?: PreparationStatus;
+  confirmed?: PreparationConfirmation | null;
   message_id: number | null;
 };
 
@@ -215,10 +220,11 @@ export type OrderShortageItem = {
 
 /**
  * Where an order's preparation stands in the Telegram group: "not_reported"
- * until it has a 👍, then "ready" (nothing short) or "partial" (something
- * short). `confirmed` is the 👍 that completed it.
+ * until it's seen to (an invoice: a 👍; a backup list: anyone replying or
+ * reacting), then "ready" (nothing short), "partial" (some items short) or
+ * "missing" (every item missing). `confirmed` is who saw to it, and when.
  */
-export type PreparationStatus = "not_reported" | "ready" | "partial";
+export type PreparationStatus = "not_reported" | "ready" | "partial" | "missing";
 export type PreparationConfirmation = { name: string; at: string };
 export type OrderPreparation = {
   order_id: string;

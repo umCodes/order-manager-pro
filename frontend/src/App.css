@@ -3944,6 +3944,11 @@ button.line-items__header.customer-tx__toggle {
   background: #fef3c7;
 }
 
+.preparation-badge--missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
 .preparation-badge--not_reported {
   color: var(--color-gray-500);
   background: var(--color-gray-100);
@@ -3995,4 +4000,9 @@ button.line-items__header.customer-tx__toggle {
 
 .backup-used-up {
   color: var(--color-gray-400);
+}
+
+.category-group__label .preparation-badge {
+  text-transform: none;
+  letter-spacing: normal;
 }

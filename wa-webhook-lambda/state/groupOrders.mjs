@@ -84,3 +84,20 @@ export async function setThumb(messageId, reactorId, thumb) {
 export async function removeThumb(messageId, reactorId) {
     await getRedisClient().hdel(thumbsKey(messageId), String(reactorId));
 }
+
+/**
+ * Interactions with a backup list's message: anyone replying to it or
+ * reacting to it (any emoji) has seen to the list, so the list counts as
+ * reported. Per message, who and when (their latest). The backend reads
+ * these (backend/src/services/telegram/groupOrders.ts; change both together).
+ *
+ *   telegram:group-interactions:<group message id> → hash of person id → { name, at, kind } (JSON)
+ */
+export async function recordInteraction(messageId, personId, interaction) {
+    const key = `telegram:group-interactions:${messageId}`;
+    await getRedisClient()
+        .multi()
+        .hset(key, String(personId), JSON.stringify(interaction))
+        .expire(key, REPORT_KEEP_SECONDS)
+        .exec();
+}

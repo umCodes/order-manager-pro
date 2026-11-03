@@ -156,46 +156,36 @@ async function answer(message, html) {
 }
 
 /**
- * The owner's wording for a report the bot couldn't read, as is: how to
- * delete it, how to report a shortage (with an example), 👍 for ready, and
- * ❤️ to delete. What exactly was wrong is only logged, not listed.
+ * The owner's wording for a report the bot couldn't read, laid out in
+ * sections (Telegram HTML: bold headers, the example order in a quote, the
+ * reply lines as code so they copy on a tap): how to delete it, how to
+ * report a shortage, 👍 for ready, ❤️ to delete. What exactly was wrong is
+ * only logged, not listed.
  */
 export function warningText({ keptEarlier = false } = {}) {
     return [
         "<b>⚠️ የገባው መልእክት ልክ አይደለም</b>",
         ...(keptEarlier ? ["(የቀድሞው እንዳለ ነው)"] : []),
         "",
-        "🗑️ መልእክቱን ጭራሽ ለማጥፋት:",
-        '- አራት ነጥብ "።"  ወይም  አንድ ነጥብ ኤዲት ወይም ምላሽ ይላኩ "."',
-        "- መልእክቱን በራስዎ ማጥፋት ስህተት ነው።",
+        "<b>🗑️ መልእክቱን ጭራሽ ለማጥፋት</b>",
+        "• መልእክቱን ኤዲት አድርገው <code>።</code> ወይም <code>.</code> ብቻ ያድርጉት",
+        "• ወይም በ <code>.</code> ምላሽ ይላኩ",
+        "• ወይም ❤️ እስቲከር ያርጉት",
+        "<i>መልእክቱን በራስዎ ማጥፋት ስህተት ነው።</i>",
         "",
-        "-----",
-        "<b>❗️ጉድለት ለማሳወቅ</b>",
+        "<b>❗️ ጉድለት ለማሳወቅ</b>",
+        "የእቃ ቁጥር (1, 2, 3…) + እጅ ላይ ያለው መጠን",
         "",
-        "የእቃ ቁጥር (1,2,3...) + እጅ ላይ ያለው መጠን (1,2,3...)",
+        "ምሳሌ፦",
+        "<blockquote>INV-004042:\n① 10ኪሎ ሽሮ ኪሎ\n② 10ኪሎ ሽሮ ሩብ\n③ 10ኪሎ ሽሮ ኑስ\n🟢 ለዛሬ</blockquote>",
+        "ምላሽ መልእክት፦",
+        "<code>2 5</code>  →  ② በእጅ ላይ ያለው 5 ኪሎ ብቻ ነው",
+        "<code>3 0</code>  →  ③ በእጅ ላይ ምንም የለም",
         "",
-        "ምሳሌ:",
+        "<b>👍 ትዕዛዝ ዝግጁ መሆኑን ለማሳወቅ</b>",
+        'በትዕዛዙ መልእክት ላይ "👍" እስቲከር ያርጉት',
         "",
-        "INV-004042:",
-        "",
-        "① 10ኪሎ ሽሮ ኪሎ",
-        "② 10ኪሎ ሽሮ ሩብ",
-        "③ 10ኪሎ ሽሮ ኑስ",
-        "",
-        "🟢 ለዛሬ",
-        "",
-        "ምላሽ መልእክት:",
-        "",
-        "2 5 &lt;- (ይህ ማለት: በእጅ ላይ ያለው 5 ኪሎ ብቻ ነው)",
-        "3 0 &lt;- (ይህ ማለት በእጅ ላይ ምንም የለም )",
-        "",
-        "--------",
-        "",
-        "ትዕዛዝ ዝግጁ መሆኑን ለማሳወቅ",
-        '"👍" እስቲከር ያርጉት',
-        "--------",
-        "ይህን መልእክት ለማጥፋት ",
-        "",
+        "<b>❤️ ይህን መልእክት ለማጥፋት</b>",
         '"❤️" እስቲከር ያርጉት',
     ].join("\n");
 }

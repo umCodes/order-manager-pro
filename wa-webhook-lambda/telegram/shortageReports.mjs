@@ -1,5 +1,5 @@
 import { telegramApi } from "../services/telegram/client.mjs";
-import { addBotReply, botRepliesTo, forgetBotReplies, readGroupReport, readOrderGroupMessages, saveGroupReport } from "../state/groupOrders.mjs";
+import { addBotReply, botRepliesTo, forgetBotReplies, readGroupReport, readOrderGroupMessages, removeThumb, saveGroupReport, setThumb, thumbsOn } from "../state/groupOrders.mjs";
 
 /**
  * Shortage reports: a preparer replies to an order message in the group with
@@ -191,11 +191,33 @@ async function clearWarnings(message) {
     await forgetBotReplies(message.message_id, warnings);
 }
 
+/**
+ * A saved report says the order is prepared — every item, but for the ones
+ * it lists — so it counts as its sender's 👍 on the order message it
+ * answers (thumbs key "report:<report id>"), and the bot puts a 👍 on that
+ * message for everyone to see. A refused report does neither.
+ */
+const PREPARED = "👍";
+const reportThumb = (reportId) => `report:${reportId}`;
+
+async function confirmByReport(chatId, orderMessageId, reportId, from, at) {
+    await setThumb(orderMessageId, reportThumb(reportId), { name: from.name, at });
+    await call("setMessageReaction", { chat_id: chatId, message_id: orderMessageId, reaction: [{ type: "emoji", emoji: PREPARED }] });
+}
+
+/** Takes a cancelled report's 👍 back — and the bot's 👍 off the order message, once no other report on it stands. */
+async function unconfirmByReport(chatId, orderMessageId, reportId) {
+    await removeThumb(orderMessageId, reportThumb(reportId));
+    const stillReported = (await thumbsOn(orderMessageId)).some((id) => id.startsWith("report:"));
+    if (!stillReported) await call("setMessageReaction", { chat_id: chatId, message_id: orderMessageId, reaction: [] });
+}
+
 /** Cancels a report (its message was deleted with a ❤️): no item lines from now on, with the earlier ones kept in its history. */
 export async function cancelReport(messageId, at = new Date()) {
     const previous = await readGroupReport(messageId);
     if (!previous || previous.deleted_at) return;
     const { history = [], ...current } = previous;
+    await unconfirmByReport(previous.chat_id, previous.reply_to_message_id, messageId);
     await saveGroupReport({
         ...current,
         lines: [],
@@ -220,6 +242,7 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
         if (edited && previous && previous.lines.length > 0) {
             await saveGroupReport(nextVersion(previous, message, text, []));
             await react(message, null);
+            await unconfirmByReport(message.chat.id, orderMessage.message_id, message.message_id);
             console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} cancelled by an edit`);
         }
         return;
@@ -253,6 +276,7 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
           };
     await saveGroupReport(report);
     await react(message, CONFIRM_REACTION);
+    await confirmByReport(message.chat.id, orderMessage.message_id, message.message_id, report.from, report.updated_at);
     await clearWarnings(message);
     console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} saved:`, lines.map((line) => line.text).join(", "));
 }

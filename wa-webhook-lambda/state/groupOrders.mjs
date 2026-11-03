@@ -85,6 +85,11 @@ export async function removeThumb(messageId, reactorId) {
     await getRedisClient().hdel(thumbsKey(messageId), String(reactorId));
 }
 
+/** Who has a 👍 on a message now: reactor ids (a saved report's own 👍 is "report:<report message id>"). */
+export async function thumbsOn(messageId) {
+    return getRedisClient().hkeys(thumbsKey(messageId));
+}
+
 /**
  * Interactions with a backup list's message: anyone replying to it or
  * reacting to it (any emoji) has seen to the list, so the list counts as

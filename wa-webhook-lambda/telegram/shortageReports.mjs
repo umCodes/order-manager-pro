@@ -20,8 +20,8 @@ import { addBotReply, botRepliesTo, forgetBotReplies, readGroupReport, readOrder
  * so taking a line out takes that item's report away, and taking every line
  * out cancels the report (its reaction is removed). Earlier versions are kept
  * in the record's history. Telegram doesn't tell bots about deleted
- * messages, so deleting goes through the bot instead (deleteReports.mjs):
- * "." or "።" as an edit or a reply, or a ❤️. Once a report is saved, the
+ * messages, so deleting goes through the bot instead: a ❤️ on the report or
+ * on the bot's warning (deleteReports.mjs). Once a report is saved, the
  * bot's earlier warnings on it are deleted.
  *
  * Nothing here touches Zoho.
@@ -158,20 +158,14 @@ async function answer(message, html) {
 /**
  * The owner's wording for a report the bot couldn't read, laid out in
  * sections (Telegram HTML: bold headers, the example order in a quote, the
- * reply lines as code so they copy on a tap): how to delete it, how to
- * report a shortage, 👍 for ready, ❤️ to delete. What exactly was wrong is
- * only logged, not listed.
+ * reply lines as code so they copy on a tap): how to report a shortage,
+ * 👍 for ready, and — highlighted last — ❤️ to delete. What exactly was
+ * wrong is only logged, not listed.
  */
 export function warningText({ keptEarlier = false } = {}) {
     return [
         "<b>⚠️ የገባው መልእክት ልክ አይደለም</b>",
         ...(keptEarlier ? ["(የቀድሞው እንዳለ ነው)"] : []),
-        "",
-        "<b>🗑️ መልእክቱን ጭራሽ ለማጥፋት</b>",
-        "• መልእክቱን ኤዲት አድርገው <code>።</code> ወይም <code>.</code> ብቻ ያድርጉት",
-        "• ወይም በ <code>.</code> ምላሽ ይላኩ",
-        "• ወይም ❤️ እስቲከር ያርጉት",
-        "<i>መልእክቱን በራስዎ ማጥፋት ስህተት ነው።</i>",
         "",
         "<b>❗️ ጉድለት ለማሳወቅ</b>",
         "የእቃ ቁጥር (1, 2, 3…) + እጅ ላይ ያለው መጠን",
@@ -185,8 +179,7 @@ export function warningText({ keptEarlier = false } = {}) {
         "<b>👍 ትዕዛዝ ዝግጁ መሆኑን ለማሳወቅ</b>",
         'በትዕዛዙ መልእክት ላይ "👍" እስቲከር ያርጉት',
         "",
-        "<b>❤️ ይህን መልእክት ለማጥፋት</b>",
-        '"❤️" እስቲከር ያርጉት',
+        '<blockquote>⚠️ <b>ይህን መልእክት ለማጥፋት</b> "❤️" እስቲከር ያርጉት\nመልእክቱን በራስዎ ማጥፋት ስህተት ነው።</blockquote>',
     ].join("\n");
 }
 
@@ -198,7 +191,7 @@ async function clearWarnings(message) {
     await forgetBotReplies(message.message_id, warnings);
 }
 
-/** Cancels a report (its message was deleted with "." / "።" / ❤️): no item lines from now on, with the earlier ones kept in its history. */
+/** Cancels a report (its message was deleted with a ❤️): no item lines from now on, with the earlier ones kept in its history. */
 export async function cancelReport(messageId, at = new Date()) {
     const previous = await readGroupReport(messageId);
     if (!previous || previous.deleted_at) return;

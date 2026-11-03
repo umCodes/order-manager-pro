@@ -2,7 +2,7 @@ import { parseWebhookBody } from "../webhook/parseWebhookBody.mjs";
 import { claimUpdate, recordUpdate } from "../state/telegramUpdates.mjs";
 import { linkGroupReply } from "./groupReplies.mjs";
 import { handleReaction } from "./thumbsUp.mjs";
-import { handleDeleteReply, handleHeartReaction } from "./deleteReports.mjs";
+import { handleHeartReaction } from "./deleteReports.mjs";
 
 const ok = { statusCode: 200, body: JSON.stringify({ ok: true }) };
 
@@ -20,7 +20,7 @@ function updateKind(update) {
  * checks out, so a bad update is never retried forever. Replies to order
  * messages in the preparers' group are tied to their order and read as
  * shortage reports (groupReplies.mjs), and 👍 on them marks the order
- * prepared (thumbsUp.mjs); "." / "።" or ❤️ deletes a report (deleteReports.mjs).
+ * prepared (thumbsUp.mjs); ❤️ deletes a report (deleteReports.mjs).
  */
 export async function handleTelegramUpdate(event) {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -50,7 +50,6 @@ export async function handleTelegramUpdate(event) {
         console.log(`Telegram update ${update.update_id} (${updateKind(update)}):`, JSON.stringify(update));
         await recordUpdate(update);
         await linkGroupReply(update);
-        await handleDeleteReply(update);
         await handleReaction(update);
         await handleHeartReaction(update);
     } catch (error) {

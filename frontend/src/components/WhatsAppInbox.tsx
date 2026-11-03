@@ -149,7 +149,8 @@ function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) 
  */
 /**
  * Whether this page load has already asked about failed messages — so the
- * prompt shows once on opening the WhatsApp tab, again only after a reload.
+ * prompt opens by itself once on opening the WhatsApp tab, again only after
+ * a reload (the toolbar's failed-messages button opens it any time).
  */
 let failedPromptAsked = false;
 
@@ -186,31 +187,45 @@ export default function WhatsAppInbox() {
     loadChats();
   }, [loadChats]);
 
-  // Failed messages: asked about once per page load, on opening the tab (see failedPromptAsked).
+  // Failed messages: counted on the toolbar's button whenever the tab opens
+  // (and on refresh); the resend prompt opens by itself once per page load
+  // (see failedPromptAsked), and from the button any time.
   const [failed, setFailed] = useState<FailedWhatsAppMessage[]>([]);
+  const [isFailedPromptOpen, setIsFailedPromptOpen] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const loadFailed = useCallback(
+    () =>
+      fetchFailedWhatsAppMessages()
+        .then((list) => {
+          setFailed(list);
+          return list;
+        })
+        .catch(() => [] as FailedWhatsAppMessage[]),
+    [],
+  );
   useEffect(() => {
-    if (failedPromptAsked) return;
-    failedPromptAsked = true;
-    fetchFailedWhatsAppMessages()
-      .then(setFailed)
-      .catch(() => {});
-  }, []);
+    loadFailed().then((list) => {
+      if (failedPromptAsked || list.length === 0) return;
+      failedPromptAsked = true;
+      setIsFailedPromptOpen(true);
+    });
+  }, [loadFailed]);
 
   function handleResendFailed() {
     setIsResending(true);
     setResendError(null);
     resendFailedWhatsAppMessages(failed)
       .then(({ sent, failed: failedAgain }) => {
-        setFailed([]);
+        setIsFailedPromptOpen(false);
         setResendNotice(
           failedAgain.length === 0
             ? `Sent ${sent} message${sent === 1 ? "" : "s"} again.`
             : `Sent ${sent} again; ${failedAgain.length} failed again (${failedAgain[0].error}).`,
         );
         loadChats();
+        loadFailed();
       })
       .catch((e) => setResendError(e instanceof Error ? e.message : "Failed to resend messages"))
       .finally(() => setIsResending(false));
@@ -311,7 +326,21 @@ export default function WhatsAppInbox() {
         >
           {READ_FILTER_LABELS[readFilter]}
         </button>
-        <RefreshButton onRefresh={loadChats} />
+        <RefreshButton onRefresh={() => Promise.all([loadChats(), loadFailed()])} />
+        <button
+          type="button"
+          className={`icon-btn wa-failed-btn${failed.length > 0 ? " wa-failed-btn--some" : ""}`}
+          onClick={() => {
+            setResendError(null);
+            setIsFailedPromptOpen(true);
+          }}
+          disabled={failed.length === 0}
+          aria-label={`${failed.length} failed message${failed.length === 1 ? "" : "s"} — resend`}
+          title={failed.length > 0 ? "Resend failed messages" : "No failed messages"}
+        >
+          <AlertCircle size={14} />
+          <span className="wa-failed-btn__count">{failed.length}</span>
+        </button>
         <button
           type="button"
           className="icon-btn"
@@ -376,7 +405,7 @@ export default function WhatsAppInbox() {
       {chatsError && <div className="form-error">{chatsError}</div>}
       {resendNotice && <div className="day-warning">{resendNotice}</div>}
 
-      {failed.length > 0 && (
+      {isFailedPromptOpen && failed.length > 0 && (
         <ConfirmModal
           title="Resend failed messages?"
           message={`${failed.length} WhatsApp message${failed.length === 1 ? "" : "s"} failed to send in the last 7 days${
@@ -389,7 +418,7 @@ export default function WhatsAppInbox() {
           error={resendError}
           isConfirming={isResending}
           onConfirm={handleResendFailed}
-          onCancel={() => setFailed([])}
+          onCancel={() => setIsFailedPromptOpen(false)}
         />
       )}
 

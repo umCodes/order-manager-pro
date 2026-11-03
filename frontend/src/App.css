@@ -4013,3 +4013,23 @@ button.line-items__header.customer-tx__toggle {
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* WhatsApp toolbar: how many messages failed, and a tap to resend them. */
+.wa-failed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+  color: var(--color-gray-400);
+}
+
+.wa-failed-btn--some {
+  color: var(--color-red-600);
+}
+
+.wa-failed-btn__count {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

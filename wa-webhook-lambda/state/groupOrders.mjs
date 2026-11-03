@@ -152,3 +152,24 @@ export async function forgetBotReplies(messageId, warningIds) {
     const redis = getRedisClient();
     await redis.del(`telegram:group-bot-replies:${messageId}`, ...warningIds.map((id) => `telegram:group-bot-reply-of:${id}`));
 }
+
+/**
+ * ❤️ on an order message: everything on it is missing. Per message, who has
+ * one on it now and since when (the backend reads these:
+ * backend/src/services/telegram/groupOrders.ts; change both together).
+ *
+ *   telegram:group-all-missing:<group message id> → hash of reactor id → { name, at } (JSON)
+ */
+const allMissingKey = (messageId) => `telegram:group-all-missing:${messageId}`;
+
+export async function setAllMissing(messageId, reactorId, mark) {
+    await getRedisClient()
+        .multi()
+        .hset(allMissingKey(messageId), String(reactorId), JSON.stringify(mark))
+        .expire(allMissingKey(messageId), REPORT_KEEP_SECONDS)
+        .exec();
+}
+
+export async function removeAllMissing(messageId, reactorId) {
+    await getRedisClient().hdel(allMissingKey(messageId), String(reactorId));
+}

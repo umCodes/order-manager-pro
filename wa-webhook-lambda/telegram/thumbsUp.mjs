@@ -1,10 +1,11 @@
-import { readGroupOrderMessage, recordInteraction, removeThumb, setThumb } from "../state/groupOrders.mjs";
+import { readGroupOrderMessage, recordInteraction, removeAllMissing, removeThumb, setAllMissing, setThumb } from "../state/groupOrders.mjs";
 
 const PREPARED = "👍";
+const ALL_MISSING = "❤";
 
 /**
- * 👍 on an order message in the group means it's prepared; taking the 👍
- * off takes that back. Comes as a message_reaction update — which Telegram
+ * 👍 on an order message in the group means it's prepared, and ❤️ that
+ * everything on it is missing; taking either off takes that back. Comes as a message_reaction update — which Telegram
  * only sends when the webhook asks for it (allowed_updates) and the bot is
  * an admin of the group. Anyone in the group counts; bots (the bot's own 👌
  * on reports among them) and messages that aren't orders are ignored. An
@@ -27,14 +28,27 @@ export async function handleReaction(update) {
         await recordInteraction(reaction.message_id, reactor.id, { name: reactorName, at: new Date(reaction.date * 1000).toISOString(), kind: "reaction" });
     }
 
-    const has = (list) => (list ?? []).some((entry) => entry.type === "emoji" && entry.emoji === PREPARED);
-    const before = has(reaction.old_reaction);
-    const now = has(reaction.new_reaction);
+    const hasEmoji = (list, emoji) => (list ?? []).some((entry) => entry.type === "emoji" && entry.emoji === emoji);
+    const at = new Date(reaction.date * 1000).toISOString();
+
+    // ❤️ on the order message: everything on it is missing (taken back with the ❤️).
+    const heartBefore = hasEmoji(reaction.old_reaction, ALL_MISSING);
+    const heartNow = hasEmoji(reaction.new_reaction, ALL_MISSING);
+    if (heartNow && !heartBefore) {
+        await setAllMissing(reaction.message_id, reactor.id, { name: reactorName, at });
+        console.log(`Telegram group: ❤️ on ${order.order_number} (message ${reaction.message_id}) by ${reactorName}: all missing`);
+    } else if (heartBefore && !heartNow) {
+        await removeAllMissing(reaction.message_id, reactor.id);
+        console.log(`Telegram group: ❤️ taken off ${order.order_number} (message ${reaction.message_id})`);
+    }
+
+    const before = hasEmoji(reaction.old_reaction, PREPARED);
+    const now = hasEmoji(reaction.new_reaction, PREPARED);
     if (before === now) return;
 
     if (now) {
         const name = reactorName;
-        await setThumb(reaction.message_id, reactor.id, { name, at: new Date(reaction.date * 1000).toISOString() });
+        await setThumb(reaction.message_id, reactor.id, { name, at });
         console.log(`Telegram group: 👍 on ${order.order_number} (message ${reaction.message_id}) by ${name}`);
     } else {
         await removeThumb(reaction.message_id, reactor.id);

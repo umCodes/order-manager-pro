@@ -300,6 +300,10 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
         .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
 
     const applied = await readAppliedReports(orderId)
+    // ❤️ on a message: everything on it missing (the latest ❤️ stands for them all).
+    const hearts = new Map(
+        await Promise.all(current.map(async (message) => [message.message_id, await allMissingOn(message.message_id)] as const)),
+    )
 
     // The latest report line per (message replied to, item number).
     const latest = new Map<string, { report: GroupReport; line: GroupReportLine }>()
@@ -330,7 +334,22 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
             }
             if (message.posted_at > entry.changed_at) entry.changed_at = message.posted_at
             entry.ordered = tg(item.change ? (item.order_quantity ?? 0) : item.quantity, item.unit)
-            if (item.change !== "decreased" && item.change !== "removed") {
+            const heart = hearts.get(message.message_id)
+            if (heart && item.change !== "decreased" && item.change !== "removed") {
+                if (heart.at > entry.changed_at) entry.changed_at = heart.at
+                entry.reports.push({
+                    message_id: message.message_id,
+                    reply_to_message_id: message.message_id,
+                    from: { id: null, name: heart.name, username: null },
+                    sent_at: heart.at,
+                    updated_at: heart.at,
+                    edited: false,
+                    line: "❤️",
+                    ordered: item.quantity,
+                    available: 0,
+                    missing: true,
+                })
+            } else if (item.change !== "decreased" && item.change !== "removed") {
                 const reported = latest.get(`${message.message_id}:${item.number}`)
                 entry.supply += reported ? lineAmount(reported.line, reported.line.available) : tg(item.quantity, item.unit)
                 if (reported) {
@@ -396,6 +415,18 @@ async function thumbsOn(messageId: number): Promise<Thumb[]> {
  *
  *   telegram:group-interactions:<group message id> → hash of person id → { name, at, kind } (JSON)
  */
+/**
+ * ❤️ on an order message, as the webhook Lambda saves them
+ * (wa-webhook-lambda/state/groupOrders.mjs; change both together): everything
+ * on the message is missing. The latest one, or null.
+ *
+ *   telegram:group-all-missing:<group message id> → hash of reactor id → { name, at } (JSON)
+ */
+async function allMissingOn(messageId: number): Promise<Thumb | null> {
+    const stored = Object.values((await redisClient.hGetAll(`telegram:group-all-missing:${messageId}`)) ?? {})
+    return stored.length ? latestOf(stored.map((raw) => JSON.parse(raw) as Thumb)) : null
+}
+
 async function interactionsOn(messageId: number): Promise<Thumb[]> {
     const stored = await redisClient.hGetAll(`telegram:group-interactions:${messageId}`)
     return Object.values(stored ?? {}).map((raw) => JSON.parse(raw) as Thumb)
@@ -434,7 +465,13 @@ export async function orderPreparation(orderId: string): Promise<OrderPreparatio
         const toConfirm = current.filter(
             (message) => message.message_type === "order" || message.items.some((item) => item.change === "added" || item.change === "increased"),
         )
-        const thumbs = await Promise.all(toConfirm.map((message) => thumbsOn(message.message_id)))
+        // A 👍 (or a saved report) says it's prepared; a ❤️ that it's all missing — seen to, either way.
+        const thumbs = await Promise.all(
+            toConfirm.map(async (message) => {
+                const heart = await allMissingOn(message.message_id)
+                return [...(await thumbsOn(message.message_id)), ...(heart ? [heart] : [])]
+            }),
+        )
         if (toConfirm.length > 0 && thumbs.every((list) => list.length > 0)) confirmed = latestOf(thumbs.map(latestOf))
     }
 

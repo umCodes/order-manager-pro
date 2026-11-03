@@ -144,8 +144,6 @@ const react = (message, emoji) =>
         reaction: emoji ? [{ type: "emoji", emoji }] : [],
     });
 
-const escapeHtml = (text) => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 /** Sends the bot's warning (HTML) as a reply to `message`, and remembers it, so the report's chain can be deleted together. */
 async function answer(message, html) {
     const response = await call("sendMessage", {
@@ -158,24 +156,23 @@ async function answer(message, html) {
 }
 
 /**
- * The owner's wording for a report the bot couldn't read: what's wrong
- * (`errors`, one line each) under the header, then how to delete it, how to
- * report a shortage (with an example), 👍 for ready, and ❤️ to delete.
+ * The owner's wording for a report the bot couldn't read, as is: how to
+ * delete it, how to report a shortage (with an example), 👍 for ready, and
+ * ❤️ to delete. What exactly was wrong is only logged, not listed.
  */
-export function warningText(errors, { keptEarlier = false } = {}) {
+export function warningText({ keptEarlier = false } = {}) {
     return [
-        "<b>⚠️ የገባው መልእቀት ልክ አይደለም</b>",
-        ...errors.map((error) => `• ${escapeHtml(error)}`),
+        "<b>⚠️ የገባው መልእክት ልክ አይደለም</b>",
         ...(keptEarlier ? ["(የቀድሞው እንዳለ ነው)"] : []),
         "",
         "🗑️ መልእክቱን ጭራሽ ለማጥፋት:",
         '- አራት ነጥብ "።"  ወይም  አንድ ነጥብ ኤዲት ወይም ምላሽ ይላኩ "."',
-        "- መልእክቱን በራስዎ ማጥፋት ስተት ነው።",
+        "- መልእክቱን በራስዎ ማጥፋት ስህተት ነው።",
         "",
         "-----",
         "<b>❗️ጉድለት ለማሳወቅ</b>",
         "",
-        "የእቃ ቁጥራ (1,2,3...) + እጅ ላይ ያለው መጠን (1,2,3...)",
+        "የእቃ ቁጥር (1,2,3...) + እጅ ላይ ያለው መጠን (1,2,3...)",
         "",
         "ምሳሌ:",
         "",
@@ -194,7 +191,7 @@ export function warningText(errors, { keptEarlier = false } = {}) {
         "",
         "--------",
         "",
-        "ትዛዝ ዝግጁ መሆኑን ለማሰወቅ",
+        "ትዕዛዝ ዝግጁ መሆኑን ለማሳወቅ",
         '"👍" እስቲከር ያርጉት',
         "--------",
         "ይህን መልእክት ለማጥፋት ",
@@ -250,7 +247,7 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
     }
 
     if (errors.length > 0) {
-        await answer(message, warningText(errors, { keptEarlier: !!(edited && previous?.lines.length) }));
+        await answer(message, warningText({ keptEarlier: !!(edited && previous?.lines.length) }));
         console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} refused:`, errors.join("; "));
         return;
     }

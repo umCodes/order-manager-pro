@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2, UserPen, UserPlus } from "lucide-react";
 import {
   fetchWhatsAppChats,
+  fetchFailedWhatsAppMessages,
+  resendFailedWhatsAppMessages,
+  type FailedWhatsAppMessage,
   fetchWhatsAppConversation,
   retryWhatsAppMessage,
   type WhatsAppChat,
@@ -144,6 +147,12 @@ function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) 
  * webhook and this app have stored (kept for 7 days); replying is only
  * possible within 24 hours of the contact's last message.
  */
+/**
+ * Whether this page load has already asked about failed messages — so the
+ * prompt shows once on opening the WhatsApp tab, again only after a reload.
+ */
+let failedPromptAsked = false;
+
 export default function WhatsAppInbox() {
   // Shown straight from this device's copy, then refreshed from the server.
   const [chats, setChats] = useState<WhatsAppChat[] | null>(() => loadStoredChats());
@@ -176,6 +185,36 @@ export default function WhatsAppInbox() {
   useEffect(() => {
     loadChats();
   }, [loadChats]);
+
+  // Failed messages: asked about once per page load, on opening the tab (see failedPromptAsked).
+  const [failed, setFailed] = useState<FailedWhatsAppMessage[]>([]);
+  const [isResending, setIsResending] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (failedPromptAsked) return;
+    failedPromptAsked = true;
+    fetchFailedWhatsAppMessages()
+      .then(setFailed)
+      .catch(() => {});
+  }, []);
+
+  function handleResendFailed() {
+    setIsResending(true);
+    setResendError(null);
+    resendFailedWhatsAppMessages(failed)
+      .then(({ sent, failed: failedAgain }) => {
+        setFailed([]);
+        setResendNotice(
+          failedAgain.length === 0
+            ? `Sent ${sent} message${sent === 1 ? "" : "s"} again.`
+            : `Sent ${sent} again; ${failedAgain.length} failed again (${failedAgain[0].error}).`,
+        );
+        loadChats();
+      })
+      .catch((e) => setResendError(e instanceof Error ? e.message : "Failed to resend messages"))
+      .finally(() => setIsResending(false));
+  }
 
   // Last-message previews, with local deletes applied. Re-read whenever the
   // list changes identity — including on returning from a chat, below.
@@ -335,6 +374,24 @@ export default function WhatsAppInbox() {
       )}
 
       {chatsError && <div className="form-error">{chatsError}</div>}
+      {resendNotice && <div className="day-warning">{resendNotice}</div>}
+
+      {failed.length > 0 && (
+        <ConfirmModal
+          title="Resend failed messages?"
+          message={`${failed.length} WhatsApp message${failed.length === 1 ? "" : "s"} failed to send in the last 7 days${
+            failed.length <= 3
+              ? `: ${failed.map((m) => `${allChats.find((c) => c.phone === m.phone)?.name ?? `+${m.phone}`}`).join(", ")}`
+              : ""
+          }. Send ${failed.length === 1 ? "it" : "them"} again now, exactly as before? Each is only ever resent once.`}
+          confirmLabel={isResending ? "Sending..." : `Resend ${failed.length}`}
+          cancelLabel="Not now"
+          error={resendError}
+          isConfirming={isResending}
+          onConfirm={handleResendFailed}
+          onCancel={() => setFailed([])}
+        />
+      )}
 
       {chats === null && !chatsError ? (
         <div className="items-area__empty">Loading...</div>

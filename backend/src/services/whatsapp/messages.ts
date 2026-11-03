@@ -45,12 +45,15 @@ export async function sendWhatsAppTemplate(
     components: TemplateComponent[],
     languageCode: string = "en",
     chatSummary?: string,
+    /** Extra fields kept on the chat record, e.g. which attempt a resend is. */
+    recordExtra: Record<string, unknown> = {},
 ) {
     // Stored in the chat history with everything needed to send it again
     // from the chat view (see retryWhatsAppChatMessage).
     const rendered = await renderForChat(templateName, languageCode, components)
     const summary = rendered ? renderedTemplateText(rendered) : chatSummary
     const chatRecord = {
+        ...recordExtra,
         type: "template",
         template: { name: templateName, language: languageCode, components },
         ...(rendered && { rendered }),

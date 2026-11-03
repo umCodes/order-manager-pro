@@ -4,6 +4,8 @@ import {
     getWhatsAppChatMessages,
     sendWhatsAppChatMessage,
     retryWhatsAppChatMessage,
+    listFailedWhatsAppMessages,
+    resendFailedWhatsAppMessages,
     sendWhatsAppChatMedia,
     getWhatsAppChatMedia,
     getWhatsAppUnread,
@@ -31,6 +33,8 @@ whatsappRouter.delete('/whatsapp/chats/:phone/contact', removeWhatsAppContact);
 whatsappRouter.get('/whatsapp/chats/:phone/messages', getWhatsAppChatMessages);
 whatsappRouter.post('/whatsapp/chats/:phone/messages', sendWhatsAppChatMessage);
 whatsappRouter.post('/whatsapp/chats/:phone/messages/:messageId/retry', retryWhatsAppChatMessage);
+whatsappRouter.get('/whatsapp/failed', listFailedWhatsAppMessages);
+whatsappRouter.post('/whatsapp/failed/resend', resendFailedWhatsAppMessages);
 whatsappRouter.post('/whatsapp/chats/:phone/templates', sendWhatsAppChatTemplate);
 whatsappRouter.get('/whatsapp/templates', getWhatsAppTemplates);
 whatsappRouter.post('/whatsapp/templates', createWhatsAppTemplate);

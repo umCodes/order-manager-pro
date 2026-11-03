@@ -1293,6 +1293,35 @@ export async function sendWhatsAppChatMessage(phone: string, text: string, reply
  * updated conversation; if this attempt fails too, throws with WhatsApp's
  * reason and the conversation (which shows the new failed attempt) attached.
  */
+/** A WhatsApp template that failed to send and can be resent (see the WhatsApp tab's failed-messages prompt). */
+export type FailedWhatsAppMessage = { phone: string; id: string; summary: string; error: string | null; timestamp: number };
+
+/** Template messages that failed in the last 7 days and can be resent. */
+export async function fetchFailedWhatsAppMessages(): Promise<FailedWhatsAppMessage[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/failed`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to load failed messages (${response.status})`);
+  return body.messages ?? [];
+}
+
+/**
+ * Resends the given failed messages. Each is only ever resent once: one
+ * already resent elsewhere is skipped. `failed` lists the ones WhatsApp
+ * refused again, with its reason.
+ */
+export async function resendFailedWhatsAppMessages(
+  messages: { phone: string; id: string }[],
+): Promise<{ sent: number; skipped: number; failed: { phone: string; id: string; error: string }[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/failed/resend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: messages.map(({ phone, id }) => ({ phone, id })) }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to resend messages (${response.status})`);
+  return body;
+}
+
 export async function retryWhatsAppMessage(phone: string, messageId: string): Promise<WhatsAppConversation> {
   const response = await apiFetch(
     `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/retry`,

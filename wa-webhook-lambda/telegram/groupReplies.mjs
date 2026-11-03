@@ -1,5 +1,6 @@
-import { readGroupOrderMessage, recordGroupReply, recordInteraction } from "../state/groupOrders.mjs";
+import { readGroupOrderMessage, recordGroupReply, recordInteraction, trackReplyToOrder } from "../state/groupOrders.mjs";
 import { handleShortageReport } from "./shortageReports.mjs";
+import { deleteReportChain, isDeleteMark } from "./deleteReports.mjs";
 
 /**
  * Ties a message in the preparers' group to the order it answers. Only a
@@ -9,7 +10,8 @@ import { handleShortageReport } from "./shortageReports.mjs";
  * group's chat id, so a reply in any other chat never matches it.
  *
  * A recognised reply is recorded, then read as a shortage report
- * (shortageReports.mjs) — an edited one too, which replaces the report.
+ * (shortageReports.mjs) — an edited one too, which replaces the report —
+ * unless it's just "." or "።", which deletes it (deleteReports.mjs).
  */
 export async function linkGroupReply(update) {
     const edited = !update.message && !!update.edited_message;
@@ -46,6 +48,12 @@ export async function linkGroupReply(update) {
             at: new Date((message.edit_date ?? message.date) * 1000).toISOString(),
             kind: "reply",
         });
+    }
+    await trackReplyToOrder(message.message_id, message.chat.id, repliedTo.message_id);
+    // Edited (or sent) as just "." or "።": the preparer wants it gone, with the bot's warnings on it.
+    if (isDeleteMark(reply.text)) {
+        await deleteReportChain(message.chat.id, message.message_id);
+        return;
     }
     await handleShortageReport(message, order, { edited });
 }

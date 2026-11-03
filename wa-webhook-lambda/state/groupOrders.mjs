@@ -101,3 +101,49 @@ export async function recordInteraction(messageId, personId, interaction) {
         .expire(key, REPORT_KEEP_SECONDS)
         .exec();
 }
+
+/**
+ * The message chain around a report, so it can be deleted as a whole: every
+ * reply to an order message (a report, a wrong one, or a plain reply), the
+ * bot's warnings answering it, and each warning's report. Kept 30 days.
+ *
+ *   telegram:group-reply-of:<message id>      → { chat_id, order_message_id } (JSON)
+ *   telegram:group-bot-replies:<message id>   → set of the bot's warning message ids
+ *   telegram:group-bot-reply-of:<warning id>  → the message it answered
+ */
+export async function trackReplyToOrder(messageId, chatId, orderMessageId) {
+    await getRedisClient().set(
+        `telegram:group-reply-of:${messageId}`,
+        JSON.stringify({ chat_id: String(chatId), order_message_id: orderMessageId }),
+        "EX",
+        REPORT_KEEP_SECONDS,
+    );
+}
+
+export async function readReplyToOrder(messageId) {
+    const raw = await getRedisClient().get(`telegram:group-reply-of:${messageId}`);
+    return raw ? JSON.parse(raw) : null;
+}
+
+export async function addBotReply(messageId, warningId) {
+    await getRedisClient()
+        .multi()
+        .sadd(`telegram:group-bot-replies:${messageId}`, String(warningId))
+        .expire(`telegram:group-bot-replies:${messageId}`, REPORT_KEEP_SECONDS)
+        .set(`telegram:group-bot-reply-of:${warningId}`, String(messageId), "EX", REPORT_KEEP_SECONDS)
+        .exec();
+}
+
+export async function botRepliesTo(messageId) {
+    return (await getRedisClient().smembers(`telegram:group-bot-replies:${messageId}`)).map(Number);
+}
+
+export async function messageAnsweredBy(warningId) {
+    const id = await getRedisClient().get(`telegram:group-bot-reply-of:${warningId}`);
+    return id ? Number(id) : null;
+}
+
+export async function forgetBotReplies(messageId, warningIds) {
+    const redis = getRedisClient();
+    await redis.del(`telegram:group-bot-replies:${messageId}`, ...warningIds.map((id) => `telegram:group-bot-reply-of:${id}`));
+}

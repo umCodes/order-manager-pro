@@ -1,5 +1,5 @@
 import { telegramApi } from "../services/telegram/client.mjs";
-import { readGroupReport, readOrderGroupMessages, saveGroupReport } from "../state/groupOrders.mjs";
+import { addBotReply, botRepliesTo, forgetBotReplies, readGroupReport, readOrderGroupMessages, saveGroupReport } from "../state/groupOrders.mjs";
 
 /**
  * Shortage reports: a preparer replies to an order message in the group with
@@ -20,7 +20,9 @@ import { readGroupReport, readOrderGroupMessages, saveGroupReport } from "../sta
  * so taking a line out takes that item's report away, and taking every line
  * out cancels the report (its reaction is removed). Earlier versions are kept
  * in the record's history. Telegram doesn't tell bots about deleted
- * messages, so an edit is the way to correct one.
+ * messages, so deleting goes through the bot instead (deleteReports.mjs):
+ * "." or "።" as an edit or a reply, or a ❤️. Once a report is saved, the
+ * bot's earlier warnings on it are deleted.
  *
  * Nothing here touches Zoho.
  */
@@ -123,12 +125,15 @@ async function isReplaced(orderMessage) {
     return messages.some((message) => message.message_type === "order" && message.posted_at > orderMessage.posted_at);
 }
 
-async function call(method, body) {
+/** Calls the Bot API, logging (never throwing) a failure; returns Telegram's answer, or null when it couldn't be reached. */
+export async function call(method, body) {
     try {
         const response = await telegramApi(method, body);
         if (!response.ok) console.error(`Telegram: ${method} failed:`, response.description);
+        return response;
     } catch (error) {
         console.error(`Telegram: ${method} failed`, error);
+        return null;
     }
 }
 
@@ -139,15 +144,86 @@ const react = (message, emoji) =>
         reaction: emoji ? [{ type: "emoji", emoji }] : [],
     });
 
-function answer(message, lines) {
-    return call("sendMessage", {
+const escapeHtml = (text) => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Sends the bot's warning (HTML) as a reply to `message`, and remembers it, so the report's chain can be deleted together. */
+async function answer(message, html) {
+    const response = await call("sendMessage", {
         chat_id: message.chat.id,
-        text: lines.join("\n"),
+        text: html,
+        parse_mode: "HTML",
         reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
     });
+    if (response?.ok) await addBotReply(message.message_id, response.result.message_id);
 }
 
-const FORMAT_HELP = ["", "በአንድ መስመር አንድ እቃ:", "3 M ወይም 3 0 → ③ የለም", "3 5 → ③ 5 ኪሎ ብቻ አለ"];
+/**
+ * The owner's wording for a report the bot couldn't read: what's wrong
+ * (`errors`, one line each) under the header, then how to delete it, how to
+ * report a shortage (with an example), 👍 for ready, and ❤️ to delete.
+ */
+export function warningText(errors, { keptEarlier = false } = {}) {
+    return [
+        "<b>⚠️ የገባው መልእቀት ልክ አይደለም</b>",
+        ...errors.map((error) => `• ${escapeHtml(error)}`),
+        ...(keptEarlier ? ["(የቀድሞው እንዳለ ነው)"] : []),
+        "",
+        "🗑️ መልእክቱን ጭራሽ ለማጥፋት:",
+        '- አራት ነጥብ "።"  ወይም  አንድ ነጥብ ኤዲት ወይም ምላሽ ይላኩ "."',
+        "- መልእክቱን በራስዎ ማጥፋት ስተት ነው።",
+        "",
+        "-----",
+        "<b>❗️ጉድለት ለማሳወቅ</b>",
+        "",
+        "የእቃ ቁጥራ (1,2,3...) + እጅ ላይ ያለው መጠን (1,2,3...)",
+        "",
+        "ምሳሌ:",
+        "",
+        "INV-004042:",
+        "",
+        "① 10ኪሎ ሽሮ ኪሎ",
+        "② 10ኪሎ ሽሮ ሩብ",
+        "③ 10ኪሎ ሽሮ ኑስ",
+        "",
+        "🟢 ለዛሬ",
+        "",
+        "ምላሽ መልእክት:",
+        "",
+        "2 5 &lt;- (ይህ ማለት: በእጅ ላይ ያለው 5 ኪሎ ብቻ ነው)",
+        "3 0 &lt;- (ይህ ማለት በእጅ ላይ ምንም የለም )",
+        "",
+        "--------",
+        "",
+        "ትዛዝ ዝግጁ መሆኑን ለማሰወቅ",
+        '"👍" እስቲከር ያርጉት',
+        "--------",
+        "ይህን መልእክት ለማጥፋት ",
+        "",
+        '"❤️" እስቲከር ያርጉት',
+    ].join("\n");
+}
+
+/** The bot's warnings answering a message, once it's been fixed — deleted so the chat only keeps what's still wrong. */
+async function clearWarnings(message) {
+    const warnings = await botRepliesTo(message.message_id);
+    if (warnings.length === 0) return;
+    await call("deleteMessages", { chat_id: message.chat.id, message_ids: warnings });
+    await forgetBotReplies(message.message_id, warnings);
+}
+
+/** Cancels a report (its message was deleted with "." / "።" / ❤️): no item lines from now on, with the earlier ones kept in its history. */
+export async function cancelReport(messageId, at = new Date()) {
+    const previous = await readGroupReport(messageId);
+    if (!previous || previous.deleted_at) return;
+    const { history = [], ...current } = previous;
+    await saveGroupReport({
+        ...current,
+        lines: [],
+        deleted_at: at.toISOString(),
+        updated_at: at.toISOString(),
+        history: [...history, { text: previous.text, lines: previous.lines, updated_at: previous.updated_at }],
+    });
+}
 
 /**
  * Handles a reply (new or edited) to an order message: `message` is the
@@ -174,8 +250,7 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
     }
 
     if (errors.length > 0) {
-        const kept = edited && previous?.lines.length ? " (የቀድሞው እንዳለ ነው)" : "";
-        await answer(message, [`⚠️ አልተመዘገበም${kept}:`, ...errors.map((error) => `• ${error}`), ...FORMAT_HELP]);
+        await answer(message, warningText(errors, { keptEarlier: !!(edited && previous?.lines.length) }));
         console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} refused:`, errors.join("; "));
         return;
     }
@@ -198,6 +273,7 @@ export async function handleShortageReport(message, orderMessage, { edited }) {
           };
     await saveGroupReport(report);
     await react(message, CONFIRM_REACTION);
+    await clearWarnings(message);
     console.log(`Telegram group: report ${message.message_id} on ${orderMessage.order_number} saved:`, lines.map((line) => line.text).join(", "));
 }
 

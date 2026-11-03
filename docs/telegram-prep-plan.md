@@ -58,6 +58,8 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - Missing is `m`, `M` or `0` (`3 0` is the same as `3 M`), nothing else.
 - Anyone in the group can report shortages and give 👍.
 - Corrections are made by editing the report message (Telegram doesn't tell bots about deletions).
+- **Deleting a report goes through the bot** (deleting it by hand doesn't count, and the warning says so): edit the report to just "." or "።", reply "." / "።" to it or to the bot's warning on it, or react ❤️ to either. The bot deletes the report, its warnings on it and the "." message, and cancels the report (kept in its history). Order messages are never deleted this way. Needs the bot to be an admin allowed to delete messages.
+- **The bot's warning uses the owner's wording** (bold headers): what's wrong, how to delete, how to report a shortage with an example, 👍 for ready, ❤️ to delete. Once a report is fixed, the bot deletes its earlier warnings on it.
 - Confirmation reaction: 👌 (bots can only use Telegram's reaction list, which has no ✅; 👍 means "prepared"). Owner can change it.
 - Everything in a report must show in the app.
 

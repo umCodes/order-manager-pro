@@ -90,6 +90,36 @@ function widthOf(doc: PDFKit.PDFDocument, tokens: Token[], options: MixedTextOpt
 }
 
 /**
+ * A signed number ("-10.00") is drawn as sign, then number: drawn whole in
+ * the Arabic font, the shaper's bidi moves the leading sign to the right
+ * ("10.00-").
+ */
+function drawToken(doc: PDFKit.PDFDocument, text: string, x: number, baselineY: number) {
+  const signed = /^([-+])(\d.*)$/.exec(text);
+  const parts = signed ? [signed[1]!, signed[2]!] : [text];
+  let cursor = x;
+  for (const part of parts) {
+    doc.text(part, cursor, baselineY, { lineBreak: false, baseline: "alphabetic" });
+    cursor += doc.widthOfString(part);
+  }
+}
+
+/** The width `text` takes when drawn with drawMixedLine (before any "…" cut). */
+export function mixedLineWidth(doc: PDFKit.PDFDocument, text: string, options: MixedTextOptions) {
+  if (!hasArabic(text)) return doc.font(options.font).fontSize(options.size).widthOfString(text);
+  return widthOf(doc, tokenize(text.trim()), options);
+}
+
+/**
+ * `text` split into words and single spaces in visual (left-to-right drawing)
+ * order — for engines that draw word by word but don't reorder Arabic.
+ */
+export function visualWords(text: string): string[] {
+  if (!hasArabic(text)) return [text];
+  return visualOrder(tokenize(text)).map((token) => token.text);
+}
+
+/**
  * Draws `text` on one line within `width` at (x, y), aligned as asked and
  * cut with "…" if it doesn't fit (dropping words from the end of the text).
  */
@@ -120,7 +150,7 @@ export function drawMixedLine(doc: PDFKit.PDFDocument, text: string, x: number, 
   doc.fillColor(options.color);
   for (const token of visual) {
     doc.font(fontOf(token, options)).fontSize(options.size);
-    if (!token.space) doc.text(token.text, cursor, baselineY, { lineBreak: false, baseline: "alphabetic" });
+    if (!token.space) drawToken(doc, token.text, cursor, baselineY);
     cursor += doc.widthOfString(token.text);
   }
 }

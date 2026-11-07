@@ -1,6 +1,6 @@
 import fs from "fs";
 import { DEFAULT_LOGO } from "../assets.js";
-import { LABELS, RECEIPT_TITLE } from "../labels.js";
+import { currencyLabel, LABELS, RECEIPT_TITLE } from "../labels.js";
 import { itemDisplayName, translateUnit, weightQtyText } from "../itemFormatting.js";
 import { createTextRenderer } from "../textRenderer.js";
 import type { InvoiceLanguage, InvoicePdfData } from "../types.js";
@@ -22,7 +22,7 @@ export function renderReceiptInvoiceDocument(
   invoice: InvoicePdfData,
   language: InvoiceLanguage,
 ): void {
-    const currency = invoice.currency ?? "SAR";
+    const currency = currencyLabel(invoice.currency ?? "SAR", language);
     const labels = LABELS[language];
     const title = RECEIPT_TITLE[language];
 

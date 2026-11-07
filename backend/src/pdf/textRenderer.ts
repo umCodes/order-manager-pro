@@ -1,4 +1,5 @@
 import { FONT_ARABIC_BOLD, FONT_ARABIC_REGULAR, FONT_BOLD, FONT_REGULAR } from "./assets.js";
+import { visualWords } from "./mixedText.js";
 
 const ETHIOPIC_RANGE = /[ሀ-፿]/;
 const ARABIC_RANGE = /[؀-ۿݐ-ݿ]/;
@@ -54,6 +55,18 @@ export function createTextRenderer(doc: PDFKit.PDFDocument, currency: string) {
       return runs;
     };
 
+    /**
+     * The runs of `text` in drawing (left-to-right) order: text with Arabic
+     * is put in right-to-left word order first (see mixedText.ts), and within
+     * an Arabic word, its runs are reversed too (so "الفاتورة:" ends with the
+     * colon on its left).
+     */
+    const visualRuns = (text: string) =>
+      visualWords(text).flatMap((word) => {
+        const runs = splitRuns(word);
+        return ARABIC_RANGE.test(word) ? runs.reverse() : runs;
+      });
+
     const fontFor = (script: Script, bold: boolean) => {
       if (script === "ethiopic") return bold ? "Bold" : "Regular";
       if (script === "arabic") return bold ? "Arabic-Bold" : "Arabic";
@@ -98,7 +111,7 @@ export function createTextRenderer(doc: PDFKit.PDFDocument, currency: string) {
       const renderText = maxWidth !== undefined ? truncateToWidth(text, bold, fontSize, maxWidth) : text;
       if (color) doc.fillColor(color);
       let cursorX = x;
-      for (const run of splitRuns(renderText)) {
+      for (const run of visualRuns(renderText)) {
         doc.font(fontFor(run.script, bold)).fontSize(fontSize);
         doc.text(run.text, cursorX, y, { lineBreak: false });
         cursorX += doc.widthOfString(run.text);

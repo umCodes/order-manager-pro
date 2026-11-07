@@ -13,8 +13,10 @@ export const ENV = {
 
   /** Printed as the invoice header's shop name (Amharic invoices, and page 1 of the bilingual am+en receipt). */
   BUSINESS_NAME_AM: process.env.BUSINESS_NAME_AM,
-  /** Printed as the invoice header's shop name for English invoices, and Arabic ones (which use English text per existing convention). */
+  /** Printed as the invoice header's shop name for English invoices, and Arabic ones when BUSINESS_NAME_AR isn't set. */
   BUSINESS_NAME_EN: process.env.BUSINESS_NAME_EN,
+  /** Printed as the invoice header's shop name on Arabic invoices and return notices (falls back to BUSINESS_NAME_EN). */
+  BUSINESS_NAME_AR: process.env.BUSINESS_NAME_AR,
 
   TELEGRAM_CHANNEL_LINK: process.env.TELEGRAM_CHANNEL_LINK,
   TELEGRAM_CHATID: process.env.TELEGRAM_CHATID,

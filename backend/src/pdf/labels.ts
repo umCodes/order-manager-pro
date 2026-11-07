@@ -43,7 +43,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     qty: "ብዛት",
     item: "እቃ",
     weightQty: "የኪሎ ብዛት",
-    packs: "እሽግ",
+    packs: "እሽግ ብዛት",
     rate: "ዋጋ",
     amount: "ድምር",
     total: "ጠቅላላ ድምር:",

@@ -31,7 +31,6 @@ export type Labels = {
   referenceInvoice: string;
 };
 
-/** Arabic invoices deliberately use English labels, per business preference. */
 export const LABELS: Record<InvoiceLanguage, Labels> = {
   am: {
     title: "ደረሰኝ",
@@ -58,28 +57,28 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     referenceInvoice: "የተመለሰበት ደረሰኝ:",
   },
   ar: {
-    title: "Invoice",
-    logoPlaceholder: "LOGO",
-    invoiceNumber: "Invoice Number:",
-    customer: "Customer:",
-    date: "Date:",
-    qty: "Qty",
-    item: "Item",
-    weightQty: "Weight Qty",
-    rate: "Rate",
-    amount: "Amount",
-    total: "Total:",
-    discount: "Discount:",
-    paid: "Paid:",
-    balanceDue: "Balance Due:",
-    subTotal: "Subtotal:",
-    itemDiscounts: "Item discounts:",
-    colTotal: "Total",
-    thankYou: "Thank you!",
-    returned: "Returned:",
-    returnTitle: "Return Notice",
-    returnNumber: "Return Number:",
-    referenceInvoice: "Reference Invoice:",
+    title: "فاتورة",
+    logoPlaceholder: "الشعار",
+    invoiceNumber: "رقم الفاتورة:",
+    customer: "العميل:",
+    date: "التاريخ:",
+    qty: "الكمية",
+    item: "الصنف",
+    weightQty: "الوزن",
+    rate: "السعر",
+    amount: "المبلغ",
+    total: "الإجمالي:",
+    discount: "الخصم:",
+    paid: "المدفوع:",
+    balanceDue: "المبلغ المتبقي:",
+    subTotal: "المجموع الفرعي:",
+    itemDiscounts: "خصم الأصناف:",
+    colTotal: "الإجمالي",
+    thankYou: "شكراً لتعاملكم معنا!",
+    returned: "المرتجع:",
+    returnTitle: "إشعار مرتجع",
+    returnNumber: "رقم المرتجع:",
+    referenceInvoice: "الفاتورة المرجعية:",
   },
   en: {
     title: "Invoice",
@@ -110,6 +109,14 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
 /** Receipt-template title (distinct from the classic template's plain "Invoice"/"ደረሰኝ"). */
 export const RECEIPT_TITLE: Record<InvoiceLanguage, string> = {
   am: "የግዢ ደረሰኝ",
-  ar: "Purchase Invoice",
+  ar: "فاتورة شراء",
   en: "Purchase Invoice",
 };
+
+/** Currency codes printed in Arabic on Arabic documents; other languages print the code as is. */
+const ARABIC_CURRENCY: Record<string, string> = { SAR: "ر.س" };
+
+/** The currency as an invoice in `language` prints it ("SAR" -> "ر.س" in Arabic). */
+export function currencyLabel(currency: string, language: InvoiceLanguage): string {
+  return language === "ar" ? ARABIC_CURRENCY[currency.toUpperCase()] ?? currency : currency;
+}

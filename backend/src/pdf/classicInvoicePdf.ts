@@ -27,7 +27,7 @@ export function createInvoicePdf(filePath: string, invoice: InvoicePdfData): Pro
   return createFile(filePath, invoice, "am");
 }
 
-/** Arabic invoice: English labels (per business preference), item.itemName as the display name, Arabic-translated units. */
+/** Arabic invoice: Arabic labels laid out right to left, item.itemName as the display name, Arabic units and currency. */
 export function createInvoicePdfArabic(filePath: string, invoice: InvoicePdfData): Promise<void> {
   return createFile(filePath, invoice, "ar");
 }
@@ -64,7 +64,7 @@ export function createInvoicePdfBufferForLanguage(
  * Return notice (a Zoho credit note) in the given language: the sales
  * invoice's layout, titled "Return Notice", with the return and reference
  * invoice numbers and a Total only. Amharic is two pages (Amharic, then
- * English), like the invoice; Arabic uses English labels, like the invoice.
+ * English), like the invoice; Arabic is in Arabic, right to left, like the invoice.
  */
 export function createReturnNoticePdfBuffer(notice: InvoicePdfData, language: InvoiceLanguage): Promise<Buffer> {
   return createBuffer(notice, language);

@@ -253,7 +253,13 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   row4(doc, labels.item, labels.packs, labels.weightQty, labels.colTotal, { bold: true, rtl });
   subtleHr(doc, 0.25, 0.1);
 
+  // Items the customer returned come last, apart from the rest, under a colored label.
+  let returnedHeaderDrawn = false;
   invoice.lineItems.forEach((item) => {
+    if (item.returned && !returnedHeaderDrawn) {
+      returnedHeaderDrawn = true;
+      drawReturnedItemsHeader(doc, labels.returnedItems, rtl);
+    }
     const lineTotal = item.quantity * item.rate;
     row4(doc, itemDisplayName(item, language), packsText(item), weightQtyText(item, language), money(lineTotal, currency), {
       nameBold: true,
@@ -343,6 +349,36 @@ function drawArabicPriceLines(
       color: DISCOUNT_NOTE_COLOR,
     });
   }
+}
+
+/** Colors for the "Returned items" label on an invoice. */
+const RETURNED_LABEL_FILL = "#c0392b";
+const RETURNED_LABEL_INK = "#ffffff";
+
+/**
+ * Separates the returned items from the ones kept: a solid line, then a
+ * colored label ("Returned items"), on the label's side (left, or right on
+ * an Arabic page).
+ */
+function drawReturnedItemsHeader(doc: PDFKit.PDFDocument, label: string, rtl: boolean) {
+  doc.moveDown(0.2);
+  const lineY = doc.y;
+  doc.save().lineWidth(1).strokeColor(RETURNED_LABEL_FILL).moveTo(MARGIN, lineY).lineTo(POS_PAGE_WIDTH - MARGIN, lineY).stroke().restore();
+  doc.moveDown(0.5);
+
+  const size = 8;
+  const padX = 5;
+  const padY = 2.5;
+  const textWidth = mixedLineWidth(doc, label, { font: "Body-Bold", bold: true, size, color: RETURNED_LABEL_INK, width: CONTENT_WIDTH });
+  doc.font("Body-Bold").fontSize(size);
+  const lineHeight = doc.currentLineHeight(true);
+  const boxWidth = textWidth + padX * 2;
+  const boxX = rtl ? POS_PAGE_WIDTH - MARGIN - boxWidth : MARGIN;
+  const boxY = doc.y;
+  doc.save().roundedRect(boxX, boxY, boxWidth, lineHeight + padY * 2, 3).fill(RETURNED_LABEL_FILL).restore();
+  textLine(doc, label, boxX + padX, boxY + padY, textWidth + 1, { bold: true, size, color: RETURNED_LABEL_INK });
+  doc.y = boxY + lineHeight + padY * 2;
+  doc.moveDown(0.5);
 }
 
 /** What a line sold below its regular price saves the customer (0 when it isn't). */

@@ -12,6 +12,8 @@ export type InvoiceLineItem = {
   rate: number;
   /** The item's regular price, set only when it's above `rate`: the difference is shown as a discount on that line. */
   regularRate?: number;
+  /** Set on an invoice's line for the part of an item that was returned: listed apart, under a "Returned items" label. */
+  returned?: boolean;
 };
 
 /** Everything a template needs to render an invoice — see toInvoicePdfData for the mapping from a Zoho invoice. */

@@ -30,6 +30,8 @@ export type Labels = {
   /** Return notice (credit note): page title, its own number, and the invoice it returns goods from. */
   returnTitle: string;
   returnNumber: string;
+  /** Invoice item table: the label over the items the customer returned, listed after the ones kept. */
+  returnedItems: string;
   referenceInvoice: string;
 };
 
@@ -57,6 +59,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     returned: "ተመላሽ:",
     returnTitle: "የተመላሽ እቃ ማሳወቅያ",
     returnNumber: "የተመላሽ ቁጥር:",
+    returnedItems: "የተመለሱ እቃዎች",
     referenceInvoice: "የተመለሰበት ደረሰኝ:",
   },
   ar: {
@@ -82,6 +85,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     returned: "المرتجع:",
     returnTitle: "إشعار مرتجع",
     returnNumber: "رقم المرتجع:",
+    returnedItems: "الأصناف المرتجعة",
     referenceInvoice: "الفاتورة المرجعية:",
   },
   en: {
@@ -107,6 +111,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     returned: "Returned:",
     returnTitle: "Return Notice",
     returnNumber: "Return Number:",
+    returnedItems: "Returned items",
     referenceInvoice: "Reference Invoice:",
   },
 };

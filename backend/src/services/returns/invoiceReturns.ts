@@ -408,3 +408,14 @@ export async function listInvoiceReturns(headers: string, invoiceId: string): Pr
         total: note.total,
     }))
 }
+
+/**
+ * How much of each item (by item id) has been returned from an invoice, over
+ * its returns still present in Zoho — for marking returned items on the
+ * invoice PDF. Reads Zoho only when the app has recorded any returns, so an
+ * invoice with none costs no Zoho calls.
+ */
+export async function returnedQuantitiesByItem(headers: string, invoiceId: string): Promise<Map<string, number>> {
+    if ((await redisClient.sCard(returnsKey(invoiceId))) === 0) return new Map()
+    return returnedByItem(await loadReturns(headers, invoiceId))
+}

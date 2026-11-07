@@ -1,5 +1,5 @@
 import { toAmharicUnit, toArabicUnit, toEnglishUnit } from "../utils/units.js";
-import { lineWeightKg } from "../utils/packWeight.js";
+import { linePacks, lineWeightKg } from "../utils/packWeight.js";
 import type { InvoiceLanguage, InvoiceLineItem } from "./types.js";
 
 /**
@@ -31,4 +31,10 @@ const KG_SUFFIX: Record<InvoiceLanguage, string> = { am: "ኪሎ", ar: "كغ", e
 export function weightQtyText(item: InvoiceLineItem, language: InvoiceLanguage): string {
   const kg = lineWeightKg(item.itemName, item.quantity);
   return kg === null ? "" : `${kg}${KG_SUFFIX[language]}`;
+}
+
+/** The packs column's text: the line's quantity in packs (see linePacks), or empty when the name has no pack count. */
+export function packsText(item: InvoiceLineItem): string {
+  const packs = linePacks(item.itemName, item.quantity);
+  return packs === null ? "" : String(packs);
 }

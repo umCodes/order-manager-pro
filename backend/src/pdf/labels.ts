@@ -10,6 +10,8 @@ export type Labels = {
   qty: string;
   item: string;
   weightQty: string;
+  /** Item-table column: the line's quantity in packs (the smaller unit inside a box), from the item's name. */
+  packs: string;
   rate: string;
   amount: string;
   total: string;
@@ -41,6 +43,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     qty: "ብዛት",
     item: "እቃ",
     weightQty: "የኪሎ ብዛት",
+    packs: "እሽግ",
     rate: "ዋጋ",
     amount: "ድምር",
     total: "ጠቅላላ ድምር:",
@@ -65,6 +68,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     qty: "الكمية",
     item: "الصنف",
     weightQty: "الوزن",
+    packs: "العبوات",
     rate: "السعر",
     amount: "المبلغ",
     total: "الإجمالي:",
@@ -89,6 +93,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     qty: "Qty",
     item: "Item",
     weightQty: "Weight Qty",
+    packs: "Packs",
     rate: "Rate",
     amount: "Amount",
     total: "Total:",

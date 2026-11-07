@@ -11,13 +11,13 @@ import {
 } from "../assets.js";
 import { currencyLabel, LABELS } from "../labels.js";
 import { drawMixedLine, hasArabic, mixedLineWidth, registerArabicFonts } from "../mixedText.js";
-import { itemDisplayName, translateUnit, weightQtyText } from "../itemFormatting.js";
+import { itemDisplayName, packsText, translateUnit, weightQtyText } from "../itemFormatting.js";
 import type { InvoiceLanguage, InvoiceLineItem, InvoicePdfData } from "../types.js";
 
 /**
  * POS/thermal-receipt style invoice: an 80mm-wide page whose height grows
  * with the item count, a centered logo + business name, and a compact
- * three-column item table (name | weight | line total). Each language's
+ * four-column item table (name | packs | weight | line total). Each language's
  * Ethiopic/Arabic font is pre-merged with Latin+digit glyphs (see assets.ts),
  * so — unlike the receipt template — this one draws with a single
  * `doc.font(...)` per run, no per-character script-splitting needed.
@@ -32,9 +32,10 @@ const MARGIN = 12;
 const CONTENT_WIDTH = POS_PAGE_WIDTH - MARGIN * 2;
 const LOGO_SIZE = 26;
 
-const NAME_COL_W = CONTENT_WIDTH * 0.42;
-const WEIGHT_COL_W = CONTENT_WIDTH * 0.3;
-const TOTAL_COL_W = CONTENT_WIDTH - NAME_COL_W - WEIGHT_COL_W;
+const NAME_COL_W = CONTENT_WIDTH * 0.36;
+const PACKS_COL_W = CONTENT_WIDTH * 0.14;
+const WEIGHT_COL_W = CONTENT_WIDTH * 0.24;
+const TOTAL_COL_W = CONTENT_WIDTH - NAME_COL_W - PACKS_COL_W - WEIGHT_COL_W;
 
 function fontFilesFor(language: InvoiceLanguage) {
   return language === "ar"
@@ -157,9 +158,10 @@ function drawSplitCentered(doc: PDFKit.PDFDocument, text: string, centerX: numbe
   if (suffix) doc.text(suffix, startX + numberWidth, y, { lineBreak: false });
 }
 
-function row3(
+function row4(
   doc: PDFKit.PDFDocument,
   name: string,
+  packs: string,
   weight: string,
   total: string,
   opts: { bold?: boolean; nameBold?: boolean; size?: number; rtl?: boolean } = {},
@@ -167,13 +169,14 @@ function row3(
   const { bold = false, nameBold = false, size = 8, rtl = false } = opts;
   const y = doc.y;
   if (rtl) {
-    // Mirrored columns: name on the right, weight in the middle, line total on the left.
+    // Mirrored columns: name on the right, then packs, weight, and the line total on the left.
     const nameX = MARGIN + CONTENT_WIDTH - NAME_COL_W;
     doc.font(bold || nameBold ? "Body-Bold" : "Body").fontSize(size);
     if (hasArabic(name)) wrappedTextLines(doc, name, nameX, y, NAME_COL_W, { align: "right", bold: bold || nameBold, size });
     else doc.text(name, nameX, y, { width: NAME_COL_W, align: "right" });
     const yAfterName = doc.y;
     doc.font(bold ? "Body-Bold" : "Body").fontSize(size);
+    drawSplitCentered(doc, packs, nameX - PACKS_COL_W / 2, y, true);
     drawSplitCentered(doc, weight, MARGIN + TOTAL_COL_W + WEIGHT_COL_W / 2, y, true);
     textLine(doc, total, MARGIN, y, TOTAL_COL_W, { align: "left", bold, size });
     doc.y = Math.max(yAfterName, doc.y);
@@ -183,8 +186,9 @@ function row3(
   doc.text(name, MARGIN, y, { width: NAME_COL_W });
   const yAfterName = doc.y;
   doc.font(bold ? "Body-Bold" : "Body").fontSize(size);
-  drawSplitCentered(doc, weight, MARGIN + NAME_COL_W + WEIGHT_COL_W / 2, y);
-  doc.text(total, MARGIN + NAME_COL_W + WEIGHT_COL_W, y, { width: TOTAL_COL_W, align: "right" });
+  drawSplitCentered(doc, packs, MARGIN + NAME_COL_W + PACKS_COL_W / 2, y);
+  drawSplitCentered(doc, weight, MARGIN + NAME_COL_W + PACKS_COL_W + WEIGHT_COL_W / 2, y);
+  doc.text(total, MARGIN + NAME_COL_W + PACKS_COL_W + WEIGHT_COL_W, y, { width: TOTAL_COL_W, align: "right" });
   doc.y = Math.max(yAfterName, doc.y);
 }
 
@@ -246,12 +250,12 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
 
   hr(doc, 0.7, 0.15);
   doc.moveDown(0.15);
-  row3(doc, labels.item, labels.weightQty, labels.colTotal, { bold: true, rtl });
+  row4(doc, labels.item, labels.packs, labels.weightQty, labels.colTotal, { bold: true, rtl });
   subtleHr(doc, 0.25, 0.1);
 
   invoice.lineItems.forEach((item) => {
     const lineTotal = item.quantity * item.rate;
-    row3(doc, itemDisplayName(item, language), weightQtyText(item, language), money(lineTotal, currency), {
+    row4(doc, itemDisplayName(item, language), packsText(item), weightQtyText(item, language), money(lineTotal, currency), {
       nameBold: true,
       rtl,
     });

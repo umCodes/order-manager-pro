@@ -37,12 +37,14 @@ export function toInvoicePdfData(invoice: ZohoInvoice, customer?: unknown, regul
   return {
     invoiceNumber: invoice.invoice_number,
     customerName: pdfCustomerName(invoice, customer),
+    customerNameArabic: invoice.customer_name_sec_lang?.trim() ?? "",
     date: invoice.date,
     lineItems: invoice.line_items
       .filter((item: LineItem) => !item.description.includes(INTERNAL_ITEM_MARKER))
       .map((item: LineItem) => ({
         description: item.description,
         itemName: item.name,
+        arabicName: item.name_sec_lang?.trim() ?? "",
         quantity: item.quantity,
         unit: item.unit,
         rate: item.rate,
@@ -72,10 +74,12 @@ export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoI
   return {
     invoiceNumber: creditNote.creditnote_number,
     customerName: pdfCustomerName(invoice, customer),
+    customerNameArabic: invoice.customer_name_sec_lang?.trim() ?? "",
     date: creditNote.date,
     lineItems: creditNote.line_items.map((item) => ({
       description: item.description ?? "",
       itemName: item.name ?? "",
+      arabicName: item.name_sec_lang?.trim() ?? "",
       quantity: item.quantity,
       unit: item.unit ?? "",
       rate: item.rate,

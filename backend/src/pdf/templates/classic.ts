@@ -49,6 +49,25 @@ function shopNameFor(language: InvoiceLanguage): string {
   return ENV.BUSINESS_NAME_EN ?? "";
 }
 
+/** Splits `text` into lines that fit `width`, word by word (a single word too long for a line gets a line of its own). */
+function wrapWords(doc: PDFKit.PDFDocument, text: string, width: number, opts: LineOptions): string[] {
+  const measure = (line: string) =>
+    mixedLineWidth(doc, line, { font: opts.bold ? "Body-Bold" : "Body", bold: opts.bold ?? false, size: opts.size, color: "black", width });
+  const lines: string[] = [];
+  for (const word of text.trim().split(/\s+/)) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && measure(`${last} ${word}`) <= width) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines;
+}
+
+/** Like textLine, but wraps onto as many lines as `text` needs; leaves doc.y below the last. */
+function wrappedTextLines(doc: PDFKit.PDFDocument, text: string, x: number, y: number, width: number, opts: LineOptions) {
+  doc.y = y;
+  for (const line of wrapWords(doc, text, width, opts)) textLine(doc, line, x, doc.y, width, opts);
+}
+
 type LineOptions = { align?: "left" | "right" | "center"; bold?: boolean; size: number; color?: string };
 
 /**
@@ -153,7 +172,7 @@ function row3(
     // Mirrored columns: name on the right, weight in the middle, line total on the left.
     const nameX = MARGIN + CONTENT_WIDTH - NAME_COL_W;
     doc.font(bold || nameBold ? "Body-Bold" : "Body").fontSize(size);
-    if (hasArabic(name)) textLine(doc, name, nameX, y, NAME_COL_W, { align: "right", bold: bold || nameBold, size });
+    if (hasArabic(name)) wrappedTextLines(doc, name, nameX, y, NAME_COL_W, { align: "right", bold: bold || nameBold, size });
     else doc.text(name, nameX, y, { width: NAME_COL_W, align: "right" });
     const yAfterName = doc.y;
     doc.font(bold ? "Body-Bold" : "Body").fontSize(size);
@@ -213,7 +232,8 @@ function drawReceiptContent(doc: PDFKit.PDFDocument, invoice: InvoicePdfData, la
   doc.moveDown(0.9);
 
   doc.fontSize(8.5);
-  labelValueLine(doc, labels.customer, invoice.customerName, 8.5, rtl);
+  const customerName = rtl ? invoice.customerNameArabic || invoice.customerName : invoice.customerName;
+  labelValueLine(doc, labels.customer, customerName, 8.5, rtl);
   doc.moveDown(0.1);
 
   hr(doc, 0.3, 0.15);

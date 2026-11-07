@@ -5,6 +5,8 @@ export type InvoiceLanguage = "am" | "ar" | "en";
 export type InvoiceLineItem = {
   description: string;
   itemName: string;
+  /** The item's Arabic name (Zoho's secondary-language name), shown on Arabic PDFs; empty when not set. */
+  arabicName?: string;
   quantity: number;
   unit: string;
   rate: number;
@@ -16,6 +18,8 @@ export type InvoiceLineItem = {
 export type InvoicePdfData = {
   invoiceNumber: string;
   customerName: string;
+  /** The customer's Arabic name (Zoho's secondary-language name), shown on Arabic PDFs when set. */
+  customerNameArabic?: string;
   date: string;
   lineItems: InvoiceLineItem[];
   totalPrice: number;

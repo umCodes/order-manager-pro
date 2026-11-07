@@ -9,6 +9,8 @@ import { ZohoApi } from "./client.js"
 export type ZohoCreditNoteLineItem = {
     item_id: string | number
     name?: string
+    /** The item's name in Zoho's secondary language (Arabic). */
+    name_sec_lang?: string
     description?: string
     quantity: number
     rate: number

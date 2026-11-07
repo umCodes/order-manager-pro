@@ -42,7 +42,7 @@ export const LABELS: Record<InvoiceLanguage, Labels> = {
     date: "ቀን:",
     qty: "ብዛት",
     item: "እቃ",
-    weightQty: "የኪሎ ብዛት",
+    weightQty: "ክብደት",
     packs: "እሽግ ብዛት",
     rate: "ዋጋ",
     amount: "ድምር",

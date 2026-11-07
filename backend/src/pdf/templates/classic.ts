@@ -42,11 +42,9 @@ function fontFilesFor(language: InvoiceLanguage) {
     : { regular: FONT_ETHIOPIC_MERGED_REGULAR, bold: FONT_ETHIOPIC_MERGED_BOLD };
 }
 
-/** Arabic invoices use the Arabic business name when one is set, else the English one. */
+/** Arabic invoices show the English business name. */
 function shopNameFor(language: InvoiceLanguage): string {
-  if (language === "am") return ENV.BUSINESS_NAME_AM ?? "";
-  if (language === "ar") return ENV.BUSINESS_NAME_AR || ENV.BUSINESS_NAME_EN || "";
-  return ENV.BUSINESS_NAME_EN ?? "";
+  return language === "am" ? ENV.BUSINESS_NAME_AM ?? "" : ENV.BUSINESS_NAME_EN ?? "";
 }
 
 /** Splits `text` into lines that fit `width`, word by word (a single word too long for a line gets a line of its own). */

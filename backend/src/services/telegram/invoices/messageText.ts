@@ -1,4 +1,4 @@
-import { quantityCalc } from "../../../utils/quantity.js"
+import { telegramQuantity } from "../../../utils/quantity.js"
 import { describeBusinessDate } from "../../../utils/businessDate.js"
 import type { ItemWithQuantity } from "../../zoho/types.js"
 import { INTERNAL_ITEM_MARKER } from "../../../utils/internalLineItems.js"
@@ -56,7 +56,7 @@ function numberPrefix(item: ItemWithQuantity, numbers?: ItemNumbers | null, keyO
 }
 
 const itemLine = (item: ItemWithQuantity, numbers?: ItemNumbers | null, keyOf?: ItemKeyOf) =>
-    `${numberPrefix(item, numbers, keyOf)}${quantityCalc(item.quantity, item.unit)} ${item.description}`;
+    `${numberPrefix(item, numbers, keyOf)}${telegramQuantity(item.quantity, item.unit, item.description)} ${item.description}`;
 
 /**
  * Builds the message the fulfillment channel actually sees: the invoice
@@ -127,7 +127,7 @@ export function invoiceChangesMessageText(
         const delta = round(item.quantity - (before.get(key)?.quantity ?? 0));
         if (delta === 0) continue;
         if (delta < 0) onlyAdditions = false;
-        lines.push(`${numberPrefix(item, numbers, keyOf)}${delta > 0 ? "+" : "-"}${quantityCalc(Math.abs(delta), item.unit)} ${item.description}`);
+        lines.push(`${numberPrefix(item, numbers, keyOf)}${delta > 0 ? "+" : "-"}${telegramQuantity(Math.abs(delta), item.unit, item.description)} ${item.description}`);
     }
     for (const [key, item] of before) {
         if (after.has(key)) continue;

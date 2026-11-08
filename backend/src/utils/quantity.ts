@@ -38,3 +38,25 @@ export function fromTelegramAmount(amount: number, unit: string): number {
     if (unit === 'box') return Math.round((amount / 10) * 1000) / 1000
     return amount
 }
+
+/**
+ * A description written as "<weight> x <count>" at its end, e.g.
+ * "በርበሬ 250ግ x 40" or "Shiro 250g×40": any unit (Latin or Amharic) after
+ * the weight, and "x", "×" or "*" between.
+ */
+const WEIGHT_TIMES_COUNT = /\d+(?:[.,]\d+)?\s*[^\s\d×x*]*\s*[x×*]\s*\d+(?:[.,]\d+)?\s*\)?\s*$/i
+
+export function isWeightTimesCount(description: string | undefined) {
+    return WEIGHT_TIMES_COUNT.test(description ?? "")
+}
+
+/**
+ * The quantity at the start of an item's Telegram line: for a description
+ * written as "<weight> x <count>", the ordered quantity itself with a
+ * multiplication sign ("2× በርበሬ 250ግ x 40"); otherwise quantityCalc's
+ * kilograms (or pack count), as before.
+ */
+export function telegramQuantity(quantity: number, unit: string, description: string | undefined) {
+    if (isWeightTimesCount(description)) return `${Math.round(quantity * 1000) / 1000}×`
+    return quantityCalc(quantity, unit)
+}

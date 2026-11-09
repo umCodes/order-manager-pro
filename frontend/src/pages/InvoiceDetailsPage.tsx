@@ -16,6 +16,7 @@ import {
   updateInvoiceCustomer,
   fetchOrderPreparation,
   recordAppliedShortage,
+  fetchInvoiceSentNotifySetting,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -36,6 +37,8 @@ import CopyButton from "../components/CopyButton";
 import NotifyContactModal from "../components/NotifyContactModal";
 import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
+import InvoiceWhatsAppStatus from "../components/InvoiceWhatsAppStatus";
+import { useConfirmArmedAction } from "../hooks/useConfirmArmedAction";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
@@ -52,7 +55,8 @@ type Props = {
   onSelectCustomer?: (customerId: string) => void;
 };
 
-type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
+/** Marking as sent: confirm it, then (only when Settings say to ask) whether to send it on WhatsApp, and to whom. */
+type MarkSentNotifyStep = "closed" | "confirmSent" | "askNotify" | "pickContact";
 type SendOnWhatsAppStep = "closed" | "confirm" | "pickContact";
 
 /**
@@ -112,6 +116,17 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isVoiding, setIsVoiding] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [markSentNotifyStep, setMarkSentNotifyStep] = useState<MarkSentNotifyStep>("closed");
+  // Settings → Invoices: ask before sending on WhatsApp when marked as sent (default: send to every contact).
+  const [askBeforeSendingOnWhatsApp, setAskBeforeSendingOnWhatsApp] = useState(false);
+  // Bumped after each WhatsApp send of this invoice, so its status line re-reads who received it.
+  const [waSendsKey, setWaSendsKey] = useState(0);
+  const [retryingWaContactId, setRetryingWaContactId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchInvoiceSentNotifySetting()
+      .then((setting) => setAskBeforeSendingOnWhatsApp(setting.askBeforeSending))
+      .catch(() => {});
+  }, []);
   const [sendOnWhatsAppStep, setSendOnWhatsAppStep] = useState<SendOnWhatsAppStep>("closed");
   const [isSendingOnWhatsApp, setIsSendingOnWhatsApp] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
@@ -475,20 +490,36 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
    */
   function retryNotification(
     payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-    notifyContactIds?: string[],
+    notifyContactIds?: string[] | "all",
   ) {
     if (!invoice) return;
     setIsRetryingNotify(true);
     resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
       .then((result) => {
-        setNotifyBanner(result.notified ? "success" : "failed");
+        // The invoice's own message shows who received it in its WhatsApp status line instead.
+        setNotifyBanner(result.notified ? (payload.kind === "sent" ? null : "success") : "failed");
         if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .catch(() => {
         setNotifyBanner("failed");
         setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
-      .finally(() => setIsRetryingNotify(false));
+      .finally(() => {
+        setIsRetryingNotify(false);
+        if (payload.kind === "sent") setWaSendsKey((n) => n + 1);
+      });
+  }
+
+  /** Re-sends the invoice on WhatsApp to one contact, from its row in the WhatsApp status line. */
+  function retryWhatsAppSend(contactPersonId: string) {
+    if (!invoice) return;
+    setRetryingWaContactId(contactPersonId);
+    resendInvoiceNotification(invoice.invoice_id, { kind: "sent" }, [contactPersonId])
+      .catch(() => {})
+      .finally(() => {
+        setRetryingWaContactId(null);
+        setWaSendsKey((n) => n + 1);
+      });
   }
 
   /** Sends a return's Return Notice (with its PDF) on WhatsApp; failures show the usual retry banner. */
@@ -595,8 +626,32 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   function openMarkSentStep() {
     setMarkSentDiscount("");
     setIsMarkSentDiscountOpen(false);
-    setMarkSentNotifyStep("confirmNotify");
+    markSentArm.disarm();
+    setMarkSentNotifyStep("confirmSent");
   }
+
+  function closeMarkSent() {
+    markSentArm.disarm();
+    setMarkSentNotifyStep("closed");
+  }
+
+  /**
+   * "Mark as sent" confirmed (clicked, waited, clicked again): sends the
+   * invoice to every contact on WhatsApp, or — when Settings say to ask —
+   * asks about that first.
+   */
+  function confirmMarkAsSent() {
+    const parsed = parseMarkSentDiscount();
+    if ("error" in parsed) {
+      setActionError(parsed.error);
+      return;
+    }
+    if (askBeforeSendingOnWhatsApp) setMarkSentNotifyStep("askNotify");
+    else runMarkAsSent(true, "all");
+  }
+
+  // Like recording a payment: click, wait a moment, then click again to confirm.
+  const markSentArm = useConfirmArmedAction(confirmMarkAsSent);
 
   /** The discount typed in the mark-as-sent step, or an error message when it isn't a usable amount. */
   function parseMarkSentDiscount(): { discount: number } | { error: string } {
@@ -607,12 +662,12 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     return { discount };
   }
 
-  function runMarkAsSent(notify: boolean, notifyContactIds?: string[]) {
+  function runMarkAsSent(notify: boolean, notifyContactIds?: string[] | "all") {
     if (!invoice) return;
     const parsed = parseMarkSentDiscount();
     if ("error" in parsed) {
       setActionError(parsed.error);
-      setMarkSentNotifyStep("confirmNotify");
+      setMarkSentNotifyStep("confirmSent");
       return;
     }
     setIsMarkingSent(true);
@@ -624,8 +679,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         setMarkSentNotifyStep("closed");
         refreshVisits();
         if (notify) {
-          setNotifyBanner(result.notified ? "success" : "failed");
+          // Who received it shows in the invoice's WhatsApp status line; the banner only flags a send that couldn't go out at all.
+          setWaSendsKey((n) => n + 1);
           if (!result.notified) {
+            setNotifyBanner("failed");
             setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactIds));
           }
         }
@@ -667,7 +724,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     setNotifyBanner(null);
     resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
       .then((result) => {
-        setNotifyBanner(result.notified ? "success" : "failed");
+        setNotifyBanner(result.notified ? null : "failed");
         if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .catch(() => {
@@ -677,6 +734,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .finally(() => {
         setIsSendingOnWhatsApp(false);
         setSendOnWhatsAppStep("closed");
+        setWaSendsKey((n) => n + 1);
       });
   }
 
@@ -847,6 +905,15 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                 {createdReturn.warnings.map((warning) => ` ${warning}`)}
               </span>
             </div>
+          )}
+
+          {invoice.status !== "draft" && (
+            <InvoiceWhatsAppStatus
+              invoiceId={invoice.invoice_id}
+              reloadKey={waSendsKey}
+              onRetry={invoice.status !== "void" ? retryWhatsAppSend : undefined}
+              retryingContactId={retryingWaContactId}
+            />
           )}
 
           {invoice.status !== "draft" && invoice.status !== "void" && (
@@ -1203,13 +1270,16 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         />
       )}
 
-      {markSentNotifyStep === "confirmNotify" && invoice && (
+      {markSentNotifyStep === "confirmSent" && invoice && (
         <div className="modal-overlay">
-          <div className="modal-overlay__backdrop" onClick={() => setMarkSentNotifyStep("closed")} />
+          <div className="modal-overlay__backdrop" onClick={isMarkingSent ? undefined : closeMarkSent} />
           <div className="modal">
-            <div className="modal__title">Notify Customer?</div>
+            <div className="modal__title">Mark as sent?</div>
             <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
-              Send a WhatsApp notification that this invoice was sent?
+              Mark {invoice.invoice_number} as sent?{" "}
+              {askBeforeSendingOnWhatsApp
+                ? "You'll be asked next whether to send it on WhatsApp."
+                : "It will be sent to all of the customer's contacts on WhatsApp."}
             </div>
             <div className="field">
               <button
@@ -1247,21 +1317,43 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
             {actionError && <div className="form-error">{actionError}</div>}
             <div className="invoice-details__actions" style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                className="btn btn--secondary"
-                disabled={isMarkingSent}
-                onClick={() => runMarkAsSent(false)}
-              >
-                {isMarkingSent ? "Saving..." : "No, don't notify"}
+              <button type="button" className="btn btn--secondary" disabled={isMarkingSent} onClick={closeMarkSent}>
+                Cancel
               </button>
               <button
                 type="button"
-                className="btn btn--primary"
-                disabled={isMarkingSent}
-                onClick={handleYesNotifyOnSent}
+                className={`btn ${markSentArm.isArmed ? "btn--primary" : "btn--secondary"}`}
+                disabled={isMarkingSent || markSentArm.isCoolingDown}
+                onClick={markSentArm.trigger}
               >
-                {isMarkingSent ? "Saving..." : "Yes, notify"}
+                {isMarkingSent
+                  ? "Saving..."
+                  : markSentArm.isCoolingDown
+                    ? "Wait..."
+                    : markSentArm.isArmed
+                      ? "Click again to confirm"
+                      : "Mark as sent"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {markSentNotifyStep === "askNotify" && invoice && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={isMarkingSent ? undefined : closeMarkSent} />
+          <div className="modal">
+            <div className="modal__title">Send on WhatsApp?</div>
+            <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
+              Send {invoice.invoice_number} to the customer on WhatsApp as it's marked as sent?
+            </div>
+            {actionError && <div className="form-error">{actionError}</div>}
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn--secondary" disabled={isMarkingSent} onClick={() => runMarkAsSent(false)}>
+                {isMarkingSent ? "Saving..." : "No, just mark as sent"}
+              </button>
+              <button type="button" className="btn btn--primary" disabled={isMarkingSent} onClick={handleYesNotifyOnSent}>
+                {isMarkingSent ? "Saving..." : "Yes, send"}
               </button>
             </div>
           </div>

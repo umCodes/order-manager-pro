@@ -14,6 +14,7 @@ import {
     saveDailyReportWhatsAppSettings,
 } from '../services/dailyReport/whatsapp.js';
 import { getInvoiceDueSetting, MAX_DUE_DAYS, saveInvoiceDueSetting } from '../services/invoiceDueDate.js';
+import { getInvoiceSentNotifySetting, saveInvoiceSentNotifySetting } from '../services/invoiceSentNotify.js';
 import { getGeneralItemIds, MAX_GENERAL_ITEMS, saveGeneralItemIds } from '../services/generalItems.js';
 import {
     generalItemsTemplateOptions,
@@ -157,5 +158,18 @@ export async function updateGeneralItemsWhatsApp(req: Request, res: Response) {
     } catch (error) {
         console.error('Error saving general items WhatsApp settings:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save the general items WhatsApp settings' });
+    }
+}
+
+/** Whether marking an invoice as sent asks before sending it on WhatsApp (default: sends to every contact without asking). */
+export async function getInvoiceSentNotify(_req: Request, res: Response) {
+    res.status(200).json(await getInvoiceSentNotifySetting());
+}
+
+export async function updateInvoiceSentNotify(req: Request, res: Response) {
+    try {
+        res.status(200).json(await saveInvoiceSentNotifySetting(req.body));
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save" });
     }
 }

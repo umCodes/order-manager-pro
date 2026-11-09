@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import CategoryOrderSettings from "../components/CategoryOrderSettings";
 import DailyReportWhatsAppSettings from "../components/DailyReportWhatsAppSettings";
 import InvoiceDueSettings from "../components/InvoiceDueSettings";
+import InvoiceSentNotifySettings from "../components/InvoiceSentNotifySettings";
 import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import GeneralItemsWhatsAppSettings from "../components/GeneralItemsWhatsAppSettings";
 import NotificationTemplateSettings from "../components/NotificationTemplateSettings";
@@ -35,8 +36,13 @@ const SECTIONS: { key: SectionKey; title: string; description: string; render: (
   {
     key: "invoices",
     title: "Invoices",
-    description: "How long new invoices have before they're overdue",
-    render: () => <InvoiceDueSettings />,
+    description: "How long new invoices have before they're overdue, and sending them on WhatsApp",
+    render: () => (
+      <>
+        <InvoiceDueSettings />
+        <InvoiceSentNotifySettings />
+      </>
+    ),
   },
   {
     key: "notifications",

@@ -1025,7 +1025,8 @@ export async function recordInvoicePayment(
 export async function markInvoiceAsSent(
   invoiceId: string,
   notify?: boolean,
-  notifyContactIds?: string[],
+  /** Contact person ids to send to, or "all" for every contact of the customer. */
+  notifyContactIds?: string[] | "all",
   discount?: number,
 ): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
@@ -1035,7 +1036,7 @@ export async function markInvoiceAsSent(
     },
     body: JSON.stringify({
       notify: !!notify,
-      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+      ...(notifyContactIds === "all" || notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
       ...(discount ? { discount } : {}),
     }),
   });
@@ -1071,14 +1072,18 @@ export async function voidInvoice(invoiceId: string): Promise<{ invoice: Invoice
 export async function resendInvoiceNotification(
   invoiceId: string,
   payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-  notifyContactIds?: string[],
+  /** Contact person ids to send to; "all" (invoice messages only) for every contact of the customer. */
+  notifyContactIds?: string[] | "all",
 ): Promise<{ notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/notify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ ...payload, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
+    body: JSON.stringify({
+      ...payload,
+      ...(notifyContactIds === "all" || notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -1822,4 +1827,46 @@ export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: 
 export async function saveGeneralItemIds(itemIds: string[]): Promise<string[]> {
   const result = await postJson<{ item_ids: string[] }>(`${API_BASE_URL}/api/settings/general-items`, "PUT", { item_ids: itemIds }, "Failed to save the general items");
   return result.item_ids;
+}
+
+/** One number an invoice was sent to on WhatsApp, with its message's latest status. */
+export type InvoiceWhatsAppSend = {
+  phone: string;
+  contactPersonId: string;
+  name: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  error?: string;
+  sentAt: string;
+};
+
+/** Who an invoice was sent to on WhatsApp, and how far each message got. */
+export async function fetchInvoiceWhatsAppSends(invoiceId: string): Promise<InvoiceWhatsAppSend[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/whatsapp-sends`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the WhatsApp sends (${response.status})`);
+  }
+  const data = await response.json();
+  return data.sends ?? [];
+}
+
+/** Whether marking an invoice as sent asks before sending it on WhatsApp (default: sends to every contact). */
+export type InvoiceSentNotifySetting = { askBeforeSending: boolean };
+
+export async function fetchInvoiceSentNotifySetting(): Promise<InvoiceSentNotifySetting> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/invoice-sent-notify`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the WhatsApp setting (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveInvoiceSentNotifySetting(setting: InvoiceSentNotifySetting): Promise<InvoiceSentNotifySetting> {
+  return postJson<InvoiceSentNotifySetting>(
+    `${API_BASE_URL}/api/settings/invoice-sent-notify`,
+    "PUT",
+    setting,
+    "Failed to save the WhatsApp setting",
+  );
 }

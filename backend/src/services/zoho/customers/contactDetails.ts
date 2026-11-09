@@ -59,6 +59,50 @@ export function getContactPhonesByIds(contact: any, contactPersonIds?: string[])
     return Array.from(new Set(phones))
 }
 
+/** One person a customer message goes to: their contact person id (or the legacy sentinel), name and phone. */
+export type ContactRecipient = { contactPersonId: string; name: string; phone: string }
+
+/**
+ * Who a customer message goes to, with names: every contact person with a
+ * phone for "all" (or the customer's own top-level phone when none has
+ * one), the given contact persons for a list of ids (scoped to this
+ * customer, as getContactPhoneById), or the default contact (see
+ * getContactPhone) with nothing given. De-duplicated by phone.
+ */
+export function getContactRecipients(contact: any, contactPersonIds?: string[] | "all"): ContactRecipient[] {
+    const persons: any[] = contact?.contact_persons ?? []
+    const personName = (cp: any) => [cp?.first_name, cp?.last_name].filter(Boolean).join(" ").trim() || getContactDisplayName(contact)
+    const fromPerson = (cp: any): ContactRecipient | undefined => {
+        const phone = cp?.phone || cp?.mobile
+        return phone ? { contactPersonId: String(cp.contact_person_id), name: personName(cp), phone } : undefined
+    }
+    const legacy = (): ContactRecipient | undefined => {
+        const phone = contact?.phone || contact?.mobile
+        return phone ? { contactPersonId: LEGACY_CONTACT_ID, name: getContactDisplayName(contact), phone } : undefined
+    }
+
+    let recipients: (ContactRecipient | undefined)[]
+    if (contactPersonIds === "all") {
+        recipients = persons.map(fromPerson)
+        if (!recipients.some(Boolean)) recipients = [legacy()]
+    } else if (contactPersonIds?.length) {
+        recipients = contactPersonIds.map((id) =>
+            id === LEGACY_CONTACT_ID ? legacy() : fromPerson(persons.find((cp) => String(cp?.contact_person_id) === String(id))),
+        )
+    } else {
+        const withPhone = persons.filter((cp) => cp?.phone || cp?.mobile)
+        const primary = withPhone.find((cp) => cp?.is_primary_contact) ?? withPhone[0]
+        recipients = [primary ? fromPerson(primary) : legacy()]
+    }
+
+    const seen = new Set<string>()
+    return recipients.filter((r): r is ContactRecipient => {
+        if (!r || seen.has(r.phone)) return false
+        seen.add(r.phone)
+        return true
+    })
+}
+
 /** The name a customer is addressed by on invoices and messages to them: company name, else contact name. */
 export function getContactDisplayName(contact: any): string {
     return contact?.company_name || contact?.contact_name || ""

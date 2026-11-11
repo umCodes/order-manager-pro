@@ -28,6 +28,7 @@ import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
 import type { DraftInvoice, PreparationStatus } from "../types";
+import Skeleton from "../components/Skeleton";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
 type DraftSortKey = Extract<SortKey, "invoice_number" | "customer">;
@@ -389,7 +390,7 @@ export default function DraftsPage({
 
           <div className="draft-list">
             {isLoadingPrevious ? (
-              <div className="items-area__empty">Loading…</div>
+              <Skeleton />
             ) : filteredPreviousTransactions.length === 0 ? (
               <div className="items-area__empty">No previous transactions found</div>
             ) : (

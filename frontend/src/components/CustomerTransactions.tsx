@@ -8,6 +8,7 @@ import { businessDayKey } from "../lib/businessTime";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
 import type { CustomerPayment } from "../types";
+import Skeleton from "./Skeleton";
 
 type Props = {
   customerId: string;
@@ -156,7 +157,7 @@ export default function CustomerTransactions({ customerId, onSelectInvoice, onEd
           ) : error ? (
             <div className="form-error">{error}</div>
           ) : !current || isLoading ? (
-            <div className="items-area__empty">Loading...</div>
+            <Skeleton />
           ) : (
             <>
               <div className="customer-tx__totals">{totalsLine(current)}</div>

@@ -4107,3 +4107,344 @@ button.line-items__header.customer-tx__toggle {
   color: var(--color-gray-900);
   cursor: pointer;
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Native-app feel: screens slide like pushed views, windows are bottom
+   sheets, controls react to touch. See lib/native/ and components/Layer. */
+
+:root {
+  --ease-out-native: cubic-bezier(0.22, 0.9, 0.3, 1);
+  --slide-ms: 320ms;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* The page itself doesn't bounce or pull-to-reload; lists inside it keep their own scrolling. */
+  overscroll-behavior-y: none;
+}
+
+body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Controls: no text selection, callout menu or grey tap flash on press-and-hold,
+   and no double-tap zoom delay. Content text (names, numbers, messages) stays selectable. */
+button,
+.btn,
+.icon-btn,
+.tab-bar,
+.app-header,
+.draft-card--clickable,
+.settings-menu__row,
+[role="button"],
+label {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Press feedback: controls dip slightly while pressed and spring back. */
+@media (hover: none) {
+  button:not(:disabled),
+  .draft-card--clickable,
+  .settings-menu__row {
+    transition: scale 0.18s var(--ease-out-native), opacity 0.18s ease;
+  }
+  .btn:not(:disabled):active,
+  .icon-btn:not(:disabled):active,
+  .app-header__settings:active,
+  .link-btn:not(:disabled):active {
+    scale: 0.96;
+  }
+  .draft-card--clickable:active,
+  .settings-menu__row:active,
+  .tab-bar__item:active {
+    scale: 0.98;
+    opacity: 0.85;
+  }
+}
+
+/* Tabs: the incoming tab fades in. */
+.app-frame > .app-frame__body {
+  animation: tab-fade-in 0.22s ease both;
+}
+
+@keyframes tab-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Frosted tab bar. */
+.tab-bar {
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  z-index: 16;
+}
+
+.tab-bar__item--active .tab-bar__icon {
+  animation: tab-pop 0.28s var(--ease-out-native);
+}
+
+@keyframes tab-pop {
+  40% {
+    scale: 1.14;
+  }
+}
+
+/* Layers (invoice, customer, Settings): a scrim dims what's underneath, and the
+   panel slides in from the right. What's under it sits back, shifted left. */
+.layer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.layer-root--invoice {
+  z-index: 41;
+}
+
+.layer-root--top {
+  z-index: 42;
+}
+
+.layer-root--settings {
+  z-index: 43;
+}
+
+.layer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.22);
+  animation: fade-in var(--slide-ms) ease both;
+  transition: opacity 0.2s ease;
+}
+
+.layer-scrim--closing {
+  animation: fade-out var(--slide-ms) ease both;
+}
+
+.layer-panel {
+  padding-top: env(safe-area-inset-top);
+  translate: var(--drag-x, 0px) 0;
+  box-shadow: -10px 0 30px rgba(15, 23, 42, 0.12);
+  animation: layer-in var(--slide-ms) var(--ease-out-native) both;
+  transition: translate var(--slide-ms) var(--ease-out-native), filter var(--slide-ms) ease;
+  will-change: translate;
+}
+
+.layer-panel--dragging {
+  transition: none;
+}
+
+.layer-panel--closing {
+  animation: layer-out var(--slide-ms) var(--ease-out-native) both;
+  pointer-events: none;
+}
+
+.layer-panel--covered {
+  translate: -22% 0;
+  filter: brightness(0.94);
+}
+
+.app-frame > .app-header,
+.app-frame > .app-frame__body {
+  transition: translate var(--slide-ms) var(--ease-out-native), filter var(--slide-ms) ease;
+}
+
+.app-frame--covered > .app-header,
+.app-frame--covered > .app-frame__body {
+  translate: -22% 0;
+  filter: brightness(0.94);
+}
+
+@keyframes layer-in {
+  from {
+    translate: 100% 0;
+  }
+}
+
+@keyframes layer-out {
+  from {
+    translate: var(--drag-x, 0px) 0;
+  }
+  to {
+    translate: 100% 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Windows are bottom sheets: up from the bottom, a grab handle, drag down to close. */
+.modal-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.modal-overlay__backdrop {
+  animation: fade-in 0.25s ease both;
+  transition: opacity 0.2s ease;
+}
+
+.modal,
+.modal--wide {
+  max-width: var(--app-max-width);
+  max-height: 92vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 18px 18px 0 0;
+  padding-top: 26px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.16);
+  animation: sheet-up 0.34s var(--ease-out-native) both;
+  transition: transform 0.28s var(--ease-out-native);
+}
+
+.modal::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 38px;
+  height: 5px;
+  margin-left: -19px;
+  border-radius: 3px;
+  background: var(--color-gray-300);
+}
+
+.sheet {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.modal.sheet-dragging,
+.sheet.sheet-dragging {
+  transition: none;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* Pull to refresh: a round badge that follows the pull, then spins. */
+.pull-refresh {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  border-radius: 50%;
+  background: var(--color-white);
+  color: var(--color-gray-500);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(var(--pull, 0px) - 40px)) rotate(var(--pull-turn, 0deg));
+  transition: transform 0.25s var(--ease-out-native), opacity 0.2s ease;
+}
+
+.pull-refresh--visible {
+  opacity: 1;
+  top: env(safe-area-inset-top);
+}
+
+.pull-refresh--dragging {
+  transition: opacity 0.2s ease;
+}
+
+.pull-refresh--ready {
+  color: var(--color-blue-600);
+}
+
+.pull-refresh--spinning svg {
+  animation: refresh-spin 0.8s linear infinite;
+}
+
+/* Loading placeholders: grey shapes shimmering where the content will be. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.skeleton__row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-gray-100);
+  border-radius: var(--radius-lg);
+}
+
+.skeleton__line {
+  height: 11px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-gray-100) 25%, var(--color-gray-200) 37%, var(--color-gray-100) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.3s ease infinite;
+}
+
+.skeleton__line--short {
+  width: 45%;
+}
+
+.skeleton__line--mid {
+  width: 70%;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+/* Reduce motion (phone setting): no sliding, popping or shimmering — plain fades only. */
+@media (prefers-reduced-motion: reduce) {
+  .layer-panel,
+  .layer-panel--closing,
+  .modal,
+  .app-frame > .app-frame__body,
+  .tab-bar__item--active .tab-bar__icon,
+  .skeleton__line {
+    animation: fade-in 0.15s ease both;
+  }
+  .layer-panel--closing {
+    animation: fade-out 0.15s ease both;
+  }
+  .layer-panel--covered,
+  .app-frame--covered > .app-header,
+  .app-frame--covered > .app-frame__body {
+    translate: none;
+  }
+  button,
+  .draft-card--clickable,
+  .settings-menu__row {
+    scale: none !important;
+  }
+}

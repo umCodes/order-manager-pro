@@ -42,6 +42,7 @@ import DeleteContactModal from "../components/DeleteContactModal";
 import ConfirmModal from "../components/ConfirmModal";
 import NotifyContactModal from "../components/NotifyContactModal";
 import type { Contact, ContactPerson, CustomerPayment, DraftInvoice } from "../types";
+import Skeleton from "../components/Skeleton";
 
 type SendPaymentStep = "closed" | "confirm" | "pickContact";
 
@@ -441,7 +442,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
         />
       )}
 
-      {!customer && !error && <div className="items-area__empty">Loading...</div>}
+      {!customer && !error && <Skeleton />}
 
       {customer && (
         <>
@@ -656,7 +657,7 @@ function CustomerDetailsView({ customerId, onBack, onSelectInvoice }: Props) {
             {paymentsError ? (
               <div className="form-error">{paymentsError}</div>
             ) : payments === null ? (
-              <div className="items-area__empty">Loading...</div>
+              <Skeleton />
             ) : payments.length === 0 ? (
               <div className="items-area__empty">No payments yet</div>
             ) : (

@@ -24,7 +24,7 @@ export default defineConfig({
       manifest: {
         name: 'Order Manager',
         short_name: 'OrderManager',
-        theme_color: '#3B82F6',
+        theme_color: '#ffffff',
         background_color: '#3B82F6',
         display: 'standalone',
         start_url: '/',

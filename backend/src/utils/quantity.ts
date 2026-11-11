@@ -19,3 +19,44 @@ export function quantityCalc(quantity: number, unit: string){
             return quantity + "ኪሎ"
     }
 }
+
+/**
+ * A quantity as the Telegram message counts it, for reading preparers'
+ * reports against what they saw: kilograms (a box is 10kg; a weight shown in
+ * grams is still kilograms here), or a plain count for a pack. Must match
+ * quantityCalc, and telegramAmount in wa-webhook-lambda/telegram/shortageReports.mjs.
+ */
+export function telegramAmount(quantity: number, unit: string): { amount: number; unit: "kg" | "pcs" } {
+    if (PACK_UNIT.test(unit ?? "")) return { amount: quantity, unit: "pcs" }
+    if (unit === 'box') return { amount: Math.round(quantity * 10 * 1000) / 1000, unit: "kg" }
+    return { amount: quantity, unit: "kg" }
+}
+
+/** The reverse of telegramAmount: a Telegram amount (kg, or a count) back in the item's own unit — a box is 10kg. */
+export function fromTelegramAmount(amount: number, unit: string): number {
+    if (PACK_UNIT.test(unit ?? "")) return amount
+    if (unit === 'box') return Math.round((amount / 10) * 1000) / 1000
+    return amount
+}
+
+/**
+ * A description written as "<weight> x <count>" at its end, e.g.
+ * "በርበሬ 250ግ x 40" or "Shiro 250g×40": any unit (Latin or Amharic) after
+ * the weight, and "x", "×" or "*" between.
+ */
+const WEIGHT_TIMES_COUNT = /\d+(?:[.,]\d+)?\s*[^\s\d×x*]*\s*[x×*]\s*\d+(?:[.,]\d+)?\s*\)?\s*$/i
+
+export function isWeightTimesCount(description: string | undefined) {
+    return WEIGHT_TIMES_COUNT.test(description ?? "")
+}
+
+/**
+ * The quantity at the start of an item's Telegram line: for a description
+ * written as "<weight> x <count>", the ordered quantity itself with a
+ * multiplication sign ("2× በርበሬ 250ግ x 40"); otherwise quantityCalc's
+ * kilograms (or pack count), as before.
+ */
+export function telegramQuantity(quantity: number, unit: string, description: string | undefined) {
+    if (isWeightTimesCount(description)) return `${Math.round(quantity * 1000) / 1000}×`
+    return quantityCalc(quantity, unit)
+}

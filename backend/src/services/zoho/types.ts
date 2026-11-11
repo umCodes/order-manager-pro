@@ -20,6 +20,8 @@ export type ZohoInvoice = {
   reference_number: string;
   customer_id: string | number;
   customer_name: string;
+  /** The customer's name in Zoho's secondary language (Arabic); empty when not set. */
+  customer_name_sec_lang?: string;
   contact_persons: string[];
   currency_id: string | number;
   currency_code: string;
@@ -79,6 +81,8 @@ export type LineItem = {
   expense_id: string;
   expense_receipt_name: string;
   name: string;
+  /** The item's name in Zoho's secondary language (Arabic); empty when not set. */
+  name_sec_lang?: string;
   description: string;
   item_order: number;
   bcy_rate: number;

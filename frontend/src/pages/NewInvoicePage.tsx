@@ -15,6 +15,7 @@ import {
   sendItemsListToTelegram,
 } from "../lib/api";
 import { currency } from "../lib/currency";
+import { cartLineItemId, nextCartKey } from "../lib/cart";
 import type { HeldInvoice } from "../lib/heldInvoice";
 import type {
   CatalogItem,
@@ -33,7 +34,10 @@ function cartFromDraftLineItems(lineItems: InvoiceDetailLineItem[], draftId: str
   const cart: Cart = {};
   for (const item of lineItems) {
     const excludeFromTelegram = item.description.includes(EXCLUDE_MARKER);
-    cart[item.item_id] = {
+    // An item on several lines (e.g. general items) keeps every line.
+    const key = nextCartKey(cart, item.item_id);
+    cart[key] = {
+      ...(key !== item.item_id ? { item_id: item.item_id } : {}),
       description: item.description.replace(new RegExp(EXCLUDE_MARKER, "g"), "").trim(),
       quantity: item.quantity,
       rate: item.rate,
@@ -101,7 +105,8 @@ export default function NewInvoicePage({
   // submission, and resets back to checked after each one so skipping it
   // is always a deliberate choice, never a leftover setting.
   const [notifyTelegram, setNotifyTelegram] = useState(true);
-  const [itemsSentNotice, setItemsSentNotice] = useState(false);
+  /** The backup list id of the items list just sent, while its notice shows. */
+  const [itemsSentNotice, setItemsSentNotice] = useState<string | null>(null);
   const [heldConfirm, setHeldConfirm] = useState<"replace" | "remove" | null>(null);
   const draftsFetchIdRef = useRef(0);
   const draftItemsFetchIdRef = useRef(0);
@@ -112,12 +117,14 @@ export default function NewInvoicePage({
   }, []);
 
   const lineItems: InvoiceLineItem[] = useMemo(() => {
-    return Object.entries(cart).map(([item_id, line]) => {
+    return Object.entries(cart).map(([cartKey, line]) => {
+      const item_id = cartLineItemId(cartKey, line);
       const catalogItem = catalogItems.find((i) => i.item_id === item_id);
       return {
-        item_id,
         name: catalogItem?.name ?? "",
         ...line,
+        cartKey,
+        item_id,
         unit: line.unit || catalogItem?.unit || "",
       };
     });
@@ -160,7 +167,7 @@ export default function NewInvoicePage({
     setMode(nextMode);
     setDraftId(null);
     setSubmitError(null);
-    setItemsSentNotice(false);
+    setItemsSentNotice(null);
     onCartChange(keepManualLines(cart));
     // Items Only has no customer: drop it rather than keep one hidden.
     if (nextMode === "items") {
@@ -186,31 +193,34 @@ export default function NewInvoicePage({
       });
   }
 
+  /** Adds or updates the line under `cartKey` (an item id, or "<item_id>~n" for a general item's extra line). */
   function commitItem(
-    itemId: string,
+    cartKey: string,
     values: { description: string; quantity: string; rate: string; excludeFromTelegram: boolean; unit?: string },
+    item: CatalogItem,
   ) {
     onCartChange({
       ...cart,
-      [itemId]: {
+      [cartKey]: {
+        ...(cartKey !== item.item_id ? { item_id: item.item_id } : {}),
         description: values.description,
         quantity: Number(values.quantity) || 0,
         rate: Number(values.rate) || 0,
         excludeFromTelegram: values.excludeFromTelegram,
         ...(values.unit ? { unit: values.unit } : {}),
-        fromDraftId: cart[itemId]?.fromDraftId,
+        fromDraftId: cart[cartKey]?.fromDraftId,
       },
     });
   }
 
-  function removeItem(itemId: string) {
+  function removeItem(cartKey: string) {
     const next = { ...cart };
-    delete next[itemId];
+    delete next[cartKey];
     onCartChange(next);
   }
 
-  function openItemInModal(itemId: string) {
-    setItemToOpen(itemId);
+  function openItemInModal(cartKey: string) {
+    setItemToOpen(cartKey);
     setIsAddItemOpen(true);
   }
 
@@ -230,14 +240,14 @@ export default function NewInvoicePage({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await sendItemsListToTelegram({
+      const { list } = await sendItemsListToTelegram({
         ...(scheduledDate ? { date: scheduledDate } : {}),
         line_items: lineItems.map(toLinePayload),
       });
       onCartChange({});
       setScheduledDate(null);
       setMode("new");
-      setItemsSentNotice(true);
+      setItemsSentNotice(list.id);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to send items list");
     } finally {
@@ -287,7 +297,7 @@ export default function NewInvoicePage({
     setMode(invoice?.mode ?? "new");
     setDraftId(invoice?.draftId ?? null);
     setSubmitError(null);
-    setItemsSentNotice(false);
+    setItemsSentNotice(null);
     if (invoice?.contactId) {
       loadDraftsForCustomer(invoice.contactId);
     } else {
@@ -476,7 +486,9 @@ export default function NewInvoicePage({
       {submitError && <div className="form-error">{submitError}</div>}
 
       {itemsSentNotice && mode === "new" && lineItems.length === 0 && (
-        <div className="items-sent-notice" role="status">Items list sent to Telegram. No invoice was created.</div>
+        <div className="items-sent-notice" role="status">
+          Backup list {itemsSentNotice} sent to Telegram. No invoice was created.
+        </div>
       )}
 
       <button

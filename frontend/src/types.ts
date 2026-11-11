@@ -51,11 +51,20 @@ export type CartLine = {
   unit?: string;
   /** invoice_id of the draft this line was loaded from, if any. Unset for manually-added lines. */
   fromDraftId?: string;
+  /**
+   * The line's item when its cart key isn't the item id: a second (third…)
+   * line of the same item, keyed "<item_id>~2" and so on. General items
+   * (Settings) can be added any number of times this way. Unset = the key.
+   */
+  item_id?: string;
 };
 
+/** Lines by cart key: an item's id, or "<item_id>~n" for its extra lines (see CartLine.item_id). */
 export type Cart = Record<string, CartLine>;
 
 export type InvoiceLineItem = CartLine & {
+  /** The line's key in the cart. */
+  cartKey: string;
   item_id: string;
   name: string;
   unit: string;
@@ -117,6 +126,9 @@ export type DraftItemBreakdownEntry = {
   date: string;
   quantity: number;
   unit: string;
+  /** The line's Zoho item and description, to tie it to the draft's shortage reports (absent from older responses). */
+  item_id?: string;
+  description?: string;
   /** Set client-side when the draft's date has passed and it's shown under today instead. */
   isCarriedOver?: boolean;
 };
@@ -129,6 +141,98 @@ export type DraftLineItemSummary = {
   /** The item's Zoho Inventory category, or null when it has none. */
   category: string | null;
   breakdown: DraftItemBreakdownEntry[];
+};
+
+/** Items posted to Telegram without an invoice ("Items Only"), kept 30 days under a BK- id. */
+export type BackupList = {
+  id: string;
+  created_at: string;
+  /** The day the items are wanted for (YYYY-MM-DD). */
+  date?: string;
+  /** `available` and `short` are set for an item reported short in the Telegram group (in its own unit). */
+  items: {
+    number: number;
+    item_id: string;
+    name: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    available?: number;
+    short?: number;
+    /** How much quick invoices (sent within 15 minutes of being created) took from it, and which. */
+    taken?: number;
+    taken_by?: { invoice_number: string; customer_name: string; quantity: number }[];
+    /** What's left: reported available (or the quantity), less what was taken. Absent from older responses. */
+    remaining?: number;
+    /** How the item is told apart across lists, for the merged view. */
+    item_key?: string;
+  }[];
+  /** The list's status in the Telegram group, and who saw to it. */
+  status?: PreparationStatus;
+  confirmed?: PreparationConfirmation | null;
+  message_id: number | null;
+};
+
+/** An item a quick invoice sent today that no backup list had, in the invoice's unit. */
+export type BackupMissingItem = {
+  item_id: string;
+  name: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  invoice_number: string;
+  customer_name: string;
+  at: string;
+};
+
+/**
+ * An item reported short in the preparers' Telegram group (`3 M` / `3 5`
+ * replies to the order's message): what the order needs now, what's
+ * available, and each report behind it — in the item's own `unit`, as on the
+ * invoice (preparers report in kg on Telegram; a box is converted back).
+ * Listed as long as it has a report, even once it's no longer short.
+ */
+export type OrderShortageItem = {
+  number: number;
+  item_id: string;
+  /** The Zoho item id, plus "|description" for a general item. */
+  item_key: string;
+  description: string;
+  unit: string;
+  ordered: number;
+  available: number;
+  /** 0 once the report was applied to the invoice here (see `applied`), until a newer report about the item. */
+  short: number;
+  /** When the invoice was set to the reported amount from the app, and to what. */
+  applied?: { at: string; quantity: number; unit: string } | null;
+  reports: {
+    message_id: number;
+    from: { id: number | null; name: string; username: string | null };
+    sent_at: string;
+    updated_at: string;
+    edited: boolean;
+    /** The line as typed, e.g. "3 5". */
+    line: string;
+    /** The quantity on the message it replied to, and what was reported available of it. */
+    ordered: number;
+    available: number;
+    missing: boolean;
+  }[];
+};
+
+/**
+ * Where an order's preparation stands in the Telegram group: "not_reported"
+ * until it's seen to (an invoice: a 👍; a backup list: anyone replying or
+ * reacting), then "ready" (nothing short), "partial" (some items short) or
+ * "missing" (every item missing). `confirmed` is who saw to it, and when.
+ */
+export type PreparationStatus = "not_reported" | "ready" | "partial" | "missing";
+export type PreparationConfirmation = { name: string; at: string };
+export type OrderPreparation = {
+  order_id: string;
+  status: PreparationStatus;
+  confirmed: PreparationConfirmation | null;
+  items: OrderShortageItem[];
 };
 
 export type InvoiceDetail = {

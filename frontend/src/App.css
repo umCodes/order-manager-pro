@@ -220,6 +220,69 @@
   color: var(--color-green-700);
 }
 
+/* Settings menu: one row per section, each opening a page of its own. */
+.settings-menu {
+  margin-top: 16px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.settings-menu__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  background: var(--color-white);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.settings-menu__row + .settings-menu__row {
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.settings-menu__row:hover {
+  background: var(--color-gray-50);
+}
+
+.settings-menu__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-menu__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.settings-menu__description {
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.settings-menu__chevron {
+  flex-shrink: 0;
+  color: var(--color-gray-400);
+}
+
+/* A settings section's page: its parts' headings, spaced apart after the first. */
+.settings-section-page {
+  margin-top: 16px;
+}
+
+.settings-section-page > .page-header ~ .page-header {
+  margin-top: 28px;
+}
+
 /* Page */
 
 .page-title {
@@ -2583,6 +2646,50 @@
   overflow-wrap: anywhere;
 }
 
+/* A sent template inside its chat bubble, laid out like WhatsApp shows it. */
+.wa-sent-template {
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wa-sent-template__media {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
+.wa-sent-template__header {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.wa-sent-template__footer {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.wa-sent-template__buttons {
+  display: flex;
+  flex-direction: column;
+  margin: 6px -10px 0;
+}
+
+.wa-sent-template__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px 3px;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 18%, transparent);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #60a5fa;
+}
+
 .wa-bubble__meta {
   display: flex;
   align-items: center;
@@ -3782,4 +3889,221 @@ button.line-items__header.customer-tx__toggle {
   width: 104px;
   flex: none;
   margin-left: auto;
+}
+
+/* Shortages reported in the preparers' Telegram group, under a draft's item. */
+.shortage-note {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.shortage-note--partial {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.shortage-note--missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.shortage-note__summary {
+  font-weight: 600;
+}
+
+.shortage-note__report {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* An order's preparation in the Telegram group: drafts list and draft details. */
+.preparation-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.preparation-badge--ready {
+  color: var(--color-green-700);
+  background: #dcfce7;
+}
+
+.preparation-badge--partial {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.preparation-badge--missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.preparation-badge--not_reported {
+  color: var(--color-gray-500);
+  background: var(--color-gray-100);
+  font-weight: 500;
+}
+
+.preparation-badge__by {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* How much of an item is short, on the Items tab (row total, and per draft in its breakdown). */
+.shortage-badge {
+  display: inline-block;
+  margin-top: 2px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.item-breakdown__quantity .shortage-badge {
+  margin-top: 0;
+}
+
+/* "Use 1.5 box" / "Remove" on a shortage note: sets the invoice to the reported amount, after a confirm. */
+.shortage-note__apply {
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.shortage-note__apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Backup list items taken by quick invoices: who took how much, and an item with nothing left. */
+.backup-taken {
+  font-size: 11px;
+}
+
+.backup-used-up {
+  color: var(--color-gray-400);
+}
+
+.category-group__label .preparation-badge {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* The Backups merged view's availability badges, side by side. */
+.backup-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* WhatsApp toolbar: how many messages failed, and a tap to resend them. */
+.wa-failed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+  color: var(--color-gray-400);
+}
+
+.wa-failed-btn--some {
+  color: var(--color-red-600);
+}
+
+.wa-failed-btn__count {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Invoice details: who the invoice was sent to on WhatsApp — a quiet summary line, opening to each number. */
+.wa-sends {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.wa-sends__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wa-sends__list {
+  margin: 4px 0 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+
+.wa-sends__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.wa-sends__name {
+  color: var(--color-gray-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-sends__phone {
+  color: var(--color-gray-400);
+}
+
+.wa-sends__status {
+  margin-left: auto;
+}
+
+.wa-sends__status--failed,
+.wa-sends__icon--failed {
+  color: var(--color-red-600);
+}
+
+.wa-sends__icon {
+  flex-shrink: 0;
+}
+
+.wa-sends__icon--read {
+  color: var(--color-blue-600);
+}
+
+.wa-sends__retry {
+  font-size: 12px;
+}
+
+/* Settings: a single on/off choice. */
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-gray-900);
+  cursor: pointer;
 }

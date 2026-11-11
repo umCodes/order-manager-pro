@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import {
   fetchDraftInvoices,
+  fetchPreparationStatuses,
   fetchInvoiceByIdCached,
   fetchRecentInvoices,
   fetchTodayEstimate,
@@ -25,7 +26,8 @@ import CopyButton from "../components/CopyButton";
 import DailyReportButton from "../components/DailyReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
-import type { DraftInvoice } from "../types";
+import PreparationBadge from "../components/PreparationBadge";
+import type { DraftInvoice, PreparationStatus } from "../types";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
 type DraftSortKey = Extract<SortKey, "invoice_number" | "customer">;
@@ -99,8 +101,21 @@ export default function DraftsPage({
   const draftSort = useSortState<DraftSortKey>("customer");
   const [districtFilter, setDistrictFilter] = useState(ALL_DISTRICTS);
 
+  // Each draft's preparation in the Telegram group (👍 and shortages), read
+  // fresh with every load of the drafts; missing ones show nothing.
+  const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
+
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
-    return fetchDraftInvoices(options).then(setDrafts).catch(() => setDrafts([]));
+    return fetchDraftInvoices(options)
+      .then((list) => {
+        setDrafts(list);
+        fetchPreparationStatuses(list.map((draft) => draft.invoice_id))
+          .then((statuses) =>
+            setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status]))),
+          )
+          .catch(() => {});
+      })
+      .catch(() => setDrafts([]));
   }, []);
 
   // Server-computed (and Redis-cached) so it never shrinks within the same
@@ -296,6 +311,7 @@ export default function DraftsPage({
                         <div className="draft-card__top">
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
+                            {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
                             <ResendButton

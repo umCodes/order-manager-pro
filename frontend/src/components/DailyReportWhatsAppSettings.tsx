@@ -86,9 +86,9 @@ export default function DailyReportWhatsAppSettings() {
 
   return (
     <>
-      <div className="page-header" style={{ marginTop: 28 }}>
+      <div className="page-header">
         <h2 className="page-title" style={{ fontSize: 16 }}>
-          Daily report on WhatsApp
+          Sending on WhatsApp
         </h2>
         <RefreshButton onRefresh={() => load(true)} />
       </div>

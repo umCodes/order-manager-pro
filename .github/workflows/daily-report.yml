@@ -39,6 +39,7 @@ jobs:
             case "$status" in
               200|202) exit 0 ;;                                   # sending, or already sent
               400|401) echo "::error::$(head -c 300 response.txt)"; exit 1 ;;  # needs fixing in Settings or the secret
+              404) echo "::error::Nothing at $URL — DAILY_REPORT_URL must be the full address, ending in /api/reports/daily/scheduled"; exit 1 ;;
             esac
             # The app's own 503 (CRON_SECRET unset) won't fix itself; Render's 503 while waking will.
             if [ "$status" = "503" ] && grep -q "CRON_SECRET" response.txt; then

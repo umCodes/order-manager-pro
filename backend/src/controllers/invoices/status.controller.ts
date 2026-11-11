@@ -16,6 +16,7 @@ import { deleteCache } from "../../utils/cache.js";
 import { recordReportInvoiceSent, recordReportPayment, removeReportInvoice } from "../../services/dailyReport/store.js";
 import { confirmVisitByActivity } from "../../services/visits.js";
 import { applyUnusedCredits } from "../../services/credits.js";
+import { releaseBackupUsage, takeBackupForQuickInvoice } from "../../services/backupUsage.js";
 
 /**
  * Records a payment against one invoice, optionally applying a discount
@@ -50,6 +51,8 @@ export async function payInvoiceBalance(req: Request, res: Response) {
         ...invoiceBeforePayment,
         balance: Math.max(0, Number(invoiceBeforePayment.total) - Number(amount) - (Number(discount) || 0)),
       });
+      // Handed over within minutes of being created: it came from backup stock.
+      await takeBackupForQuickInvoice(invoiceBeforePayment);
     }
 
     // Once any payment is recorded the invoice is no longer pending
@@ -121,6 +124,8 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
     const credits = await applyUnusedCredits(access_token, before.customer_id);
     const invoice = credits.length ? await ZohoGetInvoiceById(access_token, id) : before;
     await recordReportInvoiceSent(invoice);
+    // Sent within minutes of being created: it came from backup stock.
+    await takeBackupForQuickInvoice(invoice);
     await confirmVisitByActivity(invoice.customer_id, "delivery");
 
     const notified = notify ? await notifyInvoiceSent(access_token, invoice, notify_contact_ids) : false;
@@ -136,7 +141,8 @@ export async function markInvoiceAsSent(req: Request, res: Response) {
 
 /**
  * Voids an invoice. It's no longer pending fulfillment either, so its
- * channel thread is cleared like a paid or sent invoice's.
+ * channel thread is cleared like a paid or sent invoice's, and any backup
+ * stock it took (see backupUsage.ts) is given back.
  */
 export async function voidInvoice(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -150,6 +156,8 @@ export async function voidInvoice(req: Request, res: Response) {
     // A voided invoice no longer counts toward the customer's balance due in the cached list.
     deleteCache("customers");
     await deleteInvoiceTelegramMessage(id);
+    // Any backup stock it took goes back.
+    await releaseBackupUsage(id);
     const invoice = await ZohoGetInvoiceById(access_token, id);
 
     res.status(200).json({ invoice });

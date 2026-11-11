@@ -5,17 +5,23 @@ export type InvoiceLanguage = "am" | "ar" | "en";
 export type InvoiceLineItem = {
   description: string;
   itemName: string;
+  /** The item's Arabic name (Zoho's secondary-language name), shown on Arabic PDFs; empty when not set. */
+  arabicName?: string;
   quantity: number;
   unit: string;
   rate: number;
   /** The item's regular price, set only when it's above `rate`: the difference is shown as a discount on that line. */
   regularRate?: number;
+  /** Set on an invoice's line for the part of an item that was returned: listed apart, under a "Returned items" label. */
+  returned?: boolean;
 };
 
 /** Everything a template needs to render an invoice — see toInvoicePdfData for the mapping from a Zoho invoice. */
 export type InvoicePdfData = {
   invoiceNumber: string;
   customerName: string;
+  /** The customer's Arabic name (Zoho's secondary-language name), shown on Arabic PDFs when set. */
+  customerNameArabic?: string;
   date: string;
   lineItems: InvoiceLineItem[];
   totalPrice: number;

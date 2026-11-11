@@ -1,6 +1,8 @@
-import { ZohoGetCustomerById, getContactDisplayName, getContactPreferredLanguage, getContactPhonesByIds } from "../zoho/customers/index.js"
+import { ZohoGetCustomerById, getContactDisplayName, getContactPreferredLanguage, getContactPhonesByIds, getContactRecipients } from "../zoho/customers/index.js"
+import { recordInvoiceSend } from "./invoiceSends.js"
 import { sendPaymentNotification, sendBalanceNotification } from "./notifications.js"
 import { createInvoicePdfBufferForLanguage, regularItemRates, toInvoicePdfData } from "../../pdf/index.js"
+import { returnedQuantitiesByItem } from "../returns/invoiceReturns.js"
 import type { ZohoInvoice } from "../zoho/types.js"
 
 /**
@@ -59,12 +61,15 @@ export async function notifyPaymentRecorded(
  * invoice's own balance is already reflected in it (i.e. after marking sent
  * / recording payment), so "balance before" is derived by subtracting this
  * invoice's current balance back out. Failures are logged, never thrown.
- * `contactPersonIds` behaves as in notifyPaymentRecorded above.
+ * `contactPersonIds` behaves as in notifyPaymentRecorded above, and "all"
+ * sends to every contact of the customer. Each send is recorded on the
+ * invoice (see invoiceSends.ts), so its page shows who received it.
  */
-export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice, contactPersonIds?: string[]) {
+export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoice, contactPersonIds?: string[] | "all") {
     try {
         const contact = await ZohoGetCustomerById(accessToken, String(invoice.customer_id))
-        const phones = getContactPhonesByIds(contact, contactPersonIds)
+        const recipients = getContactRecipients(contact, contactPersonIds)
+        const phones = recipients.map((r) => r.phone)
         console.log(
             `[WhatsApp] notifyInvoiceSent: invoice=${invoice.invoice_number} customer=${invoice.customer_id} phones=${JSON.stringify(phones)}`,
         )
@@ -73,16 +78,17 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
         const preferredLanguage = getContactPreferredLanguage(contact)
         const customerName = getContactDisplayName(contact)
         console.log(`[WhatsApp] notifyInvoiceSent: resolved preferred_language="${preferredLanguage}" for customer=${invoice.customer_id}`)
-        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, contact, await regularItemRates(accessToken)), preferredLanguage)
+        const pdf = await createInvoicePdfBufferForLanguage(toInvoicePdfData(invoice, contact, await regularItemRates(accessToken), await returnedQuantitiesByItem(accessToken, String(invoice.invoice_id))), preferredLanguage)
         console.log(`[WhatsApp] notifyInvoiceSent: generated PDF, bytes=${pdf.length}`)
         const paidAmountFromInvoice = invoice.total - invoice.balance
         const balanceAfter = contact.outstanding_receivable_amount
         const balanceBefore = balanceAfter - invoice.balance
 
         let allSucceeded = true
-        for (const phone of phones) {
+        for (const recipient of recipients) {
+            const { phone } = recipient
             try {
-                await sendBalanceNotification(
+                const result = await sendBalanceNotification(
                     phone,
                     customerName,
                     preferredLanguage,
@@ -94,8 +100,10 @@ export async function notifyInvoiceSent(accessToken: string, invoice: ZohoInvoic
                     String(balanceBefore),
                     String(balanceAfter),
                 )
+                await recordInvoiceSend(String(invoice.invoice_id), recipient, { result })
             } catch (error) {
                 console.error(`Failed to send WhatsApp balance notification to ${phone} (language="${preferredLanguage}"):`, error)
+                await recordInvoiceSend(String(invoice.invoice_id), recipient, { error })
                 allSucceeded = false
             }
         }

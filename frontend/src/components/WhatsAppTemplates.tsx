@@ -8,6 +8,7 @@ import {
   uploadWhatsAppTemplateMedia,
   uploadWhatsAppTemplateSample,
   type NewWhatsAppTemplate,
+  type SentWhatsAppTemplate,
   type WhatsAppChat,
   type WhatsAppConversation,
   type WhatsAppTemplate,
@@ -269,6 +270,35 @@ function TemplatePreview({ template, values }: { template: WhatsAppTemplate; val
         <div className="wa-template__preview-buttons">
           {buttons.map((button, index) => (
             <span key={index} className="wa-template__preview-button">
+              <ButtonIcon button={button} />
+              {button.text}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SENT_MEDIA_ICONS = { document: "📄", image: "📷", video: "🎥" } as const;
+
+/** A sent template message, laid out the way WhatsApp shows it: header, body, footer, then its buttons. */
+export function SentTemplate({ template }: { template: SentWhatsAppTemplate }) {
+  const media = template.header_media;
+  return (
+    <div className="wa-sent-template" dir="auto">
+      {media && (
+        <div className="wa-sent-template__media">
+          {SENT_MEDIA_ICONS[media.kind]} {media.filename || MEDIA_FORMATS[media.kind.toUpperCase() as MediaFormat].label}
+        </div>
+      )}
+      {template.header && <div className="wa-sent-template__header">{withBold(template.header)}</div>}
+      {template.body && <div className="wa-sent-template__body">{withBold(template.body)}</div>}
+      {template.footer && <div className="wa-sent-template__footer">{template.footer}</div>}
+      {template.buttons && template.buttons.length > 0 && (
+        <div className="wa-sent-template__buttons">
+          {template.buttons.map((button, index) => (
+            <span key={index} className="wa-sent-template__button">
               <ButtonIcon button={button} />
               {button.text}
             </span>

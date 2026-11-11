@@ -9,10 +9,15 @@ import { redisClient } from "../config/redis.js"
 export const MAX_GENERAL_ITEMS = 3
 const SETTINGS_KEY = "settings:general-items"
 
+/** Used until general items are saved in Settings: Zoho's "General-Item" and "General Stuff". */
+export const DEFAULT_GENERAL_ITEM_IDS = ["4645478000000084021", "4645478000004531006"]
+
+/** The chosen general items; the defaults until the setting has been saved (an empty save stays empty). */
 export async function getGeneralItemIds(): Promise<string[]> {
     const raw = await redisClient.get(SETTINGS_KEY).catch(() => null)
+    if (raw === null) return [...DEFAULT_GENERAL_ITEM_IDS]
     try {
-        const saved = raw ? JSON.parse(raw) : []
+        const saved = JSON.parse(raw)
         return Array.isArray(saved) ? saved.map(String).slice(0, MAX_GENERAL_ITEMS) : []
     } catch {
         return []

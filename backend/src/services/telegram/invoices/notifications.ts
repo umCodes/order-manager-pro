@@ -9,13 +9,53 @@ import {
     invoiceMessageText,
     withDayLine,
 } from "./messageText.js"
+import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
+import { getGeneralItemIds } from "../../generalItems.js"
+import { changesMessageItems, orderMessageItems, saveGroupOrderMessage } from "../groupOrders.js"
 
-/** Posts an invoice to the fulfillment channel as a brand-new message. */
+/** How this order's items are told apart: general items by their description too (see itemKeyFor). */
+const orderItemKeys = async () => itemKeyFor(await getGeneralItemIds())
+
+/**
+ * Each invoice's item numbers (see itemNumbers.ts), as a hash of item key →
+ * number, kept as long as its channel thread. An invoice without one was
+ * posted before numbering, so changes to it aren't numbered either.
+ */
+const numbersKey = (invoiceId: string) => `telegram:invoice-numbers:${invoiceId}`
+
+async function readItemNumbers(invoiceId: string): Promise<ItemNumbers | null> {
+    const stored = await redisClient.hGetAll(numbersKey(invoiceId))
+    const entries = Object.entries(stored ?? {})
+    return entries.length ? new Map(entries.map(([key, number]) => [key, Number(number)])) : null
+}
+
+async function saveItemNumbers(invoiceId: string, numbers: ItemNumbers) {
+    if (numbers.size === 0) return
+    await redisClient.hSet(numbersKey(invoiceId), Object.fromEntries([...numbers].map(([key, number]) => [key, String(number)])))
+    await redisClient.expire(numbersKey(invoiceId), THREAD_TTL_SECONDS)
+}
+
+/**
+ * Posts an invoice to the fulfillment channel as a brand-new message, its
+ * items numbered: the numbers the invoice already has, the next free ones
+ * for the rest (all of them, for a new invoice).
+ */
 export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[]) {
     try {
         console.log("Sending a fresh telegram message")
-        const text = invoiceMessageText(invoice, line_items)
-        return await TelegramSendMessage(text);
+        const invoiceId = String(invoice.invoice_id)
+        const keyOf = await orderItemKeys()
+        const numbers = numberItems(line_items, await readItemNumbers(invoiceId), keyOf)
+        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers, keyOf));
+        await saveItemNumbers(invoiceId, numbers)
+        await saveGroupOrderMessage(message.group_message_id, {
+            kind: "invoice",
+            order_id: invoiceId,
+            order_number: String(invoice.invoice_number ?? ""),
+            message_type: "order",
+            items: orderMessageItems(line_items, numbers, keyOf),
+        })
+        return message;
     } catch (error) {
         console.error('Error sending invoice message:', error);
         throw error;
@@ -60,10 +100,15 @@ export async function replyWithInvoiceChangesTelegramMessage(
     line_items: ItemWithQuantity[],
     messageId: number,
 ) {
-    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items)
+    const invoiceId = String(invoice.invoice_id)
+    // Items keep their numbers; one added now takes the next free one.
+    const keyOf = await orderItemKeys()
+    const existingNumbers = await readItemNumbers(invoiceId)
+    const numbers = existingNumbers ? numberItems(line_items, existingNumbers, keyOf) : null
+
+    const text = invoiceChangesMessageText(invoice, previous_line_items, line_items, numbers, keyOf)
     if (!text) return null
 
-    const invoiceId = String(invoice.invoice_id)
     let message;
 
     try {
@@ -71,6 +116,17 @@ export async function replyWithInvoiceChangesTelegramMessage(
     } catch (error) {
         console.error('Error replying to previous invoice message, sending a new one instead:', error);
         return await sendInvoiceTelegramMessage(invoice, line_items);
+    }
+
+    if (numbers) {
+        await saveItemNumbers(invoiceId, numbers)
+        await saveGroupOrderMessage(message.group_message_id, {
+            kind: "invoice",
+            order_id: invoiceId,
+            order_number: String(invoice.invoice_number ?? ""),
+            message_type: "changes",
+            items: changesMessageItems(previous_line_items, line_items, numbers, keyOf),
+        })
     }
 
     await addToThread(invoiceId, messageId)
@@ -106,7 +162,9 @@ export async function updateInvoiceDateTelegramMessage(
 
     try {
         const currentText = await loggedText(messageId)
-        const text = currentText ? withDayLine(currentText, invoice) : invoiceMessageText(invoice, line_items)
+        const text = currentText
+            ? withDayLine(currentText, invoice)
+            : invoiceMessageText(invoice, line_items, undefined, await readItemNumbers(String(invoice.invoice_id)), await orderItemKeys())
         const message = text === currentText ? null : await TelegramEditMessage(text, messageId);
         await TelegramReplyToMessage(EDITED_NOTICE_AMHARIC, messageId);
         await moveEarlierThreadMessagesToNewDay(invoice)
@@ -149,8 +207,53 @@ export async function deleteInvoiceTelegramMessage(invoiceId: string) {
         for (const id of [...(messageId ? [Number(messageId)] : []), ...earlierIds]) {
             await TelegramDeleteMessage(id)
         }
-        await redisClient.del([invoiceId, threadKey(invoiceId)])
+        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId)])
     } catch (error) {
         console.error('Error deleting invoice message after it left draft:', error);
+    }
+}
+
+const CLEANUP_LOCK_KEY = "telegram:invoice-cleanup"
+const CLEANUP_EVERY_SECONDS = 10 * 60
+
+/**
+ * Catches invoices that left draft outside the app — voided, sent, paid or
+ * deleted in Zoho itself — whose Telegram messages (channel and group) would
+ * otherwise stay up: every invoice still holding item numbers (that is,
+ * posted and not cleaned up) that isn't among `draftIds` is looked up in
+ * Zoho, and its thread is deleted unless it's still a draft. Runs at most
+ * once every CLEANUP_EVERY_SECONDS; best-effort, errors are logged. A lookup
+ * that fails for any reason but "doesn't exist" leaves the invoice for the
+ * next run.
+ */
+export async function cleanUpLeftoverInvoiceMessages(
+    draftIds: Set<string>,
+    statusOf: (invoiceId: string) => Promise<string | null>,
+) {
+    try {
+        if (!(await redisClient.set(CLEANUP_LOCK_KEY, "1", { NX: true, EX: CLEANUP_EVERY_SECONDS }))) return
+        const prefix = numbersKey("")
+        const leftovers: string[] = []
+        for await (const batch of redisClient.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) {
+            for (const key of Array.isArray(batch) ? batch : [batch]) {
+                const invoiceId = String(key).slice(prefix.length)
+                if (invoiceId && !draftIds.has(invoiceId)) leftovers.push(invoiceId)
+            }
+        }
+        for (const invoiceId of leftovers) {
+            let status: string | null
+            try {
+                status = await statusOf(invoiceId)
+            } catch (error: any) {
+                if (!/does not exist|not found/i.test(String(error?.message ?? ""))) continue
+                status = null
+            }
+            if (status === "draft") continue
+            console.log(`Telegram: invoice ${invoiceId} is ${status ?? "gone"} in Zoho, removing its messages`)
+            await deleteInvoiceTelegramMessage(invoiceId)
+            await redisClient.del(numbersKey(invoiceId))
+        }
+    } catch (error) {
+        console.error("Telegram: couldn't clean up messages of invoices no longer in draft", error)
     }
 }

@@ -133,6 +133,14 @@ export async function recordFailedOutboundMessage(to: string, message: Omit<Stor
     }
 }
 
+/** One stored message by id (via the msgday index), or undefined once it has expired. */
+export async function getChatMessage(phone: string, messageId: string): Promise<StoredChatMessage | undefined> {
+    const day = await redisClient.hGet(`chats:${phone}:msgday`, messageId)
+    if (!day) return undefined
+    const raw = await redisClient.hGet(`chats:${phone}:${day}`, messageId)
+    return raw ? (JSON.parse(raw) as StoredChatMessage) : undefined
+}
+
 /** Merges fields into one stored message, found via the msgday index. Returns the updated message, or undefined if it has expired. */
 export async function updateChatMessage(phone: string, messageId: string, patch: Partial<StoredChatMessage>) {
     const day = await redisClient.hGet(`chats:${phone}:msgday`, messageId)

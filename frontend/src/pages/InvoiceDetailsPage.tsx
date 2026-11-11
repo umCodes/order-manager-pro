@@ -14,6 +14,9 @@ import {
   updateInvoiceDate,
   updateInvoiceLineItems,
   updateInvoiceCustomer,
+  fetchOrderPreparation,
+  recordAppliedShortage,
+  fetchInvoiceSentNotifySetting,
 } from "../lib/api";
 import { currency } from "../lib/currency";
 import { formatStatus } from "../lib/status";
@@ -34,11 +37,16 @@ import CopyButton from "../components/CopyButton";
 import NotifyContactModal from "../components/NotifyContactModal";
 import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
+import InvoiceWhatsAppStatus from "../components/InvoiceWhatsAppStatus";
+import { useConfirmArmedAction } from "../hooks/useConfirmArmedAction";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
+import ShortageNote from "../components/ShortageNote";
+import PreparationBadge from "../components/PreparationBadge";
+import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
-import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem } from "../types";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
 
 type Props = {
   invoiceId: string;
@@ -47,7 +55,8 @@ type Props = {
   onSelectCustomer?: (customerId: string) => void;
 };
 
-type MarkSentNotifyStep = "closed" | "confirmNotify" | "pickContact";
+/** Marking as sent: confirm it, then (only when Settings say to ask) whether to send it on WhatsApp, and to whom. */
+type MarkSentNotifyStep = "closed" | "confirmSent" | "askNotify" | "pickContact";
 type SendOnWhatsAppStep = "closed" | "confirm" | "pickContact";
 
 /**
@@ -107,6 +116,17 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const [isVoiding, setIsVoiding] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [markSentNotifyStep, setMarkSentNotifyStep] = useState<MarkSentNotifyStep>("closed");
+  // Settings → Invoices: ask before sending on WhatsApp when marked as sent (default: send to every contact).
+  const [askBeforeSendingOnWhatsApp, setAskBeforeSendingOnWhatsApp] = useState(false);
+  // Bumped after each WhatsApp send of this invoice, so its status line re-reads who received it.
+  const [waSendsKey, setWaSendsKey] = useState(0);
+  const [retryingWaContactId, setRetryingWaContactId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchInvoiceSentNotifySetting()
+      .then((setting) => setAskBeforeSendingOnWhatsApp(setting.askBeforeSending))
+      .catch(() => {});
+  }, []);
   const [sendOnWhatsAppStep, setSendOnWhatsAppStep] = useState<SendOnWhatsAppStep>("closed");
   const [isSendingOnWhatsApp, setIsSendingOnWhatsApp] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
@@ -185,6 +205,58 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     };
   }, [invoiceId, customerRetryToken]);
 
+  // The order's preparation in the Telegram group (👍 and shortages): drafts
+  // only (a sent invoice's preparation is over), re-read whenever the invoice is.
+  const [preparation, setPreparation] = useState<OrderPreparation | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!invoice || invoice.status !== "draft") return;
+    fetchOrderPreparation(invoice.invoice_id)
+      .then((result) => {
+        if (!cancelled) setPreparation(result);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice]);
+
+  // Applying a shortage report: the item it's for, while its confirm is open.
+  const [applyingShortage, setApplyingShortage] = useState<{ shortage: OrderShortageItem; line: InvoiceDetailLineItem } | null>(null);
+  const [isApplyingShortage, setIsApplyingShortage] = useState(false);
+  const [applyShortageError, setApplyShortageError] = useState<string | null>(null);
+
+  /**
+   * Sets the invoice to what the preparers reported available for one item
+   * (removing it when it's missing) — only on this deliberate confirm, saved
+   * to Zoho straight away like any item edit — then records it as applied so
+   * the item stops showing as short.
+   */
+  function handleApplyShortageConfirm() {
+    if (!invoice || !applyingShortage) return;
+    const { shortage } = applyingShortage;
+    const next = linesWithReportApplied(invoice.line_items, shortage);
+    if (!next) {
+      setApplyShortageError("This item isn't on the invoice any more.");
+      return;
+    }
+    setIsApplyingShortage(true);
+    setApplyShortageError(null);
+    updateInvoiceLineItems(
+      invoice.invoice_id,
+      next.map((li) => ({ item_id: li.item_id, description: li.description, quantity: li.quantity, rate: li.rate, unit: li.unit })),
+      lineItemsChangeReason(invoice.line_items, next),
+    )
+      .then(async (updatedInvoice) => {
+        // The invoice is changed either way; failing to record it only leaves the badge up.
+        await recordAppliedShortage(invoice.invoice_id, shortage.item_key, shortage.available, shortage.unit).catch(() => {});
+        setInvoice(updatedInvoice);
+        setApplyingShortage(null);
+      })
+      .catch((e) => setApplyShortageError(e instanceof Error ? e.message : "Failed to change the invoice"))
+      .finally(() => setIsApplyingShortage(false));
+  }
+
   /**
    * Re-fetches the invoice plus its customer, after anything that can move
    * the customer's balance due (payment, marking sent, editing a sent
@@ -248,13 +320,28 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   const displayTotal = (invoice?.total ?? 0) + subtotalDelta;
   const displayBalance = (invoice?.balance ?? 0) + subtotalDelta;
 
-  function handleEditItemConfirm(quantity: number, rate: number) {
+  function handleEditItemConfirm({ description, quantity, rate }: { description: string; quantity: number; rate: number }) {
     if (!editingItem || !invoice) return;
     const base = editedLineItems ?? invoice.line_items;
     const next = base.map((li) =>
-      li.line_item_id === editingItem.line_item_id ? { ...li, quantity, rate, item_total: quantity * rate } : li,
+      li.line_item_id === editingItem.line_item_id
+        ? { ...li, description, quantity, rate, item_total: quantity * rate }
+        : li,
     );
     applyLineItemEdits(next);
+    setEditingItem(null);
+  }
+
+  /** Removes just the line being edited (not other lines of the same item). Unsaved until "Save Changes". */
+  function handleEditItemRemove() {
+    if (!editingItem || !invoice) return;
+    const base = editedLineItems ?? invoice.line_items;
+    applyLineItemEdits(base.filter((li) => li.line_item_id !== editingItem.line_item_id));
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      next.delete(editingItem.line_item_id);
+      return next;
+    });
     setEditingItem(null);
   }
 
@@ -267,13 +354,18 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     pickerCart[li.item_id] = { description: li.description, quantity: li.quantity, rate: li.rate, excludeFromTelegram: false, unit: li.unit };
   }
 
-  /** Adds a catalog item as a new line, or updates the existing line for it. Unsaved until "Save Changes". */
-  function handlePickerCommit(itemId: string, values: DraftForm, catalogItem: CatalogItem) {
+  /**
+   * Adds a catalog item as a new line, or updates the existing line for it —
+   * a general item's extra line (a cart key not in pickerCart) is always new.
+   * Unsaved until "Save Changes".
+   */
+  function handlePickerCommit(cartKey: string, values: DraftForm, catalogItem: CatalogItem) {
     if (!invoice) return;
     const base = editedLineItems ?? invoice.line_items;
     const quantity = Number(values.quantity) || 0;
     const rate = Number(values.rate) || 0;
-    const existingIndex = base.findIndex((li) => li.item_id === itemId);
+    const itemId = catalogItem.item_id;
+    const existingIndex = pickerCart[cartKey] ? base.findIndex((li) => li.item_id === itemId) : -1;
 
     if (existingIndex >= 0) {
       applyLineItemEdits(
@@ -288,7 +380,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       ...base,
       {
         // Placeholder id for rendering only; the backend assigns the real one on save.
-        line_item_id: `new-${itemId}-${Date.now()}`,
+        line_item_id: `new-${itemId}-${Date.now()}-${base.length}`,
         item_id: itemId,
         name: catalogItem.name,
         description: values.description,
@@ -359,6 +451,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   // (sent ones with an automatic reason, see lib/invoiceChangeReason) —
   // splitting is the one exception, still draft-only.
   const isDraft = invoice?.status === "draft";
+  const { byLine: shortagesByLine, unmatched: unmatchedShortages } = matchShortagesToLines(
+    displayLineItems,
+    isDraft && preparation?.order_id === invoice?.invoice_id ? preparation.items : [],
+  );
 
   // A selection only matters if it's a draft (splitting a sent invoice's
   // line items isn't supported) and it's a strict subset of the items —
@@ -394,20 +490,36 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
    */
   function retryNotification(
     payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-    notifyContactIds?: string[],
+    notifyContactIds?: string[] | "all",
   ) {
     if (!invoice) return;
     setIsRetryingNotify(true);
     resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
       .then((result) => {
-        setNotifyBanner(result.notified ? "success" : "failed");
+        // The invoice's own message shows who received it in its WhatsApp status line instead.
+        setNotifyBanner(result.notified ? (payload.kind === "sent" ? null : "success") : "failed");
         if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .catch(() => {
         setNotifyBanner("failed");
         setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
-      .finally(() => setIsRetryingNotify(false));
+      .finally(() => {
+        setIsRetryingNotify(false);
+        if (payload.kind === "sent") setWaSendsKey((n) => n + 1);
+      });
+  }
+
+  /** Re-sends the invoice on WhatsApp to one contact, from its row in the WhatsApp status line. */
+  function retryWhatsAppSend(contactPersonId: string) {
+    if (!invoice) return;
+    setRetryingWaContactId(contactPersonId);
+    resendInvoiceNotification(invoice.invoice_id, { kind: "sent" }, [contactPersonId])
+      .catch(() => {})
+      .finally(() => {
+        setRetryingWaContactId(null);
+        setWaSendsKey((n) => n + 1);
+      });
   }
 
   /** Sends a return's Return Notice (with its PDF) on WhatsApp; failures show the usual retry banner. */
@@ -514,8 +626,32 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   function openMarkSentStep() {
     setMarkSentDiscount("");
     setIsMarkSentDiscountOpen(false);
-    setMarkSentNotifyStep("confirmNotify");
+    markSentArm.disarm();
+    setMarkSentNotifyStep("confirmSent");
   }
+
+  function closeMarkSent() {
+    markSentArm.disarm();
+    setMarkSentNotifyStep("closed");
+  }
+
+  /**
+   * "Mark as sent" confirmed (clicked, waited, clicked again): sends the
+   * invoice to every contact on WhatsApp, or — when Settings say to ask —
+   * asks about that first.
+   */
+  function confirmMarkAsSent() {
+    const parsed = parseMarkSentDiscount();
+    if ("error" in parsed) {
+      setActionError(parsed.error);
+      return;
+    }
+    if (askBeforeSendingOnWhatsApp) setMarkSentNotifyStep("askNotify");
+    else runMarkAsSent(true, "all");
+  }
+
+  // Like recording a payment: click, wait a moment, then click again to confirm.
+  const markSentArm = useConfirmArmedAction(confirmMarkAsSent);
 
   /** The discount typed in the mark-as-sent step, or an error message when it isn't a usable amount. */
   function parseMarkSentDiscount(): { discount: number } | { error: string } {
@@ -526,12 +662,12 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     return { discount };
   }
 
-  function runMarkAsSent(notify: boolean, notifyContactIds?: string[]) {
+  function runMarkAsSent(notify: boolean, notifyContactIds?: string[] | "all") {
     if (!invoice) return;
     const parsed = parseMarkSentDiscount();
     if ("error" in parsed) {
       setActionError(parsed.error);
-      setMarkSentNotifyStep("confirmNotify");
+      setMarkSentNotifyStep("confirmSent");
       return;
     }
     setIsMarkingSent(true);
@@ -543,8 +679,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         setMarkSentNotifyStep("closed");
         refreshVisits();
         if (notify) {
-          setNotifyBanner(result.notified ? "success" : "failed");
+          // Who received it shows in the invoice's WhatsApp status line; the banner only flags a send that couldn't go out at all.
+          setWaSendsKey((n) => n + 1);
           if (!result.notified) {
+            setNotifyBanner("failed");
             setNotifyRetry(() => () => retryNotification({ kind: "sent" }, notifyContactIds));
           }
         }
@@ -586,7 +724,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     setNotifyBanner(null);
     resendInvoiceNotification(invoice.invoice_id, payload, notifyContactIds)
       .then((result) => {
-        setNotifyBanner(result.notified ? "success" : "failed");
+        setNotifyBanner(result.notified ? null : "failed");
         if (!result.notified) setNotifyRetry(() => () => retryNotification(payload, notifyContactIds));
       })
       .catch(() => {
@@ -596,6 +734,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
       .finally(() => {
         setIsSendingOnWhatsApp(false);
         setSendOnWhatsAppStep("closed");
+        setWaSendsKey((n) => n + 1);
       });
   }
 
@@ -768,6 +907,15 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
           )}
 
+          {invoice.status !== "draft" && (
+            <InvoiceWhatsAppStatus
+              invoiceId={invoice.invoice_id}
+              reloadKey={waSendsKey}
+              onRetry={invoice.status !== "void" ? retryWhatsAppSend : undefined}
+              retryingContactId={retryingWaContactId}
+            />
+          )}
+
           {invoice.status !== "draft" && invoice.status !== "void" && (
             <ReturnNotices
               invoiceId={invoice.invoice_id}
@@ -805,7 +953,15 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
           <div className="line-items">
             <div className="line-items__header line-items__header--with-action">
-              <span>Items ({displayLineItems.length})</span>
+              <span>
+                Items ({displayLineItems.length})
+                {isDraft && preparation?.order_id === invoice.invoice_id && (
+                  <>
+                    {" "}
+                    <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
+                  </>
+                )}
+              </span>
               <button type="button" className="link-btn line-items__add" onClick={() => setIsAddItemOpen(true)}>
                 <Plus size={14} />
                 Add items
@@ -813,6 +969,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
             {displayLineItems.map((item) => {
               const isSelected = selectedItemIds.has(item.line_item_id);
+              const shortage = shortagesByLine.get(item.line_item_id);
               return (
                 <div
                   key={item.line_item_id}
@@ -849,6 +1006,20 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                       <div className="line-item__meta">
                         {item.quantity} {item.unit} × {currency(item.rate)}
                       </div>
+                      {shortage && (
+                        <ShortageNote
+                          shortage={shortage}
+                          onApply={
+                            isDraft
+                              ? () => {
+                                  setApplyShortageError(null);
+                                  setApplyingShortage({ shortage, line: item });
+                                }
+                              : undefined
+                          }
+                          applyDisabledReason={isLineItemsDirty ? "Save or discard your other item changes first" : undefined}
+                        />
+                      )}
                     </div>
                   </div>
                   <div className="line-item__right">
@@ -867,6 +1038,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
               );
             })}
           </div>
+
+          {unmatchedShortages.map((shortage) => (
+            <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "Removed item"} />
+          ))}
 
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">
@@ -1022,8 +1197,10 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         <EditLineItemModal
           item={editingItem}
           currencySymbol={invoice?.currency_symbol ?? ""}
+          canRemove={displayLineItems.length > 1}
           onCancel={() => setEditingItem(null)}
           onConfirm={handleEditItemConfirm}
+          onRemove={handleEditItemRemove}
         />
       )}
 
@@ -1047,6 +1224,24 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           isConfirming={isVoiding}
           onConfirm={handleVoidConfirm}
           onCancel={() => setIsVoidConfirmOpen(false)}
+        />
+      )}
+
+      {applyingShortage && invoice && (
+        <ConfirmModal
+          title={applyingShortage.shortage.available === 0 ? `Remove ${applyingShortage.line.name}?` : `Change ${applyingShortage.line.name}?`}
+          message={
+            applyingShortage.shortage.available === 0
+              ? `Preparers reported it missing. ${applyingShortage.line.name} will be removed from ${invoice.invoice_number} in Zoho.`
+              : `Preparers reported ${applyingShortage.shortage.available} of ${applyingShortage.shortage.ordered} ${applyingShortage.shortage.unit} available. ${applyingShortage.line.name} will be changed to ${applyingShortage.shortage.available} ${applyingShortage.shortage.unit} on ${invoice.invoice_number} in Zoho, at the same price.`
+          }
+          confirmLabel={
+            isApplyingShortage ? "Saving..." : applyingShortage.shortage.available === 0 ? "Remove" : `Change to ${applyingShortage.shortage.available} ${applyingShortage.shortage.unit}`
+          }
+          error={applyShortageError}
+          isConfirming={isApplyingShortage}
+          onConfirm={handleApplyShortageConfirm}
+          onCancel={() => setApplyingShortage(null)}
         />
       )}
 
@@ -1075,13 +1270,16 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
         />
       )}
 
-      {markSentNotifyStep === "confirmNotify" && invoice && (
+      {markSentNotifyStep === "confirmSent" && invoice && (
         <div className="modal-overlay">
-          <div className="modal-overlay__backdrop" onClick={() => setMarkSentNotifyStep("closed")} />
+          <div className="modal-overlay__backdrop" onClick={isMarkingSent ? undefined : closeMarkSent} />
           <div className="modal">
-            <div className="modal__title">Notify Customer?</div>
+            <div className="modal__title">Mark as sent?</div>
             <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
-              Send a WhatsApp notification that this invoice was sent?
+              Mark {invoice.invoice_number} as sent?{" "}
+              {askBeforeSendingOnWhatsApp
+                ? "You'll be asked next whether to send it on WhatsApp."
+                : "It will be sent to all of the customer's contacts on WhatsApp."}
             </div>
             <div className="field">
               <button
@@ -1119,21 +1317,43 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             </div>
             {actionError && <div className="form-error">{actionError}</div>}
             <div className="invoice-details__actions" style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                className="btn btn--secondary"
-                disabled={isMarkingSent}
-                onClick={() => runMarkAsSent(false)}
-              >
-                {isMarkingSent ? "Saving..." : "No, don't notify"}
+              <button type="button" className="btn btn--secondary" disabled={isMarkingSent} onClick={closeMarkSent}>
+                Cancel
               </button>
               <button
                 type="button"
-                className="btn btn--primary"
-                disabled={isMarkingSent}
-                onClick={handleYesNotifyOnSent}
+                className={`btn ${markSentArm.isArmed ? "btn--primary" : "btn--secondary"}`}
+                disabled={isMarkingSent || markSentArm.isCoolingDown}
+                onClick={markSentArm.trigger}
               >
-                {isMarkingSent ? "Saving..." : "Yes, notify"}
+                {isMarkingSent
+                  ? "Saving..."
+                  : markSentArm.isCoolingDown
+                    ? "Wait..."
+                    : markSentArm.isArmed
+                      ? "Click again to confirm"
+                      : "Mark as sent"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {markSentNotifyStep === "askNotify" && invoice && (
+        <div className="modal-overlay">
+          <div className="modal-overlay__backdrop" onClick={isMarkingSent ? undefined : closeMarkSent} />
+          <div className="modal">
+            <div className="modal__title">Send on WhatsApp?</div>
+            <div className="invoice-details__summary-row" style={{ marginBottom: 14 }}>
+              Send {invoice.invoice_number} to the customer on WhatsApp as it's marked as sent?
+            </div>
+            {actionError && <div className="form-error">{actionError}</div>}
+            <div className="invoice-details__actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn--secondary" disabled={isMarkingSent} onClick={() => runMarkAsSent(false)}>
+                {isMarkingSent ? "Saving..." : "No, just mark as sent"}
+              </button>
+              <button type="button" className="btn btn--primary" disabled={isMarkingSent} onClick={handleYesNotifyOnSent}>
+                {isMarkingSent ? "Saving..." : "Yes, send"}
               </button>
             </div>
           </div>

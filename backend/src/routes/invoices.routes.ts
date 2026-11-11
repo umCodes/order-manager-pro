@@ -9,6 +9,7 @@ import {
   updateInvoiceCustomer,
   resendInvoiceTelegramMessage,
   resendInvoiceNotification,
+  getInvoiceWhatsAppSends,
   getInvoiceById,
   getInvoicePdf,
   payInvoiceBalance,
@@ -39,6 +40,7 @@ invoicesRouter.post("/invoices/:id/payments", payInvoiceBalance);
 invoicesRouter.post("/invoices/:id/status/sent", markInvoiceAsSent);
 invoicesRouter.post("/invoices/:id/status/void", voidInvoice);
 invoicesRouter.post("/invoices/:id/notify", resendInvoiceNotification);
+invoicesRouter.get("/invoices/:id/whatsapp-sends", getInvoiceWhatsAppSends);
 invoicesRouter.get("/invoices/:id/returns", getInvoiceReturns);
 invoicesRouter.post("/invoices/:id/returns", createInvoiceReturnHandler);
 invoicesRouter.get("/invoices/:id/returns/list", getInvoiceReturnList);

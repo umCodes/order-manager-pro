@@ -1,4 +1,4 @@
-import type { CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail } from "../types";
+import type { BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -565,11 +565,11 @@ export async function fetchRecentInvoices(): Promise<DraftInvoice[]> {
   return data.invoices;
 }
 
-/** Posts just a list of items to the Telegram channel ("Items Only" mode): no invoice is created. */
+/** Posts just a list of items to the Telegram channel ("Items Only" mode) and keeps it as a backup list: no invoice is created. */
 export async function sendItemsListToTelegram(payload: {
   date?: string;
   line_items: { item_id: string; description: string; quantity: number; unit: string }[];
-}) {
+}): Promise<{ list: BackupList }> {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/items-list`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -581,6 +581,41 @@ export async function sendItemsListToTelegram(payload: {
     throw new Error(body.error ?? `Failed to send items list (${response.status})`);
   }
 
+  invalidateCache("backupLists");
+  return response.json();
+}
+
+async function fetchBackupListsUncached(): Promise<{ lists: BackupList[]; missing: BackupMissingItem[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/backup-lists`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch backup lists (${response.status})`);
+  }
+
+  const data = await response.json();
+  return { lists: data.lists ?? [], missing: data.missing ?? [] };
+}
+
+/**
+ * The backup lists not removed yet, newest first (with what was reported
+ * and taken), and today's items quick invoices sent that no list had.
+ */
+export function fetchBackupLists(options?: { force?: boolean }): Promise<{ lists: BackupList[]; missing: BackupMissingItem[] }> {
+  if (options?.force) invalidateCache("backupLists");
+  return cachedFetch("backupLists", fetchBackupListsUncached);
+}
+
+/** Removes a backup list, deleting its Telegram message too when Telegram allows it. */
+export async function deleteBackupList(id: string): Promise<{ deleted_from_telegram: boolean; telegram_error?: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/backup-lists/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to remove backup list (${response.status})`);
+  }
+
+  invalidateCache("backupLists");
   return response.json();
 }
 
@@ -811,6 +846,51 @@ export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDetail
   return data.invoice;
 }
 
+/** An order's (invoice id or BK- id) preparation in the Telegram group: its status, who confirmed it, its shortages. */
+export async function fetchOrderPreparation(orderId: string): Promise<OrderPreparation> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/preparation`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch preparation (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Records that an order's item was set to what the preparers reported, after
+ * that change was saved to the invoice — so it stops showing as short.
+ */
+export async function recordAppliedShortage(orderId: string, itemKey: string, quantity: number, unit: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/applied`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_key: itemKey, quantity, unit }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to record the change (${response.status})`);
+  }
+}
+
+/** Several orders' preparation at once, by order id (for the drafts list and the Items tab). */
+export async function fetchPreparationStatuses(
+  orderIds: string[],
+): Promise<Record<string, Omit<OrderPreparation, "order_id">>> {
+  if (orderIds.length === 0) return {};
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/preparation?ids=${orderIds.map(encodeURIComponent).join(",")}`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch preparation statuses (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.statuses ?? {};
+}
+
 export function invoiceCacheKey(invoiceId: string) {
   return `invoice:${invoiceId}`;
 }
@@ -945,7 +1025,8 @@ export async function recordInvoicePayment(
 export async function markInvoiceAsSent(
   invoiceId: string,
   notify?: boolean,
-  notifyContactIds?: string[],
+  /** Contact person ids to send to, or "all" for every contact of the customer. */
+  notifyContactIds?: string[] | "all",
   discount?: number,
 ): Promise<{ invoice: InvoiceDetail; notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/status/sent`, {
@@ -955,7 +1036,7 @@ export async function markInvoiceAsSent(
     },
     body: JSON.stringify({
       notify: !!notify,
-      ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+      ...(notifyContactIds === "all" || notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
       ...(discount ? { discount } : {}),
     }),
   });
@@ -991,14 +1072,18 @@ export async function voidInvoice(invoiceId: string): Promise<{ invoice: Invoice
 export async function resendInvoiceNotification(
   invoiceId: string,
   payload: { kind: "sent" } | { kind: "payment"; amount: number; date?: string },
-  notifyContactIds?: string[],
+  /** Contact person ids to send to; "all" (invoice messages only) for every contact of the customer. */
+  notifyContactIds?: string[] | "all",
 ): Promise<{ notified: boolean }> {
   const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/notify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ ...payload, ...(notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}) }),
+    body: JSON.stringify({
+      ...payload,
+      ...(notifyContactIds === "all" || notifyContactIds?.length ? { notify_contact_ids: notifyContactIds } : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -1106,6 +1191,17 @@ export type WhatsAppMessage = {
   media?: { mime_type?: string; filename?: string; voice?: boolean };
   /** Id of the message this one replies to (quoted above it). */
   reply_to?: string;
+  /** Template messages: the template's own wording with the sent values filled in, as the recipient sees it. */
+  template?: SentWhatsAppTemplate;
+};
+
+/** A sent template, rendered from its definition: header (text or a file), body, footer and buttons. */
+export type SentWhatsAppTemplate = {
+  header?: string;
+  header_media?: { kind: "document" | "image" | "video"; filename?: string };
+  body: string;
+  footer?: string;
+  buttons?: { type: string; text: string; url?: string }[];
 };
 
 /** A conversation's stored history, oldest first, and whether a free-form reply is allowed right now. */
@@ -1202,6 +1298,35 @@ export async function sendWhatsAppChatMessage(phone: string, text: string, reply
  * updated conversation; if this attempt fails too, throws with WhatsApp's
  * reason and the conversation (which shows the new failed attempt) attached.
  */
+/** A WhatsApp template that failed to send and can be resent (see the WhatsApp tab's failed-messages prompt). */
+export type FailedWhatsAppMessage = { phone: string; id: string; summary: string; error: string | null; timestamp: number };
+
+/** Template messages that failed in the last 7 days and can be resent. */
+export async function fetchFailedWhatsAppMessages(): Promise<FailedWhatsAppMessage[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/failed`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to load failed messages (${response.status})`);
+  return body.messages ?? [];
+}
+
+/**
+ * Resends the given failed messages. Each is only ever resent once: one
+ * already resent elsewhere is skipped. `failed` lists the ones WhatsApp
+ * refused again, with its reason.
+ */
+export async function resendFailedWhatsAppMessages(
+  messages: { phone: string; id: string }[],
+): Promise<{ sent: number; skipped: number; failed: { phone: string; id: string; error: string }[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/failed/resend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: messages.map(({ phone, id }) => ({ phone, id })) }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to resend messages (${response.status})`);
+  return body;
+}
+
 export async function retryWhatsAppMessage(phone: string, messageId: string): Promise<WhatsAppConversation> {
   const response = await apiFetch(
     `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/retry`,
@@ -1660,6 +1785,36 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ street
 }
 
 /** The general items: catalog items whose unit can be changed on each invoice line (chosen in Settings). */
+export type GeneralItemsWhatsAppSettings = {
+  template: { name: string; language: string } | null;
+  /** Digits only, international format (e.g. "966512345678"). */
+  recipient: string | null;
+};
+/** A template whose body has exactly {{1}} invoice number, {{2}} and {{3}} items, {{4}} day. */
+export type GeneralItemsTemplateOption = { id: string; name: string; language: string; status: string };
+
+export async function fetchGeneralItemsWhatsAppSettings(force = false): Promise<{
+  selected: GeneralItemsWhatsAppSettings;
+  options: GeneralItemsTemplateOption[];
+}> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items-whatsapp${force ? "?refresh=1" : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the general items WhatsApp settings (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveGeneralItemsWhatsAppSettings(settings: GeneralItemsWhatsAppSettings): Promise<GeneralItemsWhatsAppSettings> {
+  const result = await postJson<{ selected: GeneralItemsWhatsAppSettings }>(
+    `${API_BASE_URL}/api/settings/general-items-whatsapp`,
+    "PUT",
+    settings,
+    "Failed to save the general items WhatsApp settings",
+  );
+  return result.selected;
+}
+
 export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: number }> {
   const response = await apiFetch(`${API_BASE_URL}/api/settings/general-items`, { cache: "no-store" });
   if (!response.ok) {
@@ -1672,4 +1827,46 @@ export async function fetchGeneralItemIds(): Promise<{ item_ids: string[]; max: 
 export async function saveGeneralItemIds(itemIds: string[]): Promise<string[]> {
   const result = await postJson<{ item_ids: string[] }>(`${API_BASE_URL}/api/settings/general-items`, "PUT", { item_ids: itemIds }, "Failed to save the general items");
   return result.item_ids;
+}
+
+/** One number an invoice was sent to on WhatsApp, with its message's latest status. */
+export type InvoiceWhatsAppSend = {
+  phone: string;
+  contactPersonId: string;
+  name: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  error?: string;
+  sentAt: string;
+};
+
+/** Who an invoice was sent to on WhatsApp, and how far each message got. */
+export async function fetchInvoiceWhatsAppSends(invoiceId: string): Promise<InvoiceWhatsAppSend[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/invoices/${invoiceId}/whatsapp-sends`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the WhatsApp sends (${response.status})`);
+  }
+  const data = await response.json();
+  return data.sends ?? [];
+}
+
+/** Whether marking an invoice as sent asks before sending it on WhatsApp (default: sends to every contact). */
+export type InvoiceSentNotifySetting = { askBeforeSending: boolean };
+
+export async function fetchInvoiceSentNotifySetting(): Promise<InvoiceSentNotifySetting> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/invoice-sent-notify`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the WhatsApp setting (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveInvoiceSentNotifySetting(setting: InvoiceSentNotifySetting): Promise<InvoiceSentNotifySetting> {
+  return postJson<InvoiceSentNotifySetting>(
+    `${API_BASE_URL}/api/settings/invoice-sent-notify`,
+    "PUT",
+    setting,
+    "Failed to save the WhatsApp setting",
+  );
 }

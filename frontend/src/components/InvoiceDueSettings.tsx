@@ -62,7 +62,7 @@ export default function InvoiceDueSettings() {
 
   return (
     <>
-      <div className="page-header" style={{ marginTop: 28 }}>
+      <div className="page-header">
         <h2 className="page-title" style={{ fontSize: 16 }}>
           Overdue after
         </h2>

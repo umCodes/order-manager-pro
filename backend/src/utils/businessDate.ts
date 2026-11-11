@@ -51,15 +51,15 @@ function formatInBusinessTimezone(date: Date): string {
 
 /**
  * Compares a YYYY-MM-DD date-only string (e.g. invoice.date) against "today"
- * and "tomorrow", both in the business's calendar (UTC+3) rather than the
- * server's local time — a date-only string has no time-of-day, so it must be
- * compared as a calendar date, not parsed into a UTC instant and re-read
- * with server-local accessors (which is what `new Date(dateStr).toDateString()`
- * does, and drifts from the business's actual day near midnight).
+ * and "tomorrow" as the business counts them: the 4am-to-4am business day
+ * (see businessDayKey), the same day the app shows — so between midnight
+ * and 4am, "today" is still the day before. A date-only string has no
+ * time-of-day, so it's compared as a calendar date, never parsed into an
+ * instant and re-read with server-local accessors.
  */
 export function describeBusinessDate(dateStr: string, from: Date = new Date()) {
-  const todayStr = formatInBusinessTimezone(from);
-  const tomorrowStr = formatInBusinessTimezone(new Date(from.getTime() + 24 * 60 * 60 * 1000));
+  const todayStr = businessDayKey(from);
+  const tomorrowStr = businessDayKey(new Date(from.getTime() + 24 * 60 * 60 * 1000));
   const parts = dateStr.split("-").map(Number);
   const year = parts[0] ?? 0;
   const month = parts[1] ?? 1;

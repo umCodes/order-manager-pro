@@ -1,10 +1,16 @@
 import { toAmharicUnit, toArabicUnit, toEnglishUnit } from "../utils/units.js";
-import { lineWeightKg } from "../utils/packWeight.js";
+import { linePacks, lineWeightKg } from "../utils/packWeight.js";
 import type { InvoiceLanguage, InvoiceLineItem } from "./types.js";
 
-/** Amharic invoices show the line's own description; other languages show the catalog item name. */
+/**
+ * Amharic invoices show the line's own description; Arabic ones the item's
+ * Arabic (Zoho secondary-language) name, falling back to the English name
+ * when it has none; English ones the catalog item name.
+ */
 export function itemDisplayName(item: InvoiceLineItem, language: InvoiceLanguage): string {
-  return language === "am" ? item.description : item.itemName;
+  if (language === "am") return item.description;
+  if (language === "ar") return item.arabicName || item.itemName;
+  return item.itemName;
 }
 
 /** Translates a Zoho unit code ("kg", "box", …) into the invoice's language. */
@@ -25,4 +31,10 @@ const KG_SUFFIX: Record<InvoiceLanguage, string> = { am: "ኪሎ", ar: "كغ", e
 export function weightQtyText(item: InvoiceLineItem, language: InvoiceLanguage): string {
   const kg = lineWeightKg(item.itemName, item.quantity);
   return kg === null ? "" : `${kg}${KG_SUFFIX[language]}`;
+}
+
+/** The packs column's text: the line's quantity in packs (see linePacks), or empty when the name has no pack count. */
+export function packsText(item: InvoiceLineItem): string {
+  const packs = linePacks(item.itemName, item.quantity);
+  return packs === null ? "" : String(packs);
 }

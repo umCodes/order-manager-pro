@@ -11,6 +11,8 @@ import {
 
 /** Voice notes stop on their own at this length. */
 const MAX_RECORDING_SECONDS = 5 * 60;
+/** WhatsApp rejects voice notes shorter than this, so they are never sent. */
+const MIN_RECORDING_MS = 1000;
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -53,6 +55,8 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
   const recorderRef = useRef<Recorder | null>(null);
   // Whether the recording in progress should be sent (true) or thrown away when it stops.
   const sendRecordingRef = useRef(false);
+  // When the recording in progress started (ms), to hold back ones too short to send.
+  const recordingStartedAtRef = useRef(0);
   // A voice note is sent from the recorder's callback, so it reads the reply target from here.
   const replyToRef = useRef<string | undefined>(undefined);
   replyToRef.current = replyTo?.id;
@@ -153,6 +157,7 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
     recorderRef.current = recorder;
     try {
       await recorder.start();
+      recordingStartedAtRef.current = Date.now();
       setRecordingSeconds(0);
     } catch {
       recorder.close();
@@ -164,7 +169,10 @@ export default function WhatsAppComposer({ phone, canReply, closedNotice, closed
   function finishRecording(shouldSend: boolean) {
     const recorder = recorderRef.current;
     if (!recorder) return;
-    sendRecordingRef.current = shouldSend;
+    // WhatsApp rejects voice notes under a second, so those are thrown away instead of sent.
+    const tooShort = Date.now() - recordingStartedAtRef.current < MIN_RECORDING_MS;
+    if (shouldSend && tooShort) setError("Voice message too short — hold for at least a second");
+    sendRecordingRef.current = shouldSend && !tooShort;
     recorderRef.current = null;
     setRecordingSeconds(null);
     recorder.stop();

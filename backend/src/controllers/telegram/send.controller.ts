@@ -6,6 +6,13 @@ import { requireAccessToken } from '../../utils/requireAccessToken.js';
 import { itemsListMessageText } from '../../services/telegram/invoices/messageText.js';
 import { sortLineItemsByCategory } from '../../services/lineItemOrder.js';
 import { excludeInternalLineItems } from '../../utils/internalLineItems.js';
+import { numberItems, itemKeyFor } from '../../services/telegram/invoices/itemNumbers.js';
+import { getGeneralItemIds } from '../../services/generalItems.js';
+import { getCatalogItems } from '../../services/zoho/items.js';
+import { createBackupList, type BackupListItem } from '../../services/backupLists.js';
+import { ENV } from '../../constants/env.js';
+import { businessDayKey } from '../../utils/businessDate.js';
+import { orderMessageItems, saveGroupOrderMessage } from '../../services/telegram/groupOrders.js';
 
 /** Posts a free-text message to the team's channel. */
 export async function sendMessage(req: Request, res: Response) {
@@ -29,9 +36,10 @@ export async function sendMessage(req: Request, res: Response) {
 
 /**
  * Posts a list of items to the channel without creating an invoice (the
- * Invoice tab's "Items Only" mode). Takes the same `line_items` shape as
- * invoice creation, sorted by category the same way; lines marked internal
- * ("###") are left out. Nothing is written to Zoho.
+ * Invoice tab's "Items Only" mode) and keeps it as a backup list, under a
+ * BK- id that heads the message (see services/backupLists.ts). Takes the
+ * same `line_items` shape as invoice creation, sorted by category the same
+ * way; lines marked internal ("###") are left out. Nothing is written to Zoho.
  */
 export async function sendItemsList(req: Request, res: Response) {
     try {
@@ -44,8 +52,35 @@ export async function sendItemsList(req: Request, res: Response) {
         const visibleItems = excludeInternalLineItems(sorted);
         if (visibleItems.length === 0) throw new Error("Every item is excluded from Telegram, so there's nothing to send")
 
-        const message = await TelegramSendMessage(itemsListMessageText(visibleItems, date || undefined));
-        res.status(201).json({ message });
+        // Catalog names (cached) are kept with the list, for the daily report's kilograms.
+        const catalog = await getCatalogItems(access_token).catch(() => []);
+        const nameById = new Map(catalog.map((item: any) => [String(item.item_id), String(item.name ?? "")]));
+        const keyOf = itemKeyFor(await getGeneralItemIds());
+        const numbers = numberItems(visibleItems, null, keyOf);
+        const items: BackupListItem[] = visibleItems.map((item: any) => ({
+            number: numbers.get(keyOf(item))!,
+            item_id: String(item.item_id ?? ""),
+            name: nameById.get(String(item.item_id)) ?? String(item.name ?? ""),
+            description: String(item.description ?? ""),
+            quantity: Number(item.quantity) || 0,
+            unit: String(item.unit ?? ""),
+        }));
+
+        const { list, message } = await createBackupList(
+            items,
+            String(ENV.TELEGRAM_CHATID),
+            (id) => TelegramSendMessage(itemsListMessageText(id, visibleItems, date || undefined, keyOf)),
+            // Wanted for the picked day, else the day it's sent — as an invoice's date.
+            date || businessDayKey(),
+        );
+        await saveGroupOrderMessage(message.group_message_id, {
+            kind: "backup_list",
+            order_id: list.id,
+            order_number: list.id,
+            message_type: "order",
+            items: orderMessageItems(visibleItems, numbers, keyOf),
+        });
+        res.status(201).json({ message, list });
     } catch (error) {
         if (error instanceof Error)
             res.status(400).json({ error: error.message });

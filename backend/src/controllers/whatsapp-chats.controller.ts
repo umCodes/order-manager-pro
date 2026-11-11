@@ -19,11 +19,23 @@ import {
 } from '../services/whatsapp/chatStore.js';
 import { replyToWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppTemplate, type WhatsAppMediaKind } from '../services/whatsapp/messages.js';
 import { downloadWhatsAppMedia, uploadWhatsAppMedia } from '../services/whatsapp/client.js';
-import { buildTemplateSend, createTemplate, deleteTemplate, listTemplates, uploadTemplateSample } from '../services/whatsapp/templates.js';
+import {
+    buildTemplateSend,
+    createTemplate,
+    deleteTemplate,
+    findCopiedTemplate,
+    findTemplate,
+    listTemplates,
+    renderTemplate,
+    renderedTemplateText,
+    uploadTemplateSample,
+    type RenderedTemplate,
+} from '../services/whatsapp/templates.js';
 import { notificationTemplateNames } from '../services/whatsapp/notificationTemplates.js';
 import { getDailyReportWhatsAppSettings } from '../services/dailyReport/whatsapp.js';
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
+import { redisClient } from '../config/redis.js';
 
 /** WhatsApp only accepts free-form (non-template) messages within 24h of the customer's last message. */
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -121,15 +133,43 @@ function getMedia(message: StoredChatMessage): { id?: string; mime_type?: string
     return MEDIA_TYPES.includes(message.type) ? message[message.type] : undefined
 }
 
+/**
+ * A template message as the recipient sees it: rendered when it was sent,
+ * or — for messages stored before that — from the app's copy of the
+ * template list. Undefined if the template isn't known.
+ */
+function templateView(message: StoredChatMessage): RenderedTemplate | undefined {
+    if (message.type !== "template") return undefined
+    if (message.rendered) return message.rendered
+    const { name, language, components } = message.template ?? {}
+    const template = name && language ? findCopiedTemplate(name, language) : undefined
+    return template && Array.isArray(components) ? renderTemplate(template, components) : undefined
+}
+
+/** Makes sure the template copy has every template these messages were sent with, if it can (at most one fetch). */
+async function loadTemplatesFor(messages: StoredChatMessage[]) {
+    const missing = messages.find(
+        (m) => m.type === "template" && !m.rendered && m.template?.name && !findCopiedTemplate(m.template.name, m.template.language),
+    )
+    if (!missing) return
+    try {
+        await findTemplate(missing.template.name, missing.template.language)
+    } catch (error) {
+        console.error('Failed to load WhatsApp templates to show sent ones:', error)
+    }
+}
+
 function toMessageView(message: StoredChatMessage) {
     const media = getMedia(message)
+    const template = templateView(message)
     return {
         id: message.id,
         direction: message.direction,
         timestamp: message.timestamp,
         type: message.type,
         // Media bubbles render the file itself, so their text is just the caption.
-        text: media ? media.caption ?? "" : describeChatMessage(message),
+        text: media ? media.caption ?? "" : template ? renderedTemplateText(template) : describeChatMessage(message),
+        ...(template && { template }),
         ...(media?.id && {
             media: {
                 mime_type: media.mime_type,
@@ -368,6 +408,7 @@ export async function removeWhatsAppContact(req: Request, res: Response) {
 /** Builds the chat-history response: messages oldest first, and whether a free-form reply is currently allowed. */
 async function buildConversation(phone: string) {
     const messages = await getChatMessages(phone)
+    await loadTemplatesFor(messages)
     const lastInbound = [...messages].reverse().find((m) => m.direction === "in")
     const windowExpiresAt = lastInbound ? lastInbound.timestamp + REPLY_WINDOW_MS : undefined
     return {
@@ -430,15 +471,8 @@ export async function retryWhatsAppChatMessage(req: Request, res: Response) {
         if (!original) throw new Error("Message not found (history is kept for 7 days)")
         if (!canRetry(original)) throw new Error("This message can't be sent again")
 
-        await updateChatMessage(phone, messageId, { retried_at: Date.now() })
         try {
-            await sendWhatsAppTemplate(
-                phone,
-                original.template.name,
-                original.template.components,
-                original.template.language,
-                original.summary,
-            )
+            if (!(await resendStoredTemplate(phone, original))) throw new Error("This message is already being sent again")
         } catch (sendError) {
             // Already recorded as a new failed message (with its own retry);
             // report the reason, but the conversation below shows it too.
@@ -450,6 +484,97 @@ export async function retryWhatsAppChatMessage(req: Request, res: Response) {
     } catch (error) {
         console.error('Error retrying WhatsApp message:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to retry message' });
+    }
+}
+
+/** How many times a message is tried in all (the first send included) before the failed-messages prompt stops offering it. */
+const MAX_SEND_ATTEMPTS = 3
+
+/**
+ * Sends a stored template again, exactly as it was (see
+ * retryWhatsAppChatMessage). Claimed first, so each message is only ever
+ * resent once — even with two devices resending at the same moment — and
+ * marked retried before sending. The new attempt is recorded as its own
+ * message, carrying its attempt number. Returns false when it was already
+ * claimed; throws when WhatsApp refuses the resend.
+ */
+async function resendStoredTemplate(phone: string, original: StoredChatMessage): Promise<boolean> {
+    const claimed = await redisClient.set(`whatsapp:resent:${original.id}`, "1", { NX: true, EX: 8 * 24 * 60 * 60 })
+    if (!claimed) return false
+    await updateChatMessage(phone, original.id, { retried_at: Date.now() })
+    await sendWhatsAppTemplate(
+        phone,
+        original.template.name,
+        original.template.components,
+        original.template.language,
+        original.summary,
+        { attempt: (Number(original.attempt) || 1) + 1 },
+    )
+    return true
+}
+
+/** A failed template the failed-messages prompt offers to resend: never retried yet, and not tried MAX_SEND_ATTEMPTS times already. */
+function isResendable(message: StoredChatMessage) {
+    return message.status === "failed" && canRetry(message) && (Number(message.attempt) || 1) < MAX_SEND_ATTEMPTS
+}
+
+async function failedMessages(): Promise<{ phone: string; message: StoredChatMessage }[]> {
+    const phones = await listChatPhones()
+    const perPhone = await Promise.all(
+        phones.map(async ({ phone }) => (await getChatMessages(phone)).filter(isResendable).map((message) => ({ phone, message }))),
+    )
+    return perPhone.flat().sort((a, b) => a.message.timestamp - b.message.timestamp)
+}
+
+/**
+ * Template messages that failed in the last 7 days (the chat history's
+ * span) and can be resent — for the prompt the WhatsApp tab shows on opening.
+ */
+export async function listFailedWhatsAppMessages(_req: Request, res: Response) {
+    try {
+        const failed = await failedMessages()
+        res.status(200).json({
+            messages: failed.map(({ phone, message }) => ({
+                phone,
+                id: message.id,
+                summary: message.summary ?? message.template?.name ?? "",
+                error: message.error ?? null,
+                timestamp: message.timestamp,
+            })),
+        })
+    } catch (error) {
+        console.error('Error listing failed WhatsApp messages:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to list failed messages' });
+    }
+}
+
+/**
+ * Resends every failed message the prompt offered (body `messages`: [{ phone,
+ * id }]), one after another, each re-checked first: one already resent (from
+ * this prompt, the chat, or another device) is skipped, never sent twice.
+ * Answers how many went, how many were skipped, and which failed again (with
+ * WhatsApp's reason) — those are recorded as new failed messages.
+ */
+export async function resendFailedWhatsAppMessages(req: Request, res: Response) {
+    try {
+        const requested: { phone: string; id: string }[] = Array.isArray(req.body?.messages) ? req.body.messages : []
+        if (requested.length === 0) throw new Error("messages (non-empty array) is required")
+        const wanted = new Set(requested.map((entry) => `${toWaId(String(entry.phone))}:${String(entry.id)}`))
+        const failed = (await failedMessages()).filter(({ phone, message }) => wanted.has(`${phone}:${message.id}`))
+
+        let sent = 0
+        const failedAgain: { phone: string; id: string; error: string }[] = []
+        for (const { phone, message } of failed) {
+            try {
+                if (await resendStoredTemplate(phone, message)) sent++
+            } catch (sendError) {
+                failedAgain.push({ phone, id: message.id, error: describeSendError(sendError) })
+            }
+        }
+        res.status(200).json({ sent, skipped: requested.length - sent - failedAgain.length, failed: failedAgain })
+    } catch (error) {
+        console.error('Error resending failed WhatsApp messages:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to resend messages' });
     }
 }
 

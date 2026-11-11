@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, RotateCw, Search, Trash2, UserPen, UserPlus } from "lucide-react";
 import {
   fetchWhatsAppChats,
+  fetchFailedWhatsAppMessages,
+  resendFailedWhatsAppMessages,
+  type FailedWhatsAppMessage,
   fetchWhatsAppConversation,
   retryWhatsAppMessage,
   type WhatsAppChat,
@@ -23,7 +26,7 @@ import RefreshButton from "./RefreshButton";
 import ConfirmModal from "./ConfirmModal";
 import WhatsAppComposer from "./WhatsAppComposer";
 import WhatsAppMedia from "./WhatsAppMedia";
-import WhatsAppTemplates, { SendTemplateModal } from "./WhatsAppTemplates";
+import WhatsAppTemplates, { SendTemplateModal, SentTemplate } from "./WhatsAppTemplates";
 import SaveWhatsAppContactModal from "./SaveWhatsAppContactModal";
 import FilterChip from "./FilterChip";
 
@@ -144,6 +147,13 @@ function unreadIn(chats: WhatsAppChat[], unreadByPhone: Record<string, number>) 
  * webhook and this app have stored (kept for 7 days); replying is only
  * possible within 24 hours of the contact's last message.
  */
+/**
+ * Whether this page load has already asked about failed messages — so the
+ * prompt opens by itself once on opening the WhatsApp tab, again only after
+ * a reload (the toolbar's failed-messages button opens it any time).
+ */
+let failedPromptAsked = false;
+
 export default function WhatsAppInbox() {
   // Shown straight from this device's copy, then refreshed from the server.
   const [chats, setChats] = useState<WhatsAppChat[] | null>(() => loadStoredChats());
@@ -176,6 +186,50 @@ export default function WhatsAppInbox() {
   useEffect(() => {
     loadChats();
   }, [loadChats]);
+
+  // Failed messages: counted on the toolbar's button whenever the tab opens
+  // (and on refresh); the resend prompt opens by itself once per page load
+  // (see failedPromptAsked), and from the button any time.
+  const [failed, setFailed] = useState<FailedWhatsAppMessage[]>([]);
+  const [isFailedPromptOpen, setIsFailedPromptOpen] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const loadFailed = useCallback(
+    () =>
+      fetchFailedWhatsAppMessages()
+        .then((list) => {
+          setFailed(list);
+          return list;
+        })
+        .catch(() => [] as FailedWhatsAppMessage[]),
+    [],
+  );
+  useEffect(() => {
+    loadFailed().then((list) => {
+      if (failedPromptAsked || list.length === 0) return;
+      failedPromptAsked = true;
+      setIsFailedPromptOpen(true);
+    });
+  }, [loadFailed]);
+
+  function handleResendFailed() {
+    setIsResending(true);
+    setResendError(null);
+    resendFailedWhatsAppMessages(failed)
+      .then(({ sent, failed: failedAgain }) => {
+        setIsFailedPromptOpen(false);
+        setResendNotice(
+          failedAgain.length === 0
+            ? `Sent ${sent} message${sent === 1 ? "" : "s"} again.`
+            : `Sent ${sent} again; ${failedAgain.length} failed again (${failedAgain[0].error}).`,
+        );
+        loadChats();
+        loadFailed();
+      })
+      .catch((e) => setResendError(e instanceof Error ? e.message : "Failed to resend messages"))
+      .finally(() => setIsResending(false));
+  }
 
   // Last-message previews, with local deletes applied. Re-read whenever the
   // list changes identity — including on returning from a chat, below.
@@ -272,7 +326,21 @@ export default function WhatsAppInbox() {
         >
           {READ_FILTER_LABELS[readFilter]}
         </button>
-        <RefreshButton onRefresh={loadChats} />
+        <RefreshButton onRefresh={() => Promise.all([loadChats(), loadFailed()])} />
+        <button
+          type="button"
+          className={`icon-btn wa-failed-btn${failed.length > 0 ? " wa-failed-btn--some" : ""}`}
+          onClick={() => {
+            setResendError(null);
+            setIsFailedPromptOpen(true);
+          }}
+          disabled={failed.length === 0}
+          aria-label={`${failed.length} failed message${failed.length === 1 ? "" : "s"} — resend`}
+          title={failed.length > 0 ? "Resend failed messages" : "No failed messages"}
+        >
+          <AlertCircle size={14} />
+          <span className="wa-failed-btn__count">{failed.length}</span>
+        </button>
         <button
           type="button"
           className="icon-btn"
@@ -335,6 +403,24 @@ export default function WhatsAppInbox() {
       )}
 
       {chatsError && <div className="form-error">{chatsError}</div>}
+      {resendNotice && <div className="day-warning">{resendNotice}</div>}
+
+      {isFailedPromptOpen && failed.length > 0 && (
+        <ConfirmModal
+          title="Resend failed messages?"
+          message={`${failed.length} WhatsApp message${failed.length === 1 ? "" : "s"} failed to send in the last 7 days${
+            failed.length <= 3
+              ? `: ${failed.map((m) => `${allChats.find((c) => c.phone === m.phone)?.name ?? `+${m.phone}`}`).join(", ")}`
+              : ""
+          }. Send ${failed.length === 1 ? "it" : "them"} again now, exactly as before? Each is only ever resent once.`}
+          confirmLabel={isResending ? "Sending..." : `Resend ${failed.length}`}
+          cancelLabel="Not now"
+          error={resendError}
+          isConfirming={isResending}
+          onConfirm={handleResendFailed}
+          onCancel={() => setIsFailedPromptOpen(false)}
+        />
+      )}
 
       {chats === null && !chatsError ? (
         <div className="items-area__empty">Loading...</div>
@@ -899,7 +985,9 @@ function MessageBubble({
           </button>
         )}
         {message.media && <WhatsAppMedia phone={phone} message={message} />}
-        {message.text && (
+        {message.template ? (
+          <SentTemplate template={message.template} />
+        ) : message.text && (
           <div className="wa-bubble__text" dir="auto">
             {message.text}
           </div>

@@ -1,6 +1,6 @@
 import type { ZohoInvoice, LineItem } from "../services/zoho/types.js";
 import type { ZohoCreditNote } from "../services/zoho/creditNotes.js";
-import type { InvoicePdfData } from "./types.js";
+import type { InvoiceLineItem, InvoicePdfData } from "./types.js";
 import { INTERNAL_ITEM_MARKER } from "../utils/internalLineItems.js";
 import { getContactDisplayName } from "../services/zoho/customers/index.js";
 import { getCatalogItems } from "../services/zoho/items.js";
@@ -29,25 +29,36 @@ export async function regularItemRates(accessToken: string): Promise<Map<string,
 /**
  * Maps a raw Zoho invoice (and its customer, when fetched) to the PDF
  * generator's input shape, filtering out internal/admin-only ("###") lines.
+ * With `returnedQuantities` (see returnedQuantitiesByItem), the returned part
+ * of each item is listed apart, after the items kept.
  * A line priced below the item's regular price in `regularRates` (see
  * regularItemRates) carries that price, so the PDF shows the difference as
  * a discount on the line.
  */
-export function toInvoicePdfData(invoice: ZohoInvoice, customer?: unknown, regularRates?: Map<string, number>): InvoicePdfData {
+export function toInvoicePdfData(
+  invoice: ZohoInvoice,
+  customer?: unknown,
+  regularRates?: Map<string, number>,
+  returnedQuantities?: Map<string, number>,
+): InvoicePdfData {
+  const lines: (InvoiceLineItem & { itemId: string })[] = invoice.line_items
+    .filter((item: LineItem) => !item.description.includes(INTERNAL_ITEM_MARKER))
+    .map((item: LineItem) => ({
+      itemId: String(item.item_id),
+      description: item.description,
+      itemName: item.name,
+      arabicName: item.name_sec_lang?.trim() ?? "",
+      quantity: item.quantity,
+      unit: item.unit,
+      rate: item.rate,
+      ...regularRateFor(item, regularRates),
+    }));
   return {
     invoiceNumber: invoice.invoice_number,
     customerName: pdfCustomerName(invoice, customer),
+    customerNameArabic: invoice.customer_name_sec_lang?.trim() ?? "",
     date: invoice.date,
-    lineItems: invoice.line_items
-      .filter((item: LineItem) => !item.description.includes(INTERNAL_ITEM_MARKER))
-      .map((item: LineItem) => ({
-        description: item.description,
-        itemName: item.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        rate: item.rate,
-        ...regularRateFor(item, regularRates),
-      })),
+    lineItems: splitReturned(lines, returnedQuantities),
     totalPrice: invoice.total,
     // Returns' credit is its own line: "Paid" is only what was paid.
     paidAmount: invoice.total - invoice.balance - (invoice.credits_applied ?? 0),
@@ -56,6 +67,27 @@ export function toInvoicePdfData(invoice: ZohoInvoice, customer?: unknown, regul
     subTotal: invoice.sub_total,
   };
 }
+
+/**
+ * Splits each line into what the customer kept and what they returned (from
+ * `returnedQuantities`, per item id; an item on several lines is taken off
+ * them in order), kept lines first, then the returned ones marked `returned`.
+ */
+function splitReturned(lines: (InvoiceLineItem & { itemId: string })[], returnedQuantities?: Map<string, number>): InvoiceLineItem[] {
+  const left = new Map(returnedQuantities ?? []);
+  const kept: InvoiceLineItem[] = [];
+  const returned: InvoiceLineItem[] = [];
+  for (const { itemId, ...line } of lines) {
+    const returnedQty = round3(Math.min(line.quantity, Math.max(0, left.get(itemId) ?? 0)));
+    left.set(itemId, round3((left.get(itemId) ?? 0) - returnedQty));
+    const keptQty = round3(line.quantity - returnedQty);
+    if (keptQty > 0) kept.push({ ...line, quantity: keptQty });
+    if (returnedQty > 0) returned.push({ ...line, quantity: returnedQty, returned: true });
+  }
+  return [...kept, ...returned];
+}
+
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
 function regularRateFor(item: LineItem, regularRates?: Map<string, number>) {
   const regular = regularRates?.get(String(item.item_id));
@@ -72,10 +104,12 @@ export function toReturnNoticePdfData(creditNote: ZohoCreditNote, invoice: ZohoI
   return {
     invoiceNumber: creditNote.creditnote_number,
     customerName: pdfCustomerName(invoice, customer),
+    customerNameArabic: invoice.customer_name_sec_lang?.trim() ?? "",
     date: creditNote.date,
     lineItems: creditNote.line_items.map((item) => ({
       description: item.description ?? "",
       itemName: item.name ?? "",
+      arabicName: item.name_sec_lang?.trim() ?? "",
       quantity: item.quantity,
       unit: item.unit ?? "",
       rate: item.rate,

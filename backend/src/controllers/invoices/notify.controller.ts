@@ -3,6 +3,7 @@ import { ZohoGetInvoiceById } from "../../services/zoho/invoices/index.js";
 import { notifyInvoiceSent, notifyPaymentRecorded } from "../../services/whatsapp/invoices.js";
 import { todayInBusinessTimezone } from "../../utils/businessDate.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
+import { getInvoiceSends } from "../../services/whatsapp/invoiceSends.js";
 
 /**
  * Re-sends a WhatsApp notification about this invoice, without repeating
@@ -37,5 +38,21 @@ export async function resendInvoiceNotification(req: Request, res: Response) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Failed to resend notification",
     });
+  }
+}
+
+/**
+ * Who this invoice was sent to on WhatsApp, each number with its message's
+ * latest status (sent / delivered / read / failed). Redis only, no Zoho call,
+ * so the invoice page can poll it until every message is delivered.
+ */
+export async function getInvoiceWhatsAppSends(req: Request, res: Response) {
+  const id = req.params.id as string;
+  try {
+    if (!id) throw new Error("id not provided");
+    res.status(200).json({ sends: await getInvoiceSends(id) });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ error: error instanceof Error ? error.message : "Failed to load the WhatsApp sends" });
   }
 }

@@ -41,7 +41,7 @@
 
 .app-frame__body {
   flex: 1;
-  padding: 20px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: 20px 16px calc(80px + env(safe-area-inset-bottom));
   overflow-y: auto;
 }
 
@@ -2134,15 +2134,16 @@
   grid-template-columns: repeat(5, 1fr);
   background: var(--color-white);
   border-top: 1px solid var(--color-gray-200);
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  /* The home indicator needs some room, not all of its inset. */
+  padding-bottom: max(4px, calc(env(safe-area-inset-bottom) - 14px));
 }
 
 .tab-bar__item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 4px;
+  gap: 3px;
+  padding: 8px 4px 6px;
   background: none;
   border: none;
   color: var(--color-gray-400);
@@ -4168,15 +4169,16 @@ label {
   }
 }
 
-/* Tabs: the incoming tab fades in. */
+/* Tabs: the incoming tab fades in. Opacity only and nothing kept once it ends:
+   a lasting transform here would trap the tab's windows and chat under the
+   header and tab bar. */
 .app-frame > .app-frame__body {
-  animation: tab-fade-in 0.22s ease both;
+  animation: tab-fade-in 0.2s ease;
 }
 
 @keyframes tab-fade-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
 }
 
@@ -4429,10 +4431,12 @@ label {
   .layer-panel,
   .layer-panel--closing,
   .modal,
-  .app-frame > .app-frame__body,
   .tab-bar__item--active .tab-bar__icon,
   .skeleton__line {
     animation: fade-in 0.15s ease both;
+  }
+  .app-frame > .app-frame__body {
+    animation: fade-in 0.15s ease;
   }
   .layer-panel--closing {
     animation: fade-out 0.15s ease both;

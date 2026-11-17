@@ -7,62 +7,68 @@ import type { DriverCheck, ItemCheck, PersonOrder, PersonReport, PreparationRepo
 import type { PreparationStatus } from "../services/telegram/groupOrders.js";
 
 /**
- * The preparation report (A4, Amharic, large print like the daily report):
- * who in the Telegram group prepared which invoices and backup lists on a
- * business day, against what the driver confirmed loading. For everyone: a
- * summary per person, the problems to look at again (the driver's count
- * differs from the preparers', or nothing was confirmed), each person's
- * orders on a page of their own — what the preparers said and what the
- * driver found, problems highlighted — then the orders nobody confirmed.
- * For one person: their page and their problems.
+ * The preparation report (A4, Amharic, large print): who in the Telegram
+ * group prepared which invoices and backup lists on a business day, against
+ * what the driver confirmed loading. Every order is a row with three
+ * columns side by side — what the preparers said, what the driver found,
+ * and whether the two agree — each with an icon (drawn, so they print the
+ * same everywhere) and a word. Items where they differ are listed under the
+ * order. For everyone: a legend, a summary per person, the problems to look
+ * at again, each person's page, and the orders nobody confirmed. For one
+ * person: their page and their problems.
  */
 
 const WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"];
 const MONTHS = ["ጃንዋሪ", "ፌብሩዋሪ", "ማርች", "ኤፕሪል", "ሜይ", "ጁን", "ጁላይ", "ኦገስት", "ሴፕቴምበር", "ኦክቶበር", "ኖቬምበር", "ዲሴምበር"];
-const STATUS: Record<PreparationStatus, { text: string; fill: string; ink: string }> = {
-  ready: { text: "ዝግጁ", fill: "#dcfce7", ink: "#14532d" },
-  partial: { text: "በከፊል", fill: "#fef3c7", ink: "#78350f" },
-  missing: { text: "የለም", fill: "#fee2e2", ink: "#7f1d1d" },
-  not_reported: { text: "አልተዘገበም", fill: "#e5e7eb", ink: "#374151" },
+
+const INK = "#111827";
+const SECOND = "#4b5563";
+const RULE = "#d1d5db";
+const BAND = "#f3f4f6";
+const ACCENT = "#7f1d1d";
+const GREEN = "#16a34a";
+const AMBER = "#d97706";
+const RED = "#dc2626";
+const GREY = "#9ca3af";
+const BLUE = "#2563eb";
+const PROBLEM_FILL = "#fef2f2";
+const WARN_FILL = "#fffbeb";
+const MARGIN = 36;
+
+type IconKind = "ok" | "partial" | "missing" | "unknown" | "problem" | "pending" | "none" | "person" | "invoice" | "list" | "report";
+type Mark = { icon: IconKind; text: string; color: string };
+
+const PREPARERS: Record<PreparationStatus, Mark> = {
+  ready: { icon: "ok", text: "ዝግጁ", color: GREEN },
+  partial: { icon: "partial", text: "በከፊል", color: AMBER },
+  missing: { icon: "missing", text: "የለም", color: RED },
+  not_reported: { icon: "unknown", text: "አልተዘገበም", color: GREY },
 };
-const DRIVER: Record<DriverCheck["status"], { text: string; fill: string; ink: string } | null> = {
-  loaded: { text: "ተጭኗል", fill: "#dcfce7", ink: "#14532d" },
-  mismatch: { text: "ልዩነት አለ", fill: "#fee2e2", ink: "#7f1d1d" },
-  partly: { text: "ከፊል", fill: "#fef3c7", ink: "#78350f" },
-  not_checked: { text: "አልተረጋገጠም", fill: "#e5e7eb", ink: "#374151" },
-  none: null,
+const DRIVER: Record<DriverCheck["status"], Mark> = {
+  complete: { icon: "ok", text: "ሙሉ ደርሷል", color: GREEN },
+  partial: { icon: "partial", text: "በከፊል", color: AMBER },
+  missing: { icon: "missing", text: "አልደረሰም", color: RED },
+  partly_checked: { icon: "pending", text: "ከፊሉ ብቻ", color: AMBER },
+  not_checked: { icon: "unknown", text: "አልተረጋገጠም", color: GREY },
+  none: { icon: "none", text: "—", color: GREY },
 };
-const PROBLEM_FILL = "#fee2e2";
-const WARN_FILL = "#fef3c7";
+const VERDICT: Record<DriverCheck["verdict"], Mark> = {
+  ok: { icon: "ok", text: "ትክክል", color: GREEN },
+  problem: { icon: "problem", text: "ችግር አለ", color: RED },
+  pending: { icon: "pending", text: "ይጠበቃል", color: GREY },
+  none: { icon: "none", text: "—", color: GREY },
+};
 const HOW: Record<PersonOrder["how"], string> = {
-  thumb: "ተዘጋጅቷል ብሏል",
-  report: "የጎደለ ሪፖርት ልኳል",
+  thumb: "ዝግጁ ብሏል",
+  report: "የጎደለ ሪፖርት",
   all_missing: "ሁሉም የለም ብሏል",
   seen: "አይቷል",
 };
 
-const INK = "#000000";
-const SECOND = "#374151";
-const RULE = "#9ca3af";
-const BAND = "#e5e7eb";
-const STRIPE = "#f3f4f6";
-const ACCENT = "#7f1d1d";
-const MARGIN = 36;
-
 const time = (iso: string) => businessTimeParts(new Date(iso)).time;
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
-const orderLabel = (order: { order_number: string }) => order.order_number;
-const kindLabel = (order: { kind: string }) => (order.kind === "backup_list" ? "ትርፍ ዝርዝር" : "ደረሰኝ");
-const shortText = (order: PersonOrder) =>
-  order.short.map((item) => `${item.description} ${item.available === 0 ? "የለም" : `−${round3(item.short)} ${toAmharicUnit(item.unit)}`}`).join("፣ ");
-
-type Col = { w: number; align?: "left" | "right" | "center" };
-type Badge = { text: string; fill: string; ink: string };
-type Cell = string | { main: string; sub?: string | undefined; bold?: boolean; badge?: Badge | null };
 const amount = (value: number, unit: string) => `${round3(value)} ${toAmharicUnit(unit)}`.trim();
-/** One item where the preparers and the driver are worth comparing: ordered · preparers · driver. */
-const itemLine = (item: ItemCheck) =>
-  `${item.description} — ታዝዟል ${amount(item.ordered, item.unit)} · አዘጋጅ ${amount(item.prepared, item.unit)} · ሹፌር ${item.received === null ? "አላረጋገጠም" : amount(item.received, item.unit)}`;
+const kindLabel = (order: { kind: string }) => (order.kind === "backup_list" ? "ትርፍ ዝርዝር" : "ደረሰኝ");
 
 export function createPreparationReportPdfBuffer(report: PreparationReportData, personId?: string): Promise<Buffer> {
   return renderToBuffer({ size: "A4", margin: MARGIN, bufferPages: true }, (doc) => {
@@ -80,157 +86,264 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
       }
     }
 
+    // ---------- icons (vector, centred on cx/cy) ----------
+    function icon(kind: IconKind, cx: number, cy: number, r = 7, color?: string) {
+      doc.save();
+      switch (kind) {
+        case "ok":
+          doc.circle(cx, cy, r).fill(color ?? GREEN);
+          doc.moveTo(cx - r * 0.45, cy + r * 0.02).lineTo(cx - r * 0.1, cy + r * 0.38).lineTo(cx + r * 0.5, cy - r * 0.35);
+          doc.lineWidth(r * 0.28).lineCap("round").lineJoin("round").strokeColor("#ffffff").stroke();
+          break;
+        case "partial":
+          doc.circle(cx, cy, r - 0.6).lineWidth(1.2).strokeColor(color ?? AMBER).stroke();
+          doc.path(`M ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 0 0 ${cx} ${cy + r - 0.6} Z`).fill(color ?? AMBER);
+          break;
+        case "missing":
+          doc.circle(cx, cy, r).fill(color ?? RED);
+          doc.moveTo(cx - r * 0.38, cy - r * 0.38).lineTo(cx + r * 0.38, cy + r * 0.38);
+          doc.moveTo(cx + r * 0.38, cy - r * 0.38).lineTo(cx - r * 0.38, cy + r * 0.38);
+          doc.lineWidth(r * 0.28).lineCap("round").strokeColor("#ffffff").stroke();
+          break;
+        case "unknown":
+          doc.circle(cx, cy, r - 0.6).lineWidth(1.2).dash(1.6, { space: 1.6 }).strokeColor(color ?? GREY).stroke();
+          doc.undash();
+          doc.circle(cx, cy, r * 0.18).fill(color ?? GREY);
+          break;
+        case "problem":
+          doc.moveTo(cx, cy - r).lineTo(cx + r * 1.05, cy + r * 0.85).lineTo(cx - r * 1.05, cy + r * 0.85).closePath().fill(color ?? RED);
+          doc.moveTo(cx, cy - r * 0.35).lineTo(cx, cy + r * 0.2).lineWidth(r * 0.24).lineCap("round").strokeColor("#ffffff").stroke();
+          doc.circle(cx, cy + r * 0.55, r * 0.13).fill("#ffffff");
+          break;
+        case "pending":
+          doc.circle(cx, cy, r - 0.6).lineWidth(1.2).strokeColor(color ?? GREY).stroke();
+          doc.moveTo(cx, cy - r * 0.5).lineTo(cx, cy).lineTo(cx + r * 0.4, cy + r * 0.25);
+          doc.lineWidth(1.2).lineCap("round").strokeColor(color ?? GREY).stroke();
+          break;
+        case "none":
+          doc.moveTo(cx - r * 0.5, cy).lineTo(cx + r * 0.5, cy).lineWidth(1.2).strokeColor(GREY).stroke();
+          break;
+        case "person":
+          doc.circle(cx, cy - r * 0.35, r * 0.38).fill(color ?? INK);
+          doc.path(`M ${cx - r * 0.75} ${cy + r * 0.85} A ${r * 0.75} ${r * 0.75} 0 0 1 ${cx + r * 0.75} ${cy + r * 0.85} Z`).fill(color ?? INK);
+          break;
+        case "invoice":
+        case "list":
+          doc.roundedRect(cx - r * 0.7, cy - r * 0.9, r * 1.4, r * 1.8, 1.5).lineWidth(1.2).strokeColor(color ?? INK).stroke();
+          for (const dy of [-0.4, 0, 0.4]) doc.moveTo(cx - r * 0.38, cy + r * dy).lineTo(cx + r * 0.38, cy + r * dy);
+          doc.lineWidth(1).strokeColor(color ?? INK).stroke();
+          break;
+        case "report":
+          doc.roundedRect(cx - r * 0.9, cy - r * 0.7, r * 1.8, r * 1.25, 2).fill(color ?? BLUE);
+          doc.moveTo(cx - r * 0.3, cy + r * 0.5).lineTo(cx - r * 0.55, cy + r * 0.95).lineTo(cx + r * 0.1, cy + r * 0.5).fill(color ?? BLUE);
+          break;
+      }
+      doc.restore();
+    }
+
+    /** An icon then a word, in its colour, from x. */
+    function mark(m: Mark, x: number, cy: number, width: number) {
+      icon(m.icon, x + 8, cy);
+      doc.font("B").fontSize(11.5).fillColor(m.color === GREY ? SECOND : m.color);
+      doc.text(m.text, x + 20, cy - 7.5, { width: width - 22, lineBreak: false, ellipsis: true });
+    }
+
+    // ---------- tables ----------
+    type Col = { w: number; align?: "left" | "right" | "center" };
     function header(cols: Col[], labels: string[]) {
       ensure(70);
       const y = doc.y;
       doc.rect(L, y, W, 26).fill(BAND);
       let x = L;
-      doc.font("B").fontSize(11.5).fillColor(INK);
+      doc.font("B").fontSize(11).fillColor(SECOND);
       cols.forEach((col, i) => {
-        doc.text(labels[i] ?? "", x + 6, y + 6, { width: col.w - 12, align: col.align ?? "left", lineBreak: false });
+        doc.text(labels[i] ?? "", x + 6, y + 7, { width: col.w - 12, align: col.align ?? "left", lineBreak: false });
         x += col.w;
       });
       doc.y = y + 26;
     }
 
-    function row(cols: Col[], cells: Cell[], shade: boolean | string) {
-      const tall = cells.some((cell) => typeof cell !== "string" && cell.sub);
-      const height = tall ? 40 : 28;
+    type Draw = (x: number, top: number, w: number, mid: number) => void;
+    /** A row: each cell is drawn by its function (x, top, width, middle). */
+    function row(cols: Col[], cells: Draw[], height: number, fill?: string) {
       ensure(height);
       const y = doc.y;
-      if (shade) doc.rect(L, y, W, height).fill(typeof shade === "string" ? shade : STRIPE);
+      if (fill) doc.rect(L, y, W, height).fill(fill);
       let x = L;
       cols.forEach((col, i) => {
-        const cell = cells[i] ?? "";
-        const top = y + (tall ? 6 : 7);
-        if (typeof cell !== "string" && cell.badge !== undefined) {
-          const status = cell.badge;
-          if (!status) {
-            doc.font("R").fontSize(12.5).fillColor(SECOND).text("—", x, top, { width: col.w, align: "center", lineBreak: false });
-            x += col.w;
-            return;
-          }
-          doc.font("B").fontSize(12);
-          const badgeW = doc.widthOfString(status.text) + 16;
-          const badgeX = x + (col.w - badgeW) / 2;
-          doc.roundedRect(badgeX, y + (height - 20) / 2, badgeW, 20, 10).fill(status.fill);
-          doc.fillColor(status.ink).text(status.text, badgeX, y + (height - 20) / 2 + 3, { width: badgeW, align: "center", lineBreak: false });
-        } else {
-          const main = typeof cell === "string" ? cell : cell.main;
-          const bold = typeof cell !== "string" && !!cell.bold;
-          drawMixedLine(doc, main, x + 6, top, { font: bold ? "B" : "R", bold, size: 12.5, color: INK, width: col.w - 12, align: col.align });
-          if (typeof cell !== "string" && cell.sub) {
-            drawMixedLine(doc, cell.sub, x + 6, top + 18, { font: "R", size: 9.5, color: SECOND, width: col.w - 12, align: col.align });
-          }
-        }
+        cells[i]?.(x + 6, y, col.w - 12, y + height / 2);
         x += col.w;
       });
       doc.y = y + height;
       doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.6).strokeColor(RULE).stroke();
     }
 
-    function totalBox(lines: [string, string][]) {
-      const height = 14 + lines.length * 26;
-      ensure(height + 10);
-      const y = doc.y + 8;
-      doc.rect(L, y, W, height).lineWidth(1.5).strokeColor(INK).stroke();
-      lines.forEach(([label, value], i) => {
-        const lineY = y + 9 + i * 26;
-        doc.font("B").fontSize(13.5).fillColor(INK).text(label, L + 12, lineY, { lineBreak: false });
-        doc.font("B").fontSize(15).text(value, L, lineY - 1, { width: W - 12, align: "right", lineBreak: false });
-      });
-      doc.y = y + height + 4;
-    }
+    const text =
+      (value: string, options: { bold?: boolean; size?: number; color?: string; align?: "left" | "right" | "center"; sub?: string } = {}): Draw =>
+      (x, _top, w, mid) => {
+        const size = options.size ?? 12.5;
+        const y = options.sub ? mid - size - 1 : mid - size / 2 - 2;
+        const align = options.align ?? "left";
+        drawMixedLine(doc, value, x, y, { font: options.bold ? "B" : "R", bold: !!options.bold, size, color: options.color ?? INK, width: w, align });
+        if (options.sub) drawMixedLine(doc, options.sub, x, mid + 3, { font: "R", size: 9.5, color: SECOND, width: w, align });
+      };
+    const markCell =
+      (m: Mark): Draw =>
+      (x, _top, w, mid) =>
+        mark(m, x, mid, w);
 
-    /** A full-width line under an order: one item compared, red when it's a problem. */
-    function detailLine(text: string, problem: boolean) {
-      const height = 22;
-      ensure(height);
-      const y = doc.y;
-      if (problem) doc.rect(L, y, W, height).fill(PROBLEM_FILL);
-      drawMixedLine(doc, `${problem ? "! " : ""}${text}`, L + 40, y + 5, {
-        font: problem ? "B" : "R",
-        bold: problem,
-        size: 10.5,
-        color: problem ? "#7f1d1d" : SECOND,
-        width: W - 46,
+    function stats(entries: [string, number, IconKind, string][]) {
+      ensure(70);
+      const gap = 8;
+      const w = (W - gap * (entries.length - 1)) / entries.length;
+      const y = doc.y + 4;
+      entries.forEach(([label, value, kind, color], i) => {
+        const x = L + i * (w + gap);
+        doc.roundedRect(x, y, w, 58, 8).fill(BAND);
+        icon(kind, x + 20, y + 20, 8, color);
+        doc.font("B").fontSize(22).fillColor(kind === "problem" && value > 0 ? RED : INK).text(String(value), x + 36, y + 7, { width: w - 44, lineBreak: false });
+        doc.font("R").fontSize(10).fillColor(SECOND).text(label, x + 12, y + 38, { width: w - 20, lineBreak: false, ellipsis: true });
       });
-      doc.y = y + height;
-    }
-
-    const issueCols: Col[] = [{ w: 110 }, { w: 90 }, { w: W - 200 }];
-    function issuesTable(issues: ReportIssue[]) {
-      if (issues.length === 0) {
-        empty("ምንም ችግር የለም።");
-        return;
-      }
-      header(issueCols, ["ደረሰኝ", "ያዘጋጀው", "ችግሩ"]);
-      issues.forEach((issue) =>
-        row(
-          issueCols,
-          [
-            { main: orderLabel(issue), bold: true, sub: kindLabel(issue) },
-            issue.people.length ? issue.people.join("፣ ") : "ማንም",
-            { main: issue.text, bold: issue.severity === "high" },
-          ],
-          issue.severity === "high" ? PROBLEM_FILL : WARN_FILL,
-        ),
-      );
+      doc.y = y + 70;
     }
 
     let sectionsDrawn = 0;
-    function section(title: string, note: string) {
+    function section(title: string, note: string, kind?: IconKind) {
       if (sectionsDrawn++ > 0) {
         doc.addPage();
         doc.y = MARGIN;
       }
       const y = doc.y;
-      drawMixedLine(doc, title, L, y, { font: "B", bold: true, size: 22, color: INK, width: W });
-      doc.moveTo(L, y + 34).lineTo(L + W, y + 34).lineWidth(2.5).strokeColor(ACCENT).stroke();
-      doc.font("R").fontSize(11.5).fillColor(SECOND).text(note, L, y + 42, { width: W });
-      doc.y += 14;
-    }
-
-    function empty(text = "ምንም የለም።") {
-      doc.font("R").fontSize(12.5).fillColor(SECOND).text(text, L + 6, doc.y + 2);
+      if (kind) icon(kind, L + 11, y + 14, 11, ACCENT);
+      drawMixedLine(doc, title, L + (kind ? 30 : 0), y, { font: "B", bold: true, size: 22, color: INK, width: W - 30 });
+      doc.moveTo(L, y + 36).lineTo(L + W, y + 36).lineWidth(2.5).strokeColor(ACCENT).stroke();
+      doc.y = y + 44;
+      if (note) {
+        doc.font("R").fontSize(11).fillColor(SECOND).text(note, L, doc.y, { width: W });
+        doc.y += 4;
+      }
       doc.y += 6;
     }
 
+    function empty(message = "ምንም የለም።", kind: IconKind = "ok") {
+      ensure(44);
+      const y = doc.y + 4;
+      doc.roundedRect(L, y, W, 34, 6).fill(BAND);
+      icon(kind, L + 18, y + 17, 7);
+      doc.font("R").fontSize(12.5).fillColor(SECOND).text(message, L + 34, y + 9, { width: W - 44, lineBreak: false });
+      doc.y = y + 42;
+    }
+
+    function legend() {
+      ensure(80);
+      const y = doc.y;
+      doc.roundedRect(L, y, W, 66, 8).lineWidth(0.8).strokeColor(RULE).stroke();
+      doc.font("B").fontSize(10.5).fillColor(SECOND).text("ምልክቶች", L + 12, y + 8, { lineBreak: false });
+      const items: Mark[] = [
+        { icon: "ok", text: "ሙሉ / ትክክል", color: GREEN },
+        { icon: "partial", text: "በከፊል", color: AMBER },
+        { icon: "missing", text: "የለም", color: RED },
+        { icon: "unknown", text: "አልተዘገበም / አልተረጋገጠም", color: GREY },
+        { icon: "problem", text: "ችግር አለ — መታየት አለበት", color: RED },
+        { icon: "pending", text: "ሹፌሩ ገና አላረጋገጠም", color: GREY },
+      ];
+      const colW = (W - 24) / 3;
+      items.forEach((m, i) => mark(m, L + 12 + (i % 3) * colW, y + 32 + Math.floor(i / 3) * 20, colW));
+      doc.y = y + 78;
+    }
+
+    // ---------- problems ----------
+    const issueCols: Col[] = [{ w: 34 }, { w: 120 }, { w: 100 }, { w: W - 254 }];
+    function issuesTable(issues: ReportIssue[]) {
+      if (issues.length === 0) {
+        empty("ምንም ችግር የለም — አዘጋጆቹና ሹፌሩ ይስማማሉ።");
+        return;
+      }
+      header(issueCols, ["", "ደረሰኝ", "ያዘጋጀው", "ችግሩ"]);
+      issues.forEach((issue) => {
+        const high = issue.severity === "high";
+        row(
+          issueCols,
+          [
+            (x, _t, _w, mid) => icon(high ? "problem" : "pending", x + 9, mid, 8, high ? RED : AMBER),
+            text(issue.order_number, { bold: true, sub: kindLabel(issue) }),
+            text(issue.people.length ? issue.people.join("፣ ") : "ማንም", { color: issue.people.length ? INK : RED }),
+            text(issue.text, { bold: high, size: 11.5, color: high ? "#7f1d1d" : INK }),
+          ],
+          42,
+          high ? PROBLEM_FILL : WARN_FILL,
+        );
+      });
+    }
+
+    // ---------- one person ----------
     const invoicesOf = (person: PersonReport) => person.orders.filter((order) => order.kind === "invoice");
     const listsOf = (person: PersonReport) => person.orders.filter((order) => order.kind === "backup_list");
 
-    const orderCols: Col[] = [{ w: 28, align: "right" }, { w: 170 }, { w: 70 }, { w: 82, align: "center" }, { w: W - 350, align: "center" }];
+    const orderCols: Col[] = [{ w: 26, align: "right" }, { w: 150 }, { w: 112 }, { w: 112 }, { w: W - 400 }];
+    /** An item under its order: name (ordered), then the preparers' and the driver's amounts in their columns. */
+    function itemRow(item: ItemCheck) {
+      const prepMark = item.prepared >= item.ordered ? PREPARERS.ready : item.prepared > 0 ? PREPARERS.partial : PREPARERS.missing;
+      const driverMark =
+        item.received === null ? null : item.received >= item.ordered ? DRIVER.complete : item.received > 0 ? DRIVER.partial : DRIVER.missing;
+      const small = (x: number, mid: number, w: number, m: Mark | null, value: string) => {
+        if (m) icon(m.icon, x + 6, mid, 5);
+        drawMixedLine(doc, value, x + (m ? 16 : 4), mid - 7, { font: "R", size: 11, color: m ? INK : SECOND, width: w - 16 });
+      };
+      row(
+        orderCols,
+        [
+          () => {},
+          (x, top, w, mid) => {
+            // A small connector to the order above.
+            doc.moveTo(x + 2, top - 6).lineTo(x + 2, mid - 4).lineTo(x + 9, mid - 4).lineWidth(1).strokeColor(GREY).stroke();
+            text(item.description, { size: 11, sub: `ታዝዟል ${amount(item.ordered, item.unit)}` })(x + 14, top, w - 14, mid);
+          },
+          (x, _t, w, mid) => small(x, mid, w, prepMark, amount(item.prepared, item.unit)),
+          (x, _t, w, mid) => small(x, mid, w, driverMark, item.received === null ? "—" : amount(item.received, item.unit)),
+          (x, _t, w, mid) => {
+            if (!item.problem) return;
+            icon("problem", x + 6, mid, 5);
+            drawMixedLine(doc, item.problem === "not_found" ? "አልተገኘም" : "ተገኝቷል", x + 16, mid - 7, { font: "B", bold: true, size: 11, color: RED, width: w - 16 });
+          },
+        ],
+        36,
+        item.problem ? PROBLEM_FILL : "#fafafa",
+      );
+    }
+
+    function orderRow(order: { order_number: string; check: DriverCheck }, index: number, sub: string, preparers: Mark) {
+      row(
+        orderCols,
+        [
+          text(String(index + 1), { color: SECOND, align: "right" }),
+          text(order.order_number, { bold: true, sub }),
+          markCell(preparers),
+          markCell(DRIVER[order.check.status]),
+          markCell(VERDICT[order.check.verdict]),
+        ],
+        44,
+        order.check.verdict === "problem" ? PROBLEM_FILL : undefined,
+      );
+      for (const item of order.check.items) itemRow(item);
+    }
+
     function personPage(person: PersonReport) {
-      const invoices = invoicesOf(person).length;
-      const lists = listsOf(person).length;
-      section(person.name, `${invoices} ደረሰኞች · ${lists} ትርፍ ዝርዝሮች · ${person.reports} የጎደሉ ሪፖርቶች · ${person.problems} ችግሮች`);
-      if (person.orders.length === 0) {
-        empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።");
-      } else {
-        header(orderCols, ["#", "ደረሰኝ", "ሰዓት", "አዘጋጅ", "ሹፌር"]);
-        person.orders.forEach((order, i) => {
-          const problem = order.check.items.some((item) => item.problem);
-          row(
-            orderCols,
-            [
-              String(i + 1),
-              { main: orderLabel(order), bold: true, sub: `${kindLabel(order)} · ${HOW[order.how]}` },
-              time(order.at),
-              { main: "", badge: STATUS[order.status] },
-              { main: "", badge: DRIVER[order.check.status] },
-            ],
-            problem ? PROBLEM_FILL : i % 2 === 1,
-          );
-          for (const item of order.check.items) detailLine(itemLine(item), !!item.problem);
-          if (order.check.items.length === 0 && order.short.length > 0) detailLine(shortText(order), false);
-        });
-      }
-      totalBox([
-        ["የተዘጋጁ ደረሰኞች", String(invoices)],
-        ["ትርፍ ዝርዝሮች", String(lists)],
-        ["የጎደሉ ሪፖርቶች", String(person.reports)],
-        ["ችግሮች", String(person.problems)],
+      section(person.name, "", "person");
+      stats([
+        ["ደረሰኞች", invoicesOf(person).length, "invoice", INK],
+        ["ትርፍ ዝርዝሮች", listsOf(person).length, "list", INK],
+        ["የጎደሉ ሪፖርቶች", person.reports, "report", BLUE],
+        ["ችግሮች", person.problems, "problem", person.problems > 0 ? RED : GREY],
       ]);
+      if (person.orders.length === 0) {
+        empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።", "unknown");
+        return;
+      }
+      header(orderCols, ["#", "ደረሰኝ", "አዘጋጅ", "ሹፌር", "ውጤት"]);
+      person.orders.forEach((order, i) =>
+        orderRow(order, i, `${time(order.at)} · ${order.kind === "backup_list" ? "ትርፍ · " : ""}${HOW[order.how]}`, PREPARERS[order.status]),
+      );
     }
 
     // ---------- page 1 heading ----------
@@ -243,71 +356,67 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
     if (!report.isComplete) {
       doc.font("B").fontSize(11).fillColor(ACCENT).text("ይህ የሥራ ቀን ገና አላለቀም — እስካሁን የተመዘገበው ብቻ ነው።", L, doc.y + 4, { width: W });
     }
-    doc.y += 8;
-    doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
-    doc.y += 18;
+    doc.y += 12;
+    legend();
 
     if (personId) {
       if (single) {
         personPage(single);
-        section("መታየት ያለባቸው", "በዚህ ሰው ደረሰኞች ላይ አዘጋጁና ሹፌሩ ያልተስማሙባቸው ወይም ያልተረጋገጡ።");
+        section("መታየት ያለባቸው", "በዚህ ሰው ደረሰኞች ላይ አዘጋጁና ሹፌሩ ያልተስማሙባቸው ወይም ያልተረጋገጡ።", "problem");
         issuesTable(report.issues);
-      }
-      else {
-        section("?", "");
-        empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።");
+      } else {
+        empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።", "unknown");
       }
     } else {
       // ---------- summary ----------
+      const high = report.issues.filter((issue) => issue.severity === "high").length;
+      const waiting = report.issues.filter((issue) => issue.severity === "medium").length;
+      const unreported = report.unreported.filter((order) => order.kind === "invoice").length;
+      section("ማጠቃለያ", "", "person");
+      stats([
+        ["ችግሮች", high, "problem", high > 0 ? RED : GREY],
+        ["ሹፌሩ ያላረጋገጣቸው", waiting, "pending", AMBER],
+        ["ያልተዘገቡ ደረሰኞች", unreported, "unknown", GREY],
+      ]);
       const summaryCols: Col[] = [{ w: W - 320 }, { w: 80, align: "right" }, { w: 80, align: "right" }, { w: 80, align: "right" }, { w: 80, align: "right" }];
-      section("ማጠቃለያ", "በቴሌግራም ቡድኑ ውስጥ እያንዳንዱ ሰው ያዘጋጃቸው ደረሰኞች እና ትርፍ ዝርዝሮች።");
-      if (report.people.length === 0) empty("በዚህ ቀን ማንም ያዘጋጀው ደረሰኝ የለም።");
+      if (report.people.length === 0) empty("በዚህ ቀን ማንም ያዘጋጀው ደረሰኝ የለም።", "unknown");
       else {
         header(summaryCols, ["ስም", "ደረሰኞች", "ትርፍ", "ሪፖርቶች", "ችግሮች"]);
-        report.people.forEach((person, i) =>
+        report.people.forEach((person) =>
           row(
             summaryCols,
             [
-              { main: person.name, bold: true },
-              String(invoicesOf(person).length),
-              String(listsOf(person).length),
-              String(person.reports),
-              { main: String(person.problems), bold: person.problems > 0 },
+              (x, _t, w, mid) => {
+                icon("person", x + 7, mid, 7, SECOND);
+                drawMixedLine(doc, person.name, x + 20, mid - 9, { font: "B", bold: true, size: 12.5, color: INK, width: w - 20 });
+              },
+              text(String(invoicesOf(person).length), { align: "right" }),
+              text(String(listsOf(person).length), { align: "right" }),
+              text(String(person.reports), { align: "right" }),
+              (x, _t, w, mid) => {
+                if (person.problems > 0) {
+                  icon("problem", x + w - 28, mid, 6);
+                  drawMixedLine(doc, String(person.problems), x, mid - 9, { font: "B", bold: true, size: 12.5, color: RED, width: w, align: "right" });
+                } else icon("ok", x + w - 6, mid, 6);
+              },
             ],
-            person.problems > 0 ? PROBLEM_FILL : i % 2 === 1,
+            36,
+            person.problems > 0 ? PROBLEM_FILL : undefined,
           ),
         );
       }
-      totalBox([
-        ["ችግሮች (መታየት ያለባቸው)", String(report.issues.filter((issue) => issue.severity === "high").length)],
-        ["ሹፌሩ ያላረጋገጣቸው", String(report.issues.filter((issue) => issue.severity === "medium").length)],
-        ["ያልተዘገቡ ደረሰኞች", String(report.unreported.filter((order) => order.kind === "invoice").length)],
-      ]);
 
-      // ---------- problems ----------
-      section("መታየት ያለባቸው", "ቀይ፦ አዘጋጁ ያለውና ሹፌሩ ያገኘው አይስማሙም። ቢጫ፦ ሹፌሩ ገና አላረጋገጠም።");
+      section("መታየት ያለባቸው", "ቀይ፦ አዘጋጁ ያለውና ሹፌሩ ያገኘው አይስማሙም። ቢጫ፦ ሹፌሩ ገና አላረጋገጠም።", "problem");
       issuesTable(report.issues);
 
       for (const person of report.people) personPage(person);
 
-      // ---------- nobody confirmed ----------
-      const unreportedCols: Col[] = [{ w: 28, align: "right" }, { w: 180 }, { w: 110 }, { w: 80, align: "right" }, { w: W - 398, align: "center" }];
-      section("ያልተዘገቡ ደረሰኞች", "በዚህ ቀን ተልከው ማንም ዝግጁ መሆናቸውን ያላረጋገጠላቸው።");
-      if (report.unreported.length === 0) empty();
+      section("ያልተዘገቡ ደረሰኞች", "በዚህ ቀን ተልከው ማንም ዝግጁ መሆናቸውን ያላረጋገጠላቸው።", "unknown");
+      if (report.unreported.length === 0) empty("ሁሉም ደረሰኞች ተዘግበዋል።");
       else {
-        header(unreportedCols, ["#", "ደረሰኝ", "የተላከበት ሰዓት", "እቃዎች", "ሹፌር"]);
+        header(orderCols, ["#", "ደረሰኝ", "አዘጋጅ", "ሹፌር", "ውጤት"]);
         report.unreported.forEach((order, i) =>
-          row(
-            unreportedCols,
-            [
-              String(i + 1),
-              { main: orderLabel(order), bold: true, sub: kindLabel(order) },
-              time(order.posted_at),
-              String(order.items),
-              { main: "", badge: DRIVER[order.check.status] },
-            ],
-            order.kind === "invoice" && order.check.status !== "not_checked" ? PROBLEM_FILL : i % 2 === 1,
-          ),
+          orderRow(order, i, `${time(order.posted_at)} · ${kindLabel(order)} · ${order.items} እቃዎች`, PREPARERS.not_reported),
         );
       }
     }
@@ -319,7 +428,7 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
       doc.page.margins.bottom = 0;
       doc
         .font("B")
-        .fontSize(11)
+        .fontSize(10)
         .fillColor(SECOND)
         .text(`ገጽ ${i + 1} ከ ${range.count}`, L, doc.page.height - 36, { width: W, align: "center", lineBreak: false });
     }

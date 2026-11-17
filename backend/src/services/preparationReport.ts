@@ -22,8 +22,15 @@ import { toAmharicUnit } from "../utils/units.js"
  */
 export type ItemCheck = { description: string; unit: string; ordered: number; prepared: number; received: number | null; problem: "not_found" | "found" | null }
 export type DriverCheck = {
-    /** loaded: every item confirmed and matching; mismatch: the driver's count differs; partly: some items not confirmed; not_checked: none; none: a backup list (not confirmed by the driver). */
-    status: "loaded" | "mismatch" | "partly" | "not_checked" | "none"
+    /**
+     * What the driver confirmed: complete (every item, all of it), partial
+     * (some items short), missing (nothing found), partly_checked (some
+     * items not confirmed yet), not_checked (none), none (a backup list —
+     * not confirmed by the driver).
+     */
+    status: "complete" | "partial" | "missing" | "partly_checked" | "not_checked" | "none"
+    /** Preparers and driver together: ok (they agree), problem (they don't), pending (the driver hasn't confirmed), none. */
+    verdict: "ok" | "problem" | "pending" | "none"
     items: ItemCheck[]
 }
 
@@ -80,7 +87,7 @@ const round = (value: number) => Math.round(value * 1000) / 1000
 
 /** The driver's loading of an order against what the preparers reported (see DriverCheck). */
 async function driverCheck(current: GroupOrderMessage[], preparation: OrderPreparation): Promise<DriverCheck> {
-    if (current[0]?.kind === "backup_list") return { status: "none", items: [] }
+    if (current[0]?.kind === "backup_list") return { status: "none", verdict: "none", items: [] }
     // What the order asks for now, per item.
     const ordered = new Map<string, { description: string; unit: string; quantity: number }>()
     for (const message of current) {
@@ -93,23 +100,32 @@ async function driverCheck(current: GroupOrderMessage[], preparation: OrderPrepa
     const received = new Map((loading?.items ?? []).map((item) => [item.item_key, item.received]))
 
     const items: ItemCheck[] = []
-    let confirmed = 0
     let total = 0
+    let confirmed = 0
+    let full = 0
+    let none = 0
     let mismatch = false
     for (const [key, item] of ordered) {
         if (item.quantity <= 0) continue
         total++
         const prepared = round(Math.min(item.quantity, reported.get(key) ?? item.quantity))
         const got = received.has(key) ? round(received.get(key)!) : null
-        if (got !== null) confirmed++
+        if (got !== null) {
+            confirmed++
+            if (got >= item.quantity) full++
+            if (got === 0) none++
+        }
         const problem = got === null || got === prepared ? null : got < prepared ? "not_found" : "found"
         if (problem) mismatch = true
         if (problem || prepared < item.quantity || (got !== null && got < item.quantity)) {
             items.push({ description: item.description, unit: item.unit, ordered: round(item.quantity), prepared, received: got, problem })
         }
     }
-    const status = mismatch ? "mismatch" : confirmed === 0 ? "not_checked" : confirmed < total ? "partly" : "loaded"
-    return { status, items }
+    const status =
+        confirmed === 0 ? "not_checked" : confirmed < total ? "partly_checked" : full === total ? "complete" : none === total ? "missing" : "partial"
+    const unconfirmedButLoaded = preparation.status === "not_reported" && confirmed > 0
+    const verdict = mismatch || unconfirmedButLoaded ? "problem" : confirmed < total ? "pending" : "ok"
+    return { status, verdict, items }
 }
 
 const amount = (value: number, unit: string) => `${value} ${toAmharicUnit(unit)}`.trim()
@@ -130,11 +146,11 @@ function issuesOf(
         }
     }
     if (order.kind === "invoice") {
-        if (status === "not_reported" && order.check.status !== "not_checked") {
+        if (status === "not_reported" && order.check.verdict === "problem") {
             issues.push({ ...base, severity: "high", text: "ማንም አላረጋገጠም — ሹፌሩ ግን ጭኖታል" })
         } else if (status !== "not_reported" && order.check.status === "not_checked") {
             issues.push({ ...base, severity: "medium", text: "ሹፌሩ መጫኑን ገና አላረጋገጠም" })
-        } else if (order.check.status === "partly") {
+        } else if (status !== "not_reported" && order.check.status === "partly_checked") {
             issues.push({ ...base, severity: "medium", text: "ሹፌሩ ያረጋገጠው ከፊሉን እቃ ብቻ ነው" })
         }
     }

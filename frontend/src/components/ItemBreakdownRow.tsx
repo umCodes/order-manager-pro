@@ -15,6 +15,8 @@ type Props = {
   loadings?: (BreakdownLoading | undefined)[];
   /** Opens the loading choices for a breakdown entry. */
   onLoadingTap?: (index: number) => void;
+  /** Marks every draft's share of this item complete (all of it loaded). */
+  onAllComplete?: () => void;
 };
 
 /** An entry's loading state: complete, partial, missing, or not confirmed yet. */
@@ -36,10 +38,12 @@ export default function ItemBreakdownRow({
   shortages = [],
   loadings = [],
   onLoadingTap,
+  onAllComplete,
 }: Props) {
   // How many of the item's drafts were confirmed loaded (each draft once, however many lines it has the item on).
   const loadable = [...new Map(loadings.filter((entry): entry is BreakdownLoading => !!entry).map((entry) => [entry.invoice_id, entry])).values()];
   const loadedCount = loadable.filter((entry) => entry.loaded).length;
+  const allComplete = loadable.length > 0 && loadable.every((entry) => entry.loaded && entry.loaded.received >= entry.item.ordered);
   // The item's total short across drafts, in its own unit — mixed units aren't added up.
   const short = shortages.filter((entry): entry is OrderShortageItem => !!entry);
   const totalUnit = short.length > 0 && short.every((entry) => entry.unit === short[0].unit) ? short[0].unit : null;
@@ -95,6 +99,17 @@ export default function ItemBreakdownRow({
       </div>
       {isExpanded && (
         <div className="item-breakdown">
+          {loadable.length > 0 && onAllComplete && (
+            <button
+              type="button"
+              className={`item-breakdown__all${allComplete ? " item-breakdown__all--done" : ""}`}
+              disabled={allComplete}
+              onClick={onAllComplete}
+            >
+              <Check size={13} strokeWidth={3} />
+              {allComplete ? "All complete" : `All complete · ${item.quantity} ${item.unit}`}
+            </button>
+          )}
           {item.breakdown.map((entry, index) => {
             const loading = loadings[index];
             const state = loadingState(loading);
@@ -106,6 +121,7 @@ export default function ItemBreakdownRow({
                     <span className="draft-card__overdue-dot" aria-label="Past due" title="Past due — carried over from an earlier day" />
                   )}
                   {entry.customer_name} · {entry.invoice_number}
+                  {loading?.pending && <span className="item-loading-unsent" title="Not sent to Telegram yet" aria-label="Not sent yet" />}
                 </span>
                 <span className="item-breakdown__quantity">
                   {shortages[index] && (

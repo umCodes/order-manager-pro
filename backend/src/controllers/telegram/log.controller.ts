@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { orderLoadingView, setItemLoading } from '../../services/telegram/loading.js';
+import { orderLoadingView, setItemsLoading } from '../../services/telegram/loading.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -188,20 +188,40 @@ export async function getOrderLoading(req: Request, res: Response) {
 }
 
 /**
- * Confirms one item of an order: body { item_key, received } — what was
- * received in the item's own unit (its full quantity when complete, 0 when
- * missing), or received null to clear it.
+ * Sends the Items tab's loading confirmations at once: body { changes:
+ * [{ order_id, item_key, received }] } — received in the item's own unit
+ * (its full quantity when complete, 0 when missing), or null to clear it.
+ * Each order is saved and its Telegram group messages edited once. Answers
+ * with each order's loading, and the orders that failed.
  */
-export async function postItemLoading(req: Request, res: Response) {
+export async function postLoadingBatch(req: Request, res: Response) {
     try {
-        const { item_key, received } = req.body ?? {};
-        if (typeof item_key !== "string" || !item_key) throw new Error("item_key is required")
-        if (received !== null && typeof received !== "number") throw new Error("received must be a number or null")
-        const result = await setItemLoading(String(req.params.orderId), item_key, received);
-        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
+        const changes = req.body?.changes;
+        if (!Array.isArray(changes) || changes.length === 0) throw new Error("changes is required")
+        const byOrder = new Map<string, Record<string, number | null>>();
+        for (const change of changes) {
+            const { order_id, item_key, received } = change ?? {};
+            if (typeof order_id !== "string" || !order_id || typeof item_key !== "string" || !item_key) throw new Error("Each change needs order_id and item_key")
+            if (received !== null && typeof received !== "number") throw new Error("received must be a number or null")
+            byOrder.set(order_id, { ...(byOrder.get(order_id) ?? {}), [item_key]: received });
+        }
+        const loadings: Record<string, unknown> = {};
+        const failed: { order_id: string; error: string }[] = [];
+        let telegramFailed = 0;
+        // One order after another: the group's edits stay within Telegram's rate limits.
+        for (const [orderId, orderChanges] of byOrder) {
+            try {
+                const { telegram } = await setItemsLoading(orderId, orderChanges);
+                telegramFailed += telegram.failed.length;
+                loadings[orderId] = await orderLoadingView(orderId);
+            } catch (error) {
+                failed.push({ order_id: orderId, error: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        res.status(200).json({ loadings, failed, telegram_failed: telegramFailed });
     } catch (error) {
-        console.error('Error confirming an item\'s loading:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to confirm the item' });
+        console.error('Error sending loading confirmations:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send the confirmations' });
     }
 }
 

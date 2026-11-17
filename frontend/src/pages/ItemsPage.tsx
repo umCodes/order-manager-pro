@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchOrderLoadings, fetchPreparationStatuses, setItemLoading } from "../lib/api";
-import { loadingsForBreakdown, shortagesForBreakdown, type BreakdownLoading } from "../lib/shortages";
+import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchOrderLoadings, fetchPreparationStatuses, sendLoadingBatch } from "../lib/api";
+import { loadingsForBreakdown, pendingKey, shortagesForBreakdown, type BreakdownLoading, type PendingLoading } from "../lib/shortages";
 import ItemLoadingSheet from "../components/ItemLoadingSheet";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
@@ -45,21 +45,49 @@ export default function ItemsPage() {
   const [loadingsByInvoice, setLoadingsByInvoice] = useState<Record<string, OrderLoadingView>>({});
   // The breakdown entry whose loading choices are open.
   const [loadingTarget, setLoadingTarget] = useState<{ loading: BreakdownLoading; name: string; source: string } | null>(null);
-  const [isSavingLoading, setIsSavingLoading] = useState(false);
-  const [loadingError, setLoadingError] = useState<string | null>(null);
+  // Loading changes made here and not sent to Telegram yet (kept in this browser until sent or discarded).
+  const [pending, setPending] = useState<PendingLoading>(readPending);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const pendingCount = Object.keys(pending).length;
 
-  async function saveLoading(received: number | null) {
-    if (!loadingTarget) return;
-    setIsSavingLoading(true);
-    setLoadingError(null);
+  function updatePending(next: PendingLoading) {
+    setPending(next);
+    writePending(next);
+  }
+
+  function setLoading(entries: BreakdownLoading[], received: (entry: BreakdownLoading) => number | null) {
+    const next = { ...pending };
+    for (const entry of entries) {
+      const key = pendingKey(entry.invoice_id, entry.item.item_key);
+      const value = received(entry);
+      const sent = loadingsByInvoice[entry.invoice_id]?.loading?.items.find((item) => item.item_key === entry.item.item_key);
+      // Back to what was sent: nothing left to send.
+      if ((value === null && !sent) || (value !== null && sent?.received === value)) delete next[key];
+      else next[key] = value;
+    }
+    updatePending(next);
+  }
+
+  async function sendPending() {
+    setIsSending(true);
+    setSendError(null);
     try {
-      const view = await setItemLoading(loadingTarget.loading.invoice_id, loadingTarget.loading.item.item_key, received);
-      setLoadingsByInvoice((current) => ({ ...current, [view.order_id]: view }));
-      setLoadingTarget(null);
+      const changes = Object.entries(pending).map(([key, received]) => {
+        const at = key.indexOf("|");
+        return { order_id: key.slice(0, at), item_key: key.slice(at + 1), received };
+      });
+      const result = await sendLoadingBatch(changes);
+      setLoadingsByInvoice((current) => ({ ...current, ...result.loadings }));
+      // Keep what failed, to send again.
+      const failedOrders = new Set(result.failed.map((failure) => failure.order_id));
+      updatePending(Object.fromEntries(Object.entries(pending).filter(([key]) => failedOrders.has(key.slice(0, key.indexOf("|"))))));
+      if (result.failed.length > 0) setSendError(`${result.failed.length} invoice(s) couldn't be saved: ${result.failed[0].error}`);
+      else if (result.telegram_failed > 0) setSendError(`Saved, but ${result.telegram_failed} Telegram message(s) couldn't be updated`);
     } catch (err) {
-      setLoadingError(err instanceof Error ? err.message : "Failed to save");
+      setSendError(err instanceof Error ? err.message : "Failed to send");
     } finally {
-      setIsSavingLoading(false);
+      setIsSending(false);
     }
   }
 
@@ -192,14 +220,21 @@ export default function ItemsPage() {
                             onToggleChecked={() => toggleChecked(rowKey)}
                             onToggleExpanded={() => toggleExpanded(rowKey)}
                             shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
-                            loadings={loadingsForBreakdown(item.breakdown, loadingsByInvoice)}
+                            loadings={loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)}
                             onLoadingTap={(index) => {
-                              const loading = loadingsForBreakdown(item.breakdown, loadingsByInvoice)[index];
+                              const loading = loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)[index];
                               const entry = item.breakdown[index];
                               if (!loading || !entry) return;
-                              setLoadingError(null);
                               setLoadingTarget({ loading, name: item.name, source: `${entry.customer_name} · ${entry.invoice_number}` });
                             }}
+                            onAllComplete={() =>
+                              setLoading(
+                                loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending).filter(
+                                  (entry): entry is BreakdownLoading => !!entry,
+                                ),
+                                (entry) => entry.item.ordered,
+                              )
+                            }
                           />
                         );
                       })}
@@ -244,12 +279,65 @@ export default function ItemsPage() {
           title={loadingTarget.name}
           subtitle={loadingTarget.source}
           loading={loadingTarget.loading}
-          error={loadingError}
-          isSaving={isSavingLoading}
-          onSave={saveLoading}
+          onSave={(received) => {
+            setLoading([loadingTarget.loading], () => received);
+            setLoadingTarget(null);
+          }}
           onCancel={() => setLoadingTarget(null)}
         />
       )}
+      {(pendingCount > 0 || sendError) && (
+        <div className="loading-send-bar">
+          <span className="loading-send-bar__message">
+            {sendError ?? `${pendingCount} change${pendingCount === 1 ? "" : "s"} not sent`}
+          </span>
+          <div className="save-items-bar__actions">
+            {pendingCount > 0 && (
+              <button
+                type="button"
+                className="btn btn--secondary btn--discard"
+                disabled={isSending}
+                onClick={() => {
+                  updatePending({});
+                  setSendError(null);
+                }}
+              >
+                Discard
+              </button>
+            )}
+            {pendingCount > 0 ? (
+              <button type="button" className="btn btn--save" disabled={isSending} onClick={sendPending}>
+                {isSending ? "Sending..." : "Send to Telegram"}
+              </button>
+            ) : (
+              <button type="button" className="btn btn--secondary btn--discard" onClick={() => setSendError(null)}>
+                OK
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+const PENDING_STORAGE_KEY = "items-loading-pending";
+
+/** Unsent loading changes kept in this browser (none when storage isn't available). */
+function readPending(): PendingLoading {
+  try {
+    const raw = localStorage.getItem(PENDING_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PendingLoading) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePending(pending: PendingLoading) {
+  try {
+    if (Object.keys(pending).length === 0) localStorage.removeItem(PENDING_STORAGE_KEY);
+    else localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // Not kept across reloads; still sent from memory.
+  }
 }

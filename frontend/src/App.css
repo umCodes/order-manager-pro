@@ -4639,3 +4639,57 @@ label {
   font-size: 12px;
   color: var(--color-gray-500);
 }
+
+/* A change not sent to Telegram yet. */
+.item-loading-unsent {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-inline-start: 6px;
+  border-radius: 50%;
+  background: #2563eb;
+  vertical-align: middle;
+}
+
+.item-breakdown__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 4px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.item-breakdown__all--done {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Items tab: unsent loading changes, sent to Telegram in one go. */
+.loading-send-bar {
+  position: sticky;
+  bottom: calc(68px + env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.loading-send-bar__message {
+  font-size: 13px;
+  color: var(--color-gray-700);
+}

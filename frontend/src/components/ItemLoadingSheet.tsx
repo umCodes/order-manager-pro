@@ -7,21 +7,18 @@ const amount = (value: number, unit: string) => `${value} ${unit}`.trim();
  * What was loaded of one item of one draft, from the Items tab: Complete
  * (struck through on its Telegram message), Incomplete (what was received —
  * 0 by default, for missing: 🔴, or some: 🟡), or Clear (back as it was).
+ * Kept in the app until "Send to Telegram".
  */
 export default function ItemLoadingSheet({
   title,
   subtitle,
   loading,
-  error,
-  isSaving,
   onSave,
   onCancel,
 }: {
   title: string;
   subtitle: string;
   loading: BreakdownLoading;
-  error: string | null;
-  isSaving: boolean;
   onSave: (received: number | null) => void;
   onCancel: () => void;
 }) {
@@ -60,7 +57,7 @@ export default function ItemLoadingSheet({
             <button
               type="button"
               className={`item-loading-choice item-loading-choice--complete${loaded && loaded.received >= item.ordered ? " item-loading-choice--current" : ""}`}
-              disabled={isSaving}
+             
               onClick={() => onSave(item.ordered)}
             >
               ✓ Complete
@@ -69,14 +66,14 @@ export default function ItemLoadingSheet({
             <button
               type="button"
               className="item-loading-choice item-loading-choice--incomplete"
-              disabled={isSaving}
+             
               onClick={() => setIsIncomplete(true)}
             >
               Incomplete
               <span>Missing or only part of it</span>
             </button>
             {loaded && (
-              <button type="button" className="item-loading-choice item-loading-choice--clear" disabled={isSaving} onClick={() => onSave(null)}>
+              <button type="button" className="item-loading-choice item-loading-choice--clear" onClick={() => onSave(null)}>
                 Clear
                 <span>Not confirmed yet</span>
               </button>
@@ -102,19 +99,19 @@ export default function ItemLoadingSheet({
           </div>
         )}
 
-        {(invalid || error) && <div className="form-error">{invalid ?? error}</div>}
+        {invalid && <div className="form-error">{invalid}</div>}
         <div className="invoice-details__actions" style={{ marginTop: 14 }}>
           <button
             type="button"
             className="btn btn--secondary"
-            disabled={isSaving}
+           
             onClick={isIncomplete ? () => setIsIncomplete(false) : onCancel}
           >
             {isIncomplete ? "Back" : "Cancel"}
           </button>
           {isIncomplete && (
-            <button type="button" className="btn btn--primary" disabled={isSaving} onClick={saveIncomplete}>
-              {isSaving ? "Saving..." : "Save"}
+            <button type="button" className="btn btn--primary" onClick={saveIncomplete}>
+              Save
             </button>
           )}
         </div>

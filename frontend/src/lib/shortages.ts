@@ -75,17 +75,27 @@ export function shortagesForBreakdown(
   });
 }
 
-/** A breakdown entry's item on its draft's Telegram messages, and what was confirmed loaded of it. */
-export type BreakdownLoading = { invoice_id: string; item: LoadingItem; loaded: LoadedItem | null };
+/**
+ * A breakdown entry's item on its draft's Telegram messages, and what was
+ * confirmed loaded of it — `pending` when that's a change made in the app
+ * and not sent to Telegram yet.
+ */
+export type BreakdownLoading = { invoice_id: string; item: LoadingItem; loaded: LoadedItem | null; pending: boolean };
+
+/** Loading changes made on the Items tab and not sent yet, by `<invoice id>|<item key>`: what was received, or null to clear. */
+export type PendingLoading = Record<string, number | null>;
+export const pendingKey = (invoiceId: string, itemKey: string) => `${invoiceId}|${itemKey}`;
 
 /**
  * Each breakdown entry's loading on the Items tab: the item on the entry's
  * draft (same Zoho item; a general item, or a line without one, by its
- * description too). Undefined where the draft isn't in the Telegram group.
+ * description too), with unsent changes over what was sent. Undefined where
+ * the draft isn't in the Telegram group.
  */
 export function loadingsForBreakdown(
   entries: { invoice_id: string; item_id?: string; description?: string }[],
   byInvoice: Record<string, OrderLoadingView>,
+  pending: PendingLoading = {},
 ): (BreakdownLoading | undefined)[] {
   return entries.map((entry) => {
     const view = byInvoice[entry.invoice_id];
@@ -96,10 +106,16 @@ export function loadingsForBreakdown(
           (entry.description ?? "").trim() === candidate.description.trim()),
     );
     if (!view || !item) return undefined;
+    const key = pendingKey(entry.invoice_id, item.item_key);
+    if (key in pending) {
+      const received = pending[key];
+      return { invoice_id: entry.invoice_id, item, loaded: received === null ? null : { ...item, received }, pending: true };
+    }
     return {
       invoice_id: entry.invoice_id,
       item,
       loaded: view.loading?.items.find((loaded) => loaded.item_key === item.item_key) ?? null,
+      pending: false,
     };
   });
 }

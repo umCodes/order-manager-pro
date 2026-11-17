@@ -889,20 +889,27 @@ export async function fetchOrderLoadings(orderIds: string[]): Promise<Record<str
   return data.loadings ?? {};
 }
 
+/** One loading confirmation from the Items tab: what was received of an item of an order (null clears it). */
+export type LoadingChange = { order_id: string; item_key: string; received: number | null };
+
 /**
- * Confirms one item of an order: what was received (its full quantity when
- * complete, 0 when missing, in its own unit), or null to clear it. Marks the
- * order's Telegram group messages; nothing else changes.
+ * Sends the Items tab's loading confirmations at once: each order is saved
+ * and its Telegram group messages edited once. Answers with each order's
+ * loading, the orders that failed, and how many Telegram edits failed.
  */
-export async function setItemLoading(orderId: string, itemKey: string, received: number | null): Promise<OrderLoadingView> {
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading/item`, {
+export async function sendLoadingBatch(changes: LoadingChange[]): Promise<{
+  loadings: Record<string, OrderLoadingView>;
+  failed: { order_id: string; error: string }[];
+  telegram_failed: number;
+}> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/loading/batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ item_key: itemKey, received }),
+    body: JSON.stringify({ changes }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to confirm the item (${response.status})`);
+    throw new Error(body.error ?? `Failed to send (${response.status})`);
   }
   return response.json();
 }

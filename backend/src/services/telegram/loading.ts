@@ -224,22 +224,35 @@ async function logEvent(event: LoadingEvent) {
 }
 
 /**
- * Confirms one item of an order: what was received of it (its whole order
- * quantity for "complete", less — 0 for missing — otherwise), or null to
- * clear it. Redraws the order's group messages.
+ * Confirms items of one order at once: what was received of each (its whole
+ * order quantity for "complete", less — 0 for missing — otherwise), or null
+ * to clear it, by item key. Saves, then redraws the order's group messages
+ * once. Items no longer on the order are skipped.
  */
-export async function setItemLoading(orderId: string, itemKey: string, received: number | null) {
+export async function setItemsLoading(orderId: string, changes: Record<string, number | null>) {
     if (!TELEGRAM_GROUP_CHATID) throw new Error("No Telegram group is set")
-    if (received !== null && (!Number.isFinite(received) || received < 0)) throw new Error("received must be 0 or more")
+    for (const received of Object.values(changes)) {
+        if (received !== null && (typeof received !== "number" || !Number.isFinite(received) || received < 0)) {
+            throw new Error("received must be 0 or more, or null")
+        }
+    }
     const { messages, items } = await orderLoadingItems(orderId)
-    const item = items.find((candidate) => candidate.item_key === itemKey)
-    if (!item) throw new Error("This item isn't on the order's Telegram messages")
+    if (messages.length === 0) throw new Error("This order has no message in the Telegram group")
     const first = messages[0]!
 
     const previous = await readOrderLoading(orderId)
     const now = new Date().toISOString()
-    const others = (previous?.items ?? []).filter((loaded) => loaded.item_key !== itemKey && items.some((i) => i.item_key === loaded.item_key))
-    const loadedItems = received === null ? others : [...others, { ...item, received: round(received) }].sort((a, b) => a.number - b.number)
+    const loaded = new Map(
+        (previous?.items ?? []).filter((item) => items.some((i) => i.item_key === item.item_key)).map((item) => [item.item_key, item]),
+    )
+    for (const [itemKey, received] of Object.entries(changes)) {
+        const item = items.find((candidate) => candidate.item_key === itemKey)
+        if (!item) continue
+        if (received === null) loaded.delete(itemKey)
+        else loaded.set(itemKey, { ...item, received: round(received) })
+        await logEvent({ action: "item", at: now, order_id: orderId, order_number: first.order_number, kind: first.kind, item_key: itemKey, received })
+    }
+    const loadedItems = [...loaded.values()].sort((a, b) => a.number - b.number)
 
     let loading: OrderLoading | null = null
     if (loadedItems.length === 0) {
@@ -256,7 +269,6 @@ export async function setItemLoading(orderId: string, itemKey: string, received:
         }
         await redisClient.set(loadedKey(orderId), JSON.stringify(loading), { EX: KEEP_SECONDS })
     }
-    await logEvent({ action: "item", at: now, order_id: orderId, order_number: first.order_number, kind: first.kind, item_key: itemKey, received })
     const telegram = await redrawGroupMessages(messages, loading, loading ? isComplete(items, loading) : false)
     return { loading, telegram }
 }

@@ -968,7 +968,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                     {preparation.loading && (
                       <>
                         {" "}
-                        <ShippedBadge loading={preparation.loading} showTime />
+                        <ShippedBadge loading={preparation.loading} />
                       </>
                     )}
                   </>

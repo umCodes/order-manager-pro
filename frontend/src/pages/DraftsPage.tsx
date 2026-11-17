@@ -322,8 +322,9 @@ export default function DraftsPage({
                         <div className="draft-card__top">
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                            {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
+                            {/* Right to left: send, PDF, status, the preparers' report, then shipped. */}
                             {loadings[invoice.invoice_id] && <ShippedBadge loading={loadings[invoice.invoice_id]} />}
+                            {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
                             <ResendButton

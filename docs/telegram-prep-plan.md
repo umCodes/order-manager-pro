@@ -67,8 +67,7 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - Everything in a report must show in the app.
 
 ## Open questions
+1. **Redis durability:** reports and lists must survive restarts. Does the Redis plan save to disk? The provider and plan in `REDIS_URL` tell.
 2. **Loading icons:** 🟡 partial / 🔴 none for now; the owner will decide the final icons.
 3. **Daily report per person (in Amharic):** what it shows for each preparer and for the driver, file type, how each person gets it, and when. To be planned with the owner before building.
 4. **Mark as sent deletes an invoice's Telegram messages,** so the 🚚 marks disappear on delivery (the loading itself stays saved for the report).
-
-1. **Redis durability:** reports and lists must survive restarts. Does the Redis plan save to disk? The provider and plan in `REDIS_URL` tell.

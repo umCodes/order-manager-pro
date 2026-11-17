@@ -282,6 +282,11 @@ export async function orderShortages(orderId: string): Promise<{ order_id: strin
     return { order_id: orderId, items }
 }
 
+/** An order's group messages that count now: the newest full message and the changes replies after it, oldest first. */
+export async function currentOrderMessages(orderId: string): Promise<GroupOrderMessage[]> {
+    return (await shortagesAndMessages(orderId)).current
+}
+
 async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShortageItem[]; current: GroupOrderMessage[] }> {
     const reportIds = await redisClient.sMembers(`telegram:group-reports:${orderId}`)
     const allReports = await readJson<GroupReport>(reportIds.map((id) => `telegram:group-report:${id}`))

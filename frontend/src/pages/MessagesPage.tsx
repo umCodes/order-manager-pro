@@ -13,6 +13,7 @@ import WhatsAppInbox from "../components/WhatsAppInbox";
 import { getUnread, useUnread } from "../lib/unread";
 import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
+import Skeleton from "../components/Skeleton";
 
 type Channel = "telegram" | "whatsapp";
 
@@ -214,7 +215,7 @@ export default function MessagesPage() {
           {deleteNotice && <div className="form-error">{deleteNotice}</div>}
 
           {isLoadingLog ? (
-            <div className="items-area__empty">Loading…</div>
+            <Skeleton />
           ) : logMessages.length === 0 ? (
             <div className="items-area__empty">No messages yet</div>
           ) : (

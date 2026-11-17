@@ -29,6 +29,7 @@ import WhatsAppMedia from "./WhatsAppMedia";
 import WhatsAppTemplates, { SendTemplateModal, SentTemplate } from "./WhatsAppTemplates";
 import SaveWhatsAppContactModal from "./SaveWhatsAppContactModal";
 import FilterChip from "./FilterChip";
+import Skeleton from "./Skeleton";
 
 /** Viewport shrinkage beyond this many px is taken to mean the on-screen keyboard is open. */
 const KEYBOARD_THRESHOLD_PX = 120;
@@ -423,7 +424,7 @@ export default function WhatsAppInbox() {
       )}
 
       {chats === null && !chatsError ? (
-        <div className="items-area__empty">Loading...</div>
+        <Skeleton />
       ) : visibleChats.length === 0 ? (
         <div className="items-area__empty">
           {normalizedQuery
@@ -735,7 +736,7 @@ export function ChatView({
       <div className="wa-chat__messages" ref={messagesRef}>
         {loadError && <div className="form-error">{loadError}</div>}
         {conversation === null && !loadError ? (
-          <div className="items-area__empty">Loading...</div>
+          <Skeleton />
         ) : messages.length === 0 ? (
           <div className="items-area__empty">No messages</div>
         ) : (

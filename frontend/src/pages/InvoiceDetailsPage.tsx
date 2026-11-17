@@ -39,14 +39,17 @@ import EditLineItemModal from "../components/EditLineItemModal";
 import ConfirmModal from "../components/ConfirmModal";
 import InvoiceWhatsAppStatus from "../components/InvoiceWhatsAppStatus";
 import { useConfirmArmedAction } from "../hooks/useConfirmArmedAction";
+import { useBackHandler } from "../lib/native/history";
 import ChangeCustomerModal from "../components/ChangeCustomerModal";
 import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from "../lib/invoiceChangeReason";
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
+import LoadingPanel from "../components/LoadingPanel";
 import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
 import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
+import Skeleton from "../components/Skeleton";
 
 type Props = {
   invoiceId: string;
@@ -447,6 +450,9 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     onBack();
   }
 
+  // The phone's back button / swipe back asks about unsaved edits too, like the page's own back button.
+  useBackHandler("invoice", handleBackClick);
+
   // A draft's or a sent invoice's date/customer/line items can be edited
   // (sent ones with an automatic reason, see lib/invoiceChangeReason) —
   // splitting is the one exception, still draft-only.
@@ -838,7 +844,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
 
       {error && <div className="form-error">{error}</div>}
 
-      {!invoice && !error && <div className="items-area__empty">Loading...</div>}
+      {!invoice && !error && <Skeleton />}
 
       {invoice && (
         <>
@@ -1042,6 +1048,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           {unmatchedShortages.map((shortage) => (
             <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "Removed item"} />
           ))}
+
+          {isDraft && <LoadingPanel orderId={invoice.invoice_id} orderLabel={invoice.invoice_number} reloadToken={invoice} />}
 
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">

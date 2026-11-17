@@ -1,4 +1,4 @@
-import type { BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
+import type { LoadingMode, OrderLoadingView, BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -873,6 +873,50 @@ export async function recordAppliedShortage(orderId: string, itemKey: string, qu
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Failed to record the change (${response.status})`);
   }
+}
+
+/** An order's loading (invoice id or BK- id): its items as they stand, the loading if confirmed, what changed since. */
+export async function fetchOrderLoading(orderId: string): Promise<OrderLoadingView> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch loading (${response.status})`);
+  }
+  return response.json();
+}
+
+/**
+ * Confirms (or changes) what was loaded for an order: everything as the
+ * preparers reported, or what was received of each item (by item key, in its
+ * own unit). Marks the order's Telegram group messages; nothing else changes.
+ */
+export async function confirmOrderLoading(
+  orderId: string,
+  mode: LoadingMode,
+  received?: Record<string, number>,
+): Promise<OrderLoadingView> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, ...(received ? { received } : {}) }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to confirm the loading (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Takes an order's loading back, and removes its marks from the Telegram group messages. */
+export async function undoOrderLoading(orderId: string): Promise<OrderLoadingView> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to undo the loading (${response.status})`);
+  }
+  return response.json();
 }
 
 /** Several orders' preparation at once, by order id (for the drafts list and the Items tab). */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchPreparationStatuses } from "../lib/api";
-import { shortagesForBreakdown } from "../lib/shortages";
+import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchOrderLoadings, fetchPreparationStatuses, setItemLoading } from "../lib/api";
+import { loadingsForBreakdown, shortagesForBreakdown, type BreakdownLoading } from "../lib/shortages";
+import ItemLoadingSheet from "../components/ItemLoadingSheet";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import SortRow from "../components/SortRow";
@@ -11,7 +12,7 @@ import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
 import BackupMergedView from "../components/BackupMergedView";
 import BackupMissingSection from "../components/BackupMissingSection";
-import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderShortageItem } from "../types";
+import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderLoadingView, OrderShortageItem } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -40,6 +41,27 @@ export default function ItemsPage() {
   const [backupView, setBackupView] = useState<"merged" | "grouped">("merged");
   // Shortages reported in the Telegram group, by draft — read fresh with every load of the items.
   const [shortagesByInvoice, setShortagesByInvoice] = useState<Record<string, OrderShortageItem[]>>({});
+  // Each draft's items on its Telegram group messages and what the driver confirmed loaded of them.
+  const [loadingsByInvoice, setLoadingsByInvoice] = useState<Record<string, OrderLoadingView>>({});
+  // The breakdown entry whose loading choices are open.
+  const [loadingTarget, setLoadingTarget] = useState<{ loading: BreakdownLoading; name: string; source: string } | null>(null);
+  const [isSavingLoading, setIsSavingLoading] = useState(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+
+  async function saveLoading(received: number | null) {
+    if (!loadingTarget) return;
+    setIsSavingLoading(true);
+    setLoadingError(null);
+    try {
+      const view = await setItemLoading(loadingTarget.loading.invoice_id, loadingTarget.loading.item.item_key, received);
+      setLoadingsByInvoice((current) => ({ ...current, [view.order_id]: view }));
+      setLoadingTarget(null);
+    } catch (err) {
+      setLoadingError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSavingLoading(false);
+    }
+  }
 
   const loadItems = useCallback((options?: { force?: boolean }) => {
     // The category order only affects how items are arranged; without it they still list.
@@ -56,6 +78,7 @@ export default function ItemsPage() {
             setShortagesByInvoice(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.items ?? []]))),
           )
           .catch(() => {});
+        fetchOrderLoadings(invoiceIds).then(setLoadingsByInvoice).catch(() => {});
       })
       .catch(() => setItems([]));
   }, []);
@@ -169,6 +192,14 @@ export default function ItemsPage() {
                             onToggleChecked={() => toggleChecked(rowKey)}
                             onToggleExpanded={() => toggleExpanded(rowKey)}
                             shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
+                            loadings={loadingsForBreakdown(item.breakdown, loadingsByInvoice)}
+                            onLoadingTap={(index) => {
+                              const loading = loadingsForBreakdown(item.breakdown, loadingsByInvoice)[index];
+                              const entry = item.breakdown[index];
+                              if (!loading || !entry) return;
+                              setLoadingError(null);
+                              setLoadingTarget({ loading, name: item.name, source: `${entry.customer_name} · ${entry.invoice_number}` });
+                            }}
                           />
                         );
                       })}
@@ -207,6 +238,17 @@ export default function ItemsPage() {
             />
           )}
         </>
+      )}
+      {loadingTarget && (
+        <ItemLoadingSheet
+          title={loadingTarget.name}
+          subtitle={loadingTarget.source}
+          loading={loadingTarget.loading}
+          error={loadingError}
+          isSaving={isSavingLoading}
+          onSave={saveLoading}
+          onCancel={() => setLoadingTarget(null)}
+        />
       )}
     </div>
   );

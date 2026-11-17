@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { confirmOrderLoading, orderLoadingView, readOrderLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
+import { confirmOrderLoading, orderLoadingView, readOrderLoading, setItemLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -166,7 +166,7 @@ export async function postAppliedReport(req: Request, res: Response) {
 export function loadingSummary(loading: OrderLoading | null) {
     if (!loading) return null
     const short = loading.items.filter((item) => item.received < item.ordered).length
-    return { at: loading.at, mode: loading.mode, short_items: short }
+    return { at: loading.at, mode: loading.mode, short_items: short, confirmed_items: loading.items.length }
 }
 
 /** An order's loading (invoice id or BK- id): its current items, the loading if confirmed, and what changed since. */
@@ -205,5 +205,35 @@ export async function deleteOrderLoading(req: Request, res: Response) {
     } catch (error) {
         console.error('Error undoing order loading:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to undo the loading' });
+    }
+}
+
+/**
+ * Confirms one item of an order: body { item_key, received } — what was
+ * received in the item's own unit (its full quantity when complete, 0 when
+ * missing), or received null to clear it.
+ */
+export async function postItemLoading(req: Request, res: Response) {
+    try {
+        const { item_key, received } = req.body ?? {};
+        if (typeof item_key !== "string" || !item_key) throw new Error("item_key is required")
+        if (received !== null && typeof received !== "number") throw new Error("received must be a number or null")
+        const result = await setItemLoading(String(req.params.orderId), item_key, received);
+        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
+    } catch (error) {
+        console.error('Error confirming an item\'s loading:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to confirm the item' });
+    }
+}
+
+/** Several orders' loading at once (for the Items tab): `?ids=a,b,c` → { loadings: { id: view } }. */
+export async function listOrderLoadings(req: Request, res: Response) {
+    try {
+        const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
+        const views = await Promise.all(ids.map((id) => orderLoadingView(id)));
+        res.status(200).json({ loadings: Object.fromEntries(views.map((view) => [view.order_id, view])) });
+    } catch (error) {
+        console.error('Error reading loadings:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the loadings' });
     }
 }

@@ -269,10 +269,12 @@ export type OrderLoadingView = {
   loading: OrderLoading | null;
   /** Item keys whose quantity on the order changed (or that were added) after it was loaded. */
   changed_since: string[];
+  /** Every item the order asks for now has been confirmed (its messages then carry 🚚 ተጭኗል). */
+  complete?: boolean;
   /** After a confirm or undo: how the Telegram messages went. */
   telegram?: { edited: number; failed: { message_id: number; error: string }[] };
 };
-export type LoadingSummary = { at: string; mode: LoadingMode; short_items: number };
+export type LoadingSummary = { at: string; mode: LoadingMode; short_items: number; confirmed_items?: number };
 
 export type InvoiceDetail = {
   invoice_id: string;

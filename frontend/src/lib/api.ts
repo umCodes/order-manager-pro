@@ -907,6 +907,36 @@ export async function confirmOrderLoading(
   return response.json();
 }
 
+/** Several orders' loading at once, by order id (for the Items tab). */
+export async function fetchOrderLoadings(orderIds: string[]): Promise<Record<string, OrderLoadingView>> {
+  if (orderIds.length === 0) return {};
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/loading?ids=${orderIds.map(encodeURIComponent).join(",")}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to fetch loadings (${response.status})`);
+  }
+  const data = await response.json();
+  return data.loadings ?? {};
+}
+
+/**
+ * Confirms one item of an order: what was received (its full quantity when
+ * complete, 0 when missing, in its own unit), or null to clear it. Marks the
+ * order's Telegram group messages; nothing else changes.
+ */
+export async function setItemLoading(orderId: string, itemKey: string, received: number | null): Promise<OrderLoadingView> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading/item`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_key: itemKey, received }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to confirm the item (${response.status})`);
+  }
+  return response.json();
+}
+
 /** Takes an order's loading back, and removes its marks from the Telegram group messages. */
 export async function undoOrderLoading(orderId: string): Promise<OrderLoadingView> {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/orders/${encodeURIComponent(orderId)}/loading`, {

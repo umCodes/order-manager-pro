@@ -1,4 +1,4 @@
-import type { InvoiceDetailLineItem, OrderShortageItem } from "../types";
+import type { LoadedItem, LoadingItem, OrderLoadingView, InvoiceDetailLineItem, OrderShortageItem } from "../types";
 
 /**
  * Pairs each reported item with the invoice line it belongs to: the same
@@ -72,5 +72,34 @@ export function shortagesForBreakdown(
     );
     if (shortage) used.add(`${entry.invoice_id}:${shortage.item_key}`);
     return shortage;
+  });
+}
+
+/** A breakdown entry's item on its draft's Telegram messages, and what was confirmed loaded of it. */
+export type BreakdownLoading = { invoice_id: string; item: LoadingItem; loaded: LoadedItem | null };
+
+/**
+ * Each breakdown entry's loading on the Items tab: the item on the entry's
+ * draft (same Zoho item; a general item, or a line without one, by its
+ * description too). Undefined where the draft isn't in the Telegram group.
+ */
+export function loadingsForBreakdown(
+  entries: { invoice_id: string; item_id?: string; description?: string }[],
+  byInvoice: Record<string, OrderLoadingView>,
+): (BreakdownLoading | undefined)[] {
+  return entries.map((entry) => {
+    const view = byInvoice[entry.invoice_id];
+    const item = view?.items.find(
+      (candidate) =>
+        candidate.item_id === (entry.item_id ?? "") &&
+        (!(candidate.item_key.includes("|") || !candidate.item_id) ||
+          (entry.description ?? "").trim() === candidate.description.trim()),
+    );
+    if (!view || !item) return undefined;
+    return {
+      invoice_id: entry.invoice_id,
+      item,
+      loaded: view.loading?.items.find((loaded) => loaded.item_key === item.item_key) ?? null,
+    };
   });
 }

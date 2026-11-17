@@ -94,7 +94,8 @@ export default function LoadingPanel({
           <Truck size={15} />
           {loading ? (
             <>
-              Loaded <span className="loading-panel__when">{reportTime(loading.at)}</span>
+              {view.complete === false ? `Loading ${loading.items.length}/${view.items.length}` : "Loaded"}{" "}
+              <span className="loading-panel__when">{reportTime(loading.at)}</span>
               <span className="loading-panel__mode">{loading.mode === "as_reported" ? "as reported" : "checked"}</span>
             </>
           ) : (

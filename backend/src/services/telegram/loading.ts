@@ -8,17 +8,18 @@ import { groupCopyText } from "./mirror.js"
 
 /**
  * Loading: the driver confirms in the app what was put on the truck for an
- * order (an invoice or a backup list) — either "as reported" (what the
- * preparers reported available, everything where nothing was reported) or
- * item by item. Saved in Redis and shown on the order's messages in the
+ * order (an invoice or a backup list), item by item (from the Items tab, or
+ * the order's own page) — or the whole order at once "as reported" (what the
+ * preparers reported available, everything where nothing was reported). Saved in Redis and shown on the order's messages in the
  * group, and nowhere else: Zoho and the channel are never touched, and the
  * preparers' own status (👍, reports, reactions) stays as it is.
  *
  * On each of the order's current group messages (the newest full message
- * and the changes replies after it), every item line that asks for the item
+ * and the changes replies after it), every line asking for a confirmed item
  * is marked: struck through when it was all received, otherwise followed by
- * what was received with 🟡 (some) or 🔴 (none). "🚚 ተጭኗል" goes at the very
- * bottom. Undoing the loading puts the messages back as they were.
+ * what was received with 🟡 (some) or 🔴 (none). Items not confirmed yet are
+ * left as they are. Once every item is confirmed, "🚚 ተጭኗል" goes at the very
+ * bottom. Clearing an item (or undoing it all) takes its marks off.
  *
  *   telegram:group-loaded:<order id>  → OrderLoading (JSON), 30 days
  *   telegram:group-loading-log        → sorted set of LoadingEvent (JSON) by time, 30 days — for the daily report
@@ -51,17 +52,21 @@ export type OrderLoading = {
     at: string
     /** Set when the loading was changed after it was first confirmed. */
     first_at: string
+    /** The items confirmed so far (only those). */
     items: LoadedItem[]
 }
 
 export type LoadingEvent = {
-    action: "loaded" | "changed" | "undone"
+    action: "loaded" | "changed" | "undone" | "item"
     at: string
     order_id: string
     order_number: string
     kind: GroupOrderMessage["kind"]
     mode?: LoadingMode
     items?: LoadedItem[]
+    /** For an "item" event: the item, and what was received (null: cleared). */
+    item_key?: string
+    received?: number | null
 }
 
 /** An item of the order as it stands now, for the driver to check against. */
@@ -117,7 +122,14 @@ export async function orderLoadingView(orderId: string) {
     const changed_since = loading
         ? items.filter((item) => loadedByKey.get(item.item_key)?.ordered !== item.ordered).map((item) => item.item_key)
         : []
-    return { order_id: orderId, items, loading, changed_since }
+    const complete = !!loading && items.every((item) => loadedByKey.has(item.item_key))
+    return { order_id: orderId, items, loading, changed_since, complete }
+}
+
+/** Whether every item the order asks for now has been confirmed. */
+function isComplete(items: LoadingItem[], loading: OrderLoading) {
+    const loaded = new Set(loading.items.map((item) => item.item_key))
+    return items.length > 0 && items.every((item) => loaded.has(item.item_key))
 }
 
 type Entity = { type: "strikethrough"; offset: number; length: number }
@@ -128,7 +140,12 @@ type Entity = { type: "strikethrough"; offset: number; length: number }
  * and 🟡/🔴, and "🚚 ተጭኗል" at the very bottom. Offsets are in UTF-16 code
  * units, as Telegram counts them (and as JavaScript strings index).
  */
-export function markedText(text: string, message: GroupOrderMessage, loading: OrderLoading): { text: string; entities: Entity[] } {
+export function markedText(
+    text: string,
+    message: GroupOrderMessage,
+    loading: OrderLoading,
+    complete = true,
+): { text: string; entities: Entity[] } {
     const loaded = new Map(loading.items.map((item) => [item.item_key, item]))
     // The numbered lines that ask for an item (a changes reply's lowered or removed lines don't).
     const prefixes = message.items
@@ -153,7 +170,7 @@ export function markedText(text: string, message: GroupOrderMessage, loading: Or
         lines.push(out)
         offset += out.length + 1
     }
-    return { text: `${lines.join("\n")}\n\n${LOADED_NOTICE_AMHARIC}`, entities }
+    return { text: complete ? `${lines.join("\n")}\n\n${LOADED_NOTICE_AMHARIC}` : lines.join("\n"), entities }
 }
 
 /** For the group copy `groupMessageId` about to be set to `text`: the text and marks to send, given its order's loading. */
@@ -161,7 +178,9 @@ export async function loadingMarksFor(groupMessageId: number, text: string): Pro
     try {
         const message = await readGroupOrderMessage(groupMessageId)
         const loading = message ? await readOrderLoading(message.order_id) : null
-        return message && loading ? markedText(text, message, loading) : { text, entities: [] }
+        if (!message || !loading) return { text, entities: [] }
+        const { items } = await orderLoadingItems(message.order_id)
+        return markedText(text, message, loading, isComplete(items, loading))
     } catch (error) {
         console.error(`Telegram loading: couldn't read the marks for group message ${groupMessageId}:`, error)
         return { text, entities: [] }
@@ -173,14 +192,14 @@ export async function loadingMarksFor(groupMessageId: number, text: string): Pro
  * its loading marks. Best-effort per message; says how many were edited and
  * which failed.
  */
-async function redrawGroupMessages(messages: GroupOrderMessage[], loading: OrderLoading | null) {
+async function redrawGroupMessages(messages: GroupOrderMessage[], loading: OrderLoading | null, complete = true) {
     const failed: { message_id: number; error: string }[] = []
     let edited = 0
     for (const message of messages) {
         try {
             const text = await groupCopyText(message.message_id)
             if (text === null) throw new Error("its text isn't known any more")
-            const marked = loading ? markedText(text, message, loading) : { text, entities: [] }
+            const marked = loading ? markedText(text, message, loading, complete) : { text, entities: [] }
             const response = await TelegramApi("editMessageText", "POST", {
                 chat_id: TELEGRAM_GROUP_CHATID,
                 message_id: message.message_id,
@@ -234,7 +253,45 @@ export async function confirmOrderLoading(orderId: string, mode: LoadingMode, re
     }
     await redisClient.set(loadedKey(orderId), JSON.stringify(loading), { EX: KEEP_SECONDS })
     await logEvent({ action: previous ? "changed" : "loaded", at: now, order_id: orderId, order_number: loading.order_number, kind: loading.kind, mode, items: loading.items })
-    const telegram = await redrawGroupMessages(messages, loading)
+    const telegram = await redrawGroupMessages(messages, loading, true)
+    return { loading, telegram }
+}
+
+/**
+ * Confirms one item of an order: what was received of it (its whole order
+ * quantity for "complete", less — 0 for missing — otherwise), or null to
+ * clear it. Redraws the order's group messages.
+ */
+export async function setItemLoading(orderId: string, itemKey: string, received: number | null) {
+    if (!TELEGRAM_GROUP_CHATID) throw new Error("No Telegram group is set")
+    if (received !== null && (!Number.isFinite(received) || received < 0)) throw new Error("received must be 0 or more")
+    const { messages, items } = await orderLoadingItems(orderId)
+    const item = items.find((candidate) => candidate.item_key === itemKey)
+    if (!item) throw new Error("This item isn't on the order's Telegram messages")
+    const first = messages[0]!
+
+    const previous = await readOrderLoading(orderId)
+    const now = new Date().toISOString()
+    const others = (previous?.items ?? []).filter((loaded) => loaded.item_key !== itemKey && items.some((i) => i.item_key === loaded.item_key))
+    const loadedItems = received === null ? others : [...others, { ...item, received: round(received) }].sort((a, b) => a.number - b.number)
+
+    let loading: OrderLoading | null = null
+    if (loadedItems.length === 0) {
+        await redisClient.del(loadedKey(orderId))
+    } else {
+        loading = {
+            order_id: orderId,
+            order_number: first.order_number,
+            kind: first.kind,
+            mode: "checked",
+            at: now,
+            first_at: previous?.first_at ?? now,
+            items: loadedItems,
+        }
+        await redisClient.set(loadedKey(orderId), JSON.stringify(loading), { EX: KEEP_SECONDS })
+    }
+    await logEvent({ action: "item", at: now, order_id: orderId, order_number: first.order_number, kind: first.kind, item_key: itemKey, received })
+    const telegram = await redrawGroupMessages(messages, loading, loading ? isComplete(items, loading) : false)
     return { loading, telegram }
 }
 

@@ -830,7 +830,7 @@ export type PreparationReportPeople = {
   today: string;
   previous: string;
   day: string;
-  people: { id: string; name: string; orders: number; reports: number }[];
+  people: { id: string; name: string; orders: number; reports: number; problems?: number }[];
 };
 
 export async function fetchPreparationReportPeople(day?: string): Promise<PreparationReportPeople> {

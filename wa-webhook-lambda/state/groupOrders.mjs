@@ -38,6 +38,23 @@ export async function recordGroupReply(reply) {
  *   telegram:group-order-messages:<order id>  → the order's group message ids, oldest first (written by the backend)
  */
 const REPORT_KEEP_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * Everything people did on an order message — 👍 / ❤️ given or taken back,
+ * replies and reactions to a backup list — in order, kept 30 days whatever
+ * happens to the message or the reaction, so nothing done in the group is
+ * lost (the backend's preparation report can read it).
+ *
+ *   telegram:group-activity:<group message id> → list of { action, person_id, name, at } (JSON)
+ */
+async function logActivity(messageId, action, personId, name, at) {
+    const key = `telegram:group-activity:${messageId}`;
+    await getRedisClient()
+        .multi()
+        .rpush(key, JSON.stringify({ action, person_id: String(personId), name: name ?? null, at: at ?? new Date().toISOString() }))
+        .expire(key, REPORT_KEEP_SECONDS)
+        .exec();
+}
 const reportKey = (messageId) => `telegram:group-report:${messageId}`;
 const orderReportsKey = (orderId) => `telegram:group-reports:${orderId}`;
 
@@ -79,10 +96,14 @@ export async function setThumb(messageId, reactorId, thumb) {
         .hset(thumbsKey(messageId), String(reactorId), JSON.stringify(thumb))
         .expire(thumbsKey(messageId), REPORT_KEEP_SECONDS)
         .exec();
+    await logActivity(messageId, "thumb", reactorId, thumb?.name, thumb?.at);
 }
 
 export async function removeThumb(messageId, reactorId) {
-    await getRedisClient().hdel(thumbsKey(messageId), String(reactorId));
+    const redis = getRedisClient();
+    const previous = await redis.hget(thumbsKey(messageId), String(reactorId));
+    await redis.hdel(thumbsKey(messageId), String(reactorId));
+    if (previous) await logActivity(messageId, "thumb_removed", reactorId, JSON.parse(previous).name);
 }
 
 /** Who has a 👍 on a message now: reactor ids (a saved report's own 👍 is "report:<report message id>"). */
@@ -105,6 +126,7 @@ export async function recordInteraction(messageId, personId, interaction) {
         .hset(key, String(personId), JSON.stringify(interaction))
         .expire(key, REPORT_KEEP_SECONDS)
         .exec();
+    await logActivity(messageId, interaction?.kind ?? "interaction", personId, interaction?.name, interaction?.at);
 }
 
 /**
@@ -168,8 +190,12 @@ export async function setAllMissing(messageId, reactorId, mark) {
         .hset(allMissingKey(messageId), String(reactorId), JSON.stringify(mark))
         .expire(allMissingKey(messageId), REPORT_KEEP_SECONDS)
         .exec();
+    await logActivity(messageId, "all_missing", reactorId, mark?.name, mark?.at);
 }
 
 export async function removeAllMissing(messageId, reactorId) {
-    await getRedisClient().hdel(allMissingKey(messageId), String(reactorId));
+    const redis = getRedisClient();
+    const previous = await redis.hget(allMissingKey(messageId), String(reactorId));
+    await redis.hdel(allMissingKey(messageId), String(reactorId));
+    if (previous) await logActivity(messageId, "all_missing_removed", reactorId, JSON.parse(previous).name);
 }

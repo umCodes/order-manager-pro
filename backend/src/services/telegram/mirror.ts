@@ -106,7 +106,8 @@ export async function mirrorDelete(channelMessageId: number) {
         if (!copyId) return
         const response = await TelegramApi("deleteMessage", "POST", { chat_id: TELEGRAM_GROUP_CHATID, message_id: copyId })
         if (!response.ok) console.error(`Telegram group copy: couldn't delete the copy of message ${channelMessageId}:`, response.description)
-        await redisClient.del([toGroupKey(channelMessageId), toChannelKey(copyId), groupTextKey(copyId)])
+        // The copy's text stays (to its 30 days): what the group was shown is kept after the message goes.
+        await redisClient.del([toGroupKey(channelMessageId), toChannelKey(copyId)])
         await forgetGroupOrderMessage(copyId)
     } catch (error) {
         console.error(`Telegram group copy: couldn't delete the copy of message ${channelMessageId}:`, error)

@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { confirmOrderLoading, orderLoadingView, readOrderLoading, setItemLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
+import { orderLoadingView, readOrderLoading, setItemLoading, type OrderLoading } from '../../services/telegram/loading.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -176,35 +176,6 @@ export async function getOrderLoading(req: Request, res: Response) {
     } catch (error) {
         console.error('Error reading order loading:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the loading' });
-    }
-}
-
-/**
- * Confirms (or changes) what was loaded for an order: body { mode: "as_reported" }
- * or { mode: "checked", received: { <item key>: quantity } } (in each item's
- * own unit). Saved in Redis and marked on the order's group messages only.
- */
-export async function postOrderLoading(req: Request, res: Response) {
-    try {
-        const { mode, received } = req.body ?? {};
-        if (mode !== "as_reported" && mode !== "checked") throw new Error('mode must be "as_reported" or "checked"')
-        if (mode === "checked" && (typeof received !== "object" || received === null)) throw new Error("received is required")
-        const result = await confirmOrderLoading(String(req.params.orderId), mode, mode === "checked" ? received : {});
-        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
-    } catch (error) {
-        console.error('Error confirming order loading:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to confirm the loading' });
-    }
-}
-
-/** Takes an order's loading back, and removes its marks from the group messages. */
-export async function deleteOrderLoading(req: Request, res: Response) {
-    try {
-        const result = await undoOrderLoading(String(req.params.orderId));
-        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
-    } catch (error) {
-        console.error('Error undoing order loading:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to undo the loading' });
     }
 }
 

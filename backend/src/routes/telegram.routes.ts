@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { sendMessage, sendItemsList, replyToMessage, listMessages, editMessage, deleteMessage, getGroupOrderMessage, listGroupReplies, getOrderShortages, getOrderPreparation, listOrderPreparationStatuses, postAppliedReport, getOrderLoading, postOrderLoading, deleteOrderLoading, postItemLoading, listOrderLoadings } from "../controllers/telegram/index.js";
+import { sendMessage, sendItemsList, replyToMessage, listMessages, editMessage, deleteMessage, getGroupOrderMessage, listGroupReplies, getOrderShortages, getOrderPreparation, listOrderPreparationStatuses, postAppliedReport, getOrderLoading, postItemLoading, listOrderLoadings } from "../controllers/telegram/index.js";
 
 export const telegramRouter = Router();
 
@@ -16,7 +16,5 @@ telegramRouter.get('/telegram/group/orders/:orderId/preparation', getOrderPrepar
 telegramRouter.get('/telegram/group/preparation', listOrderPreparationStatuses);
 telegramRouter.post('/telegram/group/orders/:orderId/applied', postAppliedReport);
 telegramRouter.get('/telegram/group/orders/:orderId/loading', getOrderLoading);
-telegramRouter.post('/telegram/group/orders/:orderId/loading', postOrderLoading);
-telegramRouter.delete('/telegram/group/orders/:orderId/loading', deleteOrderLoading);
 telegramRouter.post('/telegram/group/orders/:orderId/loading/item', postItemLoading);
 telegramRouter.get('/telegram/group/loading', listOrderLoadings);

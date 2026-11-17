@@ -8,9 +8,7 @@ import { groupCopyText } from "./mirror.js"
 
 /**
  * Loading: the driver confirms in the app what was put on the truck for an
- * order (an invoice or a backup list), item by item (from the Items tab, or
- * the order's own page) — or the whole order at once "as reported" (what the
- * preparers reported available, everything where nothing was reported). Saved in Redis and shown on the order's messages in the
+ * order, item by item, from the Items tab. Saved in Redis and shown on the order's messages in the
  * group, and nowhere else: Zoho and the channel are never touched, and the
  * preparers' own status (👍, reports, reactions) stays as it is.
  *
@@ -19,7 +17,7 @@ import { groupCopyText } from "./mirror.js"
  * is marked: struck through when it was all received, otherwise followed by
  * what was received with 🟡 (some) or 🔴 (none). Items not confirmed yet are
  * left as they are. Once every item is confirmed, "🚚 ተጭኗል" goes at the very
- * bottom. Clearing an item (or undoing it all) takes its marks off.
+ * bottom. Clearing an item takes its marks off.
  *
  *   telegram:group-loaded:<order id>  → OrderLoading (JSON), 30 days
  *   telegram:group-loading-log        → sorted set of LoadingEvent (JSON) by time, 30 days — for the daily report
@@ -226,38 +224,6 @@ async function logEvent(event: LoadingEvent) {
 }
 
 /**
- * Confirms (or changes) an order's loading. "as_reported": every item as the
- * preparers reported it available. "checked": what the driver received of
- * each item — `received` by item key; an item left out counts as reported.
- */
-export async function confirmOrderLoading(orderId: string, mode: LoadingMode, received: Record<string, number> = {}) {
-    if (!TELEGRAM_GROUP_CHATID) throw new Error("No Telegram group is set")
-    const { messages, items } = await orderLoadingItems(orderId)
-    if (messages.length === 0) throw new Error("This order has no message in the Telegram group")
-    if (items.length === 0) throw new Error("This order has no items to load")
-
-    const first = messages[0]!
-    const previous = await readOrderLoading(orderId)
-    const now = new Date().toISOString()
-    const loading: OrderLoading = {
-        order_id: orderId,
-        order_number: first.order_number,
-        kind: first.kind,
-        mode,
-        at: now,
-        first_at: previous?.first_at ?? now,
-        items: items.map((item) => {
-            const value = mode === "checked" ? received[item.item_key] : undefined
-            return { ...item, received: round(typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : item.reported) }
-        }),
-    }
-    await redisClient.set(loadedKey(orderId), JSON.stringify(loading), { EX: KEEP_SECONDS })
-    await logEvent({ action: previous ? "changed" : "loaded", at: now, order_id: orderId, order_number: loading.order_number, kind: loading.kind, mode, items: loading.items })
-    const telegram = await redrawGroupMessages(messages, loading, true)
-    return { loading, telegram }
-}
-
-/**
  * Confirms one item of an order: what was received of it (its whole order
  * quantity for "complete", less — 0 for missing — otherwise), or null to
  * clear it. Redraws the order's group messages.
@@ -293,15 +259,4 @@ export async function setItemLoading(orderId: string, itemKey: string, received:
     await logEvent({ action: "item", at: now, order_id: orderId, order_number: first.order_number, kind: first.kind, item_key: itemKey, received })
     const telegram = await redrawGroupMessages(messages, loading, loading ? isComplete(items, loading) : false)
     return { loading, telegram }
-}
-
-/** Takes an order's loading back: forgotten, and its group messages put back without the marks. */
-export async function undoOrderLoading(orderId: string) {
-    const previous = await readOrderLoading(orderId)
-    if (!previous) return { loading: null, telegram: { edited: 0, failed: [] } }
-    await redisClient.del(loadedKey(orderId))
-    const now = new Date().toISOString()
-    await logEvent({ action: "undone", at: now, order_id: orderId, order_number: previous.order_number, kind: previous.kind })
-    const telegram = await redrawGroupMessages(await currentOrderMessages(orderId), null)
-    return { loading: null, telegram }
 }

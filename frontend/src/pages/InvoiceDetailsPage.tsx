@@ -45,6 +45,7 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
+import ShippedBadge from "../components/ShippedBadge";
 import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
 import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
@@ -964,6 +965,12 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                   <>
                     {" "}
                     <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
+                    {preparation.loading && (
+                      <>
+                        {" "}
+                        <ShippedBadge loading={preparation.loading} showTime />
+                      </>
+                    )}
                   </>
                 )}
               </span>

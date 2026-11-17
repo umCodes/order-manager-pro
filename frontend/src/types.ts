@@ -233,7 +233,7 @@ export type OrderPreparation = {
   status: PreparationStatus;
   confirmed: PreparationConfirmation | null;
   items: OrderShortageItem[];
-  /** Only from the statuses list: the order's loading, if confirmed. */
+  /** "Shipped": set once every item of the order was confirmed loaded on the Items tab. */
   loading?: LoadingSummary | null;
 };
 
@@ -274,7 +274,8 @@ export type OrderLoadingView = {
   /** After a confirm or undo: how the Telegram messages went. */
   telegram?: { edited: number; failed: { message_id: number; error: string }[] };
 };
-export type LoadingSummary = { at: string; mode: LoadingMode; short_items: number; confirmed_items?: number };
+/** Set once every item of an order was confirmed loaded: when, and how many weren't all received. */
+export type LoadingSummary = { at: string; short_items: number };
 
 export type InvoiceDetail = {
   invoice_id: string;

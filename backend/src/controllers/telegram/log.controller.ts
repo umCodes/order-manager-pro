@@ -5,7 +5,7 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { orderLoadingView, readOrderLoading, setItemLoading, type OrderLoading } from '../../services/telegram/loading.js';
+import { orderLoadingView, setItemLoading } from '../../services/telegram/loading.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -119,7 +119,7 @@ export async function getOrderPreparation(req: Request, res: Response) {
     try {
         const orderId = req.params.orderId;
         if (!orderId) throw new Error("orderId not provided")
-        res.status(200).json(await orderPreparation(String(orderId)));
+        res.status(200).json({ ...(await orderPreparation(String(orderId))), loading: await shippedSummary(String(orderId)) });
     } catch (error) {
         console.error('Error reading order preparation:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });
@@ -131,7 +131,7 @@ export async function listOrderPreparationStatuses(req: Request, res: Response) 
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
         const results = await Promise.all(
-            ids.map(async (id) => ({ ...(await orderPreparation(id)), loading: loadingSummary(await readOrderLoading(id).catch(() => null)) })),
+            ids.map(async (id) => ({ ...(await orderPreparation(id)), loading: await shippedSummary(id) })),
         );
         res.status(200).json({
             statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, loading }) => [order_id, { status, confirmed, items, loading }])),
@@ -162,11 +162,19 @@ export async function postAppliedReport(req: Request, res: Response) {
     }
 }
 
-/** What a list needs to show an order's loading: when, and whether anything was short. */
-export function loadingSummary(loading: OrderLoading | null) {
-    if (!loading) return null
-    const short = loading.items.filter((item) => item.received < item.ordered).length
-    return { at: loading.at, mode: loading.mode, short_items: short, confirmed_items: loading.items.length }
+/**
+ * An order's "shipped" badge: set once every item on it was confirmed loaded
+ * on the Items tab — when, and how many items weren't all received. Null
+ * before that (or when it can't be read).
+ */
+async function shippedSummary(orderId: string) {
+    try {
+        const { loading, complete } = await orderLoadingView(orderId)
+        if (!loading || !complete) return null
+        return { at: loading.at, short_items: loading.items.filter((item) => item.received < item.ordered).length }
+    } catch {
+        return null
+    }
 }
 
 /** An order's loading (invoice id or BK- id): its current items, the loading if confirmed, and what changed since. */

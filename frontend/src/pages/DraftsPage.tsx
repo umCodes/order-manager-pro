@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Search, Truck } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import {
   fetchDraftInvoices,
   fetchPreparationStatuses,
@@ -27,6 +27,7 @@ import DailyReportButton from "../components/DailyReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
+import ShippedBadge from "../components/ShippedBadge";
 import type { DraftInvoice, LoadingSummary, PreparationStatus } from "../types";
 import Skeleton from "../components/Skeleton";
 
@@ -105,7 +106,7 @@ export default function DraftsPage({
   // Each draft's preparation in the Telegram group (👍 and shortages), read
   // fresh with every load of the drafts; missing ones show nothing.
   const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
-  // Each draft's loading by the driver (🚚), when confirmed.
+  // Each draft's "Shipped" badge, once every item on it was confirmed loaded.
   const [loadings, setLoadings] = useState<Record<string, LoadingSummary>>({});
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
@@ -320,18 +321,7 @@ export default function DraftsPage({
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
                             {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
-                            {loadings[invoice.invoice_id] && (
-                              <span
-                                className={`loading-mark${loadings[invoice.invoice_id].short_items > 0 ? " loading-mark--short" : ""}`}
-                                title={
-                                  loadings[invoice.invoice_id].short_items > 0
-                                    ? `Loaded, ${loadings[invoice.invoice_id].short_items} item(s) not all received`
-                                    : "Loaded"
-                                }
-                              >
-                                <Truck size={14} />
-                              </span>
-                            )}
+                            {loadings[invoice.invoice_id] && <ShippedBadge loading={loadings[invoice.invoice_id]} />}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
                             <ResendButton

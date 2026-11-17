@@ -4453,15 +4453,29 @@ label {
   }
 }
 
-/* A 🚚 next to an order's preparation badge once it was loaded. */
-.loading-mark {
+/* "🚚 Shipped": every item of the order confirmed loaded on the Items tab. */
+.shipped-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--color-green-700);
+  background: #dcfce7;
+  white-space: nowrap;
 }
 
-.loading-mark--short {
-  color: #b45309;
+.shipped-badge--short {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.shipped-badge__at {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 /* Items tab: loading each draft's item (tap a breakdown row → ItemLoadingSheet). */

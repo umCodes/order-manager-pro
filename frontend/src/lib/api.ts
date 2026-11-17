@@ -825,6 +825,28 @@ export async function sendDailyReport(day: string): Promise<{ phone: string; ok:
 }
 
 /** URL for a business day's daily report PDF. Append `&download=1` to have it served as an attachment. */
+/** The preparation report's days, and who prepared something on `day` (default today). */
+export type PreparationReportPeople = {
+  today: string;
+  previous: string;
+  day: string;
+  people: { id: string; name: string; orders: number; reports: number }[];
+};
+
+export async function fetchPreparationReportPeople(day?: string): Promise<PreparationReportPeople> {
+  const response = await apiFetch(`${API_BASE_URL}/api/reports/preparation/people${day ? `?day=${encodeURIComponent(day)}` : ""}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the preparation report (${response.status})`);
+  }
+  return response.json();
+}
+
+/** The preparation report PDF for a business day: everyone, or one person (their Telegram id). */
+export function preparationReportUrl(day: string, personId?: string) {
+  return `${API_BASE_URL}/api/reports/preparation?day=${encodeURIComponent(day)}${personId ? `&person=${encodeURIComponent(personId)}` : ""}`;
+}
+
 export function dailyReportUrl(day: string) {
   return `${API_BASE_URL}/api/reports/daily?day=${encodeURIComponent(day)}`;
 }

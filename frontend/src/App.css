@@ -4693,3 +4693,69 @@ label {
   font-size: 13px;
   color: var(--color-gray-700);
 }
+
+/* Preparation report: day choice, then everyone or one person. */
+.prep-report__days {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.prep-report__day {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-gray-200);
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.prep-report__day--active {
+  background: var(--color-gray-900);
+  border-color: var(--color-gray-900);
+  color: #fff;
+  font-weight: 600;
+}
+
+.prep-report__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.prep-report__row .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+}
+
+.prep-report__row--all {
+  border-top: none;
+}
+
+.prep-report__name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.prep-report__meta {
+  font-size: 12px;
+  color: var(--color-gray-500);
+}
+
+.prep-report__people-title {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-gray-200);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-gray-500);
+}

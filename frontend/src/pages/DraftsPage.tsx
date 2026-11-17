@@ -24,6 +24,7 @@ import SortRow from "../components/SortRow";
 import RefreshButton from "../components/RefreshButton";
 import CopyButton from "../components/CopyButton";
 import DailyReportButton from "../components/DailyReportButton";
+import PreparationReportButton from "../components/PreparationReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
@@ -216,6 +217,7 @@ export default function DraftsPage({
         <h1 className="page-title">{viewMode === "drafts" ? "Draft Invoices" : "Previous Transactions"}</h1>
         <div className="page-header__actions">
           <DailyReportButton />
+          <PreparationReportButton />
           {viewMode === "drafts" ? (
             <>
               <CopyButton getText={copyText} />

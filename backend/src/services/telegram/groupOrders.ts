@@ -49,6 +49,8 @@ export type GroupOrderMessage = {
     message_type: "order" | "changes"
     items: GroupOrderItem[]
     posted_at: string
+    /** Set once the message was deleted from the group (sent, voided, resent…): kept for the preparation report. */
+    deleted_at?: string
 }
 
 const KEEP_SECONDS = 30 * 24 * 60 * 60
@@ -146,9 +148,16 @@ export async function readGroupOrderMessage(groupMessageId: number): Promise<Gro
     return raw ? (JSON.parse(raw) as GroupOrderMessage) : null
 }
 
-/** Forgets a group message's order, once the message is deleted. */
+/**
+ * Marks a group message's order record as deleted, once the message is gone
+ * from the group: no longer counted for shortages or loading, but kept (to
+ * its 30 days) so the preparation report still knows who prepared the order
+ * after it was delivered.
+ */
 export async function forgetGroupOrderMessage(groupMessageId: number) {
-    await redisClient.del(groupOrderKey(groupMessageId))
+    const record = await readGroupOrderMessage(groupMessageId)
+    if (!record) return
+    await redisClient.set(groupOrderKey(groupMessageId), JSON.stringify({ ...record, deleted_at: new Date().toISOString() }), { expiration: 'KEEPTTL' })
 }
 
 /**
@@ -287,7 +296,7 @@ export async function currentOrderMessages(orderId: string): Promise<GroupOrderM
     return (await shortagesAndMessages(orderId)).current
 }
 
-async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShortageItem[]; current: GroupOrderMessage[] }> {
+async function shortagesAndMessages(orderId: string, includeDeleted = false): Promise<{ items: OrderShortageItem[]; current: GroupOrderMessage[] }> {
     const reportIds = await redisClient.sMembers(`telegram:group-reports:${orderId}`)
     const allReports = await readJson<GroupReport>(reportIds.map((id) => `telegram:group-report:${id}`))
 
@@ -295,6 +304,7 @@ async function shortagesAndMessages(orderId: string): Promise<{ items: OrderShor
     const listed = await redisClient.lRange(orderMessagesKey(orderId), 0, -1)
     const ids = [...new Set(listed.length ? listed.map(Number) : allReports.map((report) => report.reply_to_message_id))]
     const messages = (await readJson<GroupOrderMessage>(ids.map(groupOrderKey)))
+        .filter((message) => includeDeleted || !message.deleted_at)
         .sort((a, b) => a.posted_at.localeCompare(b.posted_at))
     const lastFull = messages.map((message) => message.message_type).lastIndexOf("order")
     const current = lastFull === -1 ? messages : messages.slice(lastFull)
@@ -458,8 +468,12 @@ export type OrderPreparation = {
 
 const latestOf = (list: Thumb[]) => list.reduce((a, b) => (a.at > b.at ? a : b))
 
-export async function orderPreparation(orderId: string): Promise<OrderPreparation> {
-    const { items, current } = await shortagesAndMessages(orderId)
+/**
+ * `includeDeleted`: count the order's messages already deleted from the group
+ * too — for the preparation report, about orders since delivered.
+ */
+export async function orderPreparation(orderId: string, includeDeleted = false): Promise<OrderPreparation & { current: GroupOrderMessage[] }> {
+    const { items, current } = await shortagesAndMessages(orderId, includeDeleted)
     const isBackupList = current.some((message) => message.kind === "backup_list")
 
     let confirmed: Thumb | null = null
@@ -496,5 +510,6 @@ export async function orderPreparation(orderId: string): Promise<OrderPreparatio
         status: !confirmed ? "not_reported" : allMissing ? "missing" : short.length > 0 ? "partial" : "ready",
         confirmed,
         items,
+        current,
     }
 }

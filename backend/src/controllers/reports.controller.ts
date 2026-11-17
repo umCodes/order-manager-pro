@@ -7,6 +7,8 @@ import { businessDayKey, previousBusinessDay } from '../utils/businessDate.js';
 import { buildDailyReport } from '../services/dailyReport/report.js';
 import { markReportHandedOver } from '../services/dailyReport/store.js';
 import { createDailyReportPdfBuffer } from '../pdf/dailyReport.js';
+import { createPreparationReportPdfBuffer } from '../pdf/preparationReport.js';
+import { buildPreparationReport, preparationPeople } from '../services/preparationReport.js';
 import { getDailyReportWhatsAppSettings, sendDailyReportOnWhatsApp, settleReportDeliveries } from '../services/dailyReport/whatsapp.js';
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -136,5 +138,49 @@ export async function scheduledDailyReport(req: Request, res: Response) {
     } catch (error) {
         console.error('Daily report: the scheduled send failed', error);
         if (!res.headersSent) res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to send the daily report' });
+    }
+}
+
+function requestedDay(value: unknown) {
+    const day = typeof value === "string" && value ? value : businessDayKey();
+    if (!DAY_PATTERN.test(day)) throw new Error("day must be YYYY-MM-DD");
+    if (day > businessDayKey()) throw new Error("That business day hasn't started yet");
+    return day;
+}
+
+/**
+ * The preparation report's choices: the current business day and the one
+ * before, and for `?day=` (default today) everyone who prepared something
+ * in the Telegram group that day, for a report per person.
+ */
+export async function getPreparationReportPeople(req: Request, res: Response) {
+    try {
+        const day = requestedDay(req.query.day);
+        const today = businessDayKey();
+        res.status(200).json({ today, previous: previousBusinessDay(today), day, people: await preparationPeople(day) });
+    } catch (error) {
+        console.error('Error listing preparation report people:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to list the people' });
+    }
+}
+
+/**
+ * The preparation report PDF (Amharic) for `?day=YYYY-MM-DD` (default
+ * today): who in the Telegram group prepared which invoices and backup
+ * lists. With `?person=<id>`, only that person's.
+ */
+export async function getPreparationReportPdf(req: Request, res: Response) {
+    try {
+        const day = requestedDay(req.query.day);
+        const person = typeof req.query.person === "string" && req.query.person ? req.query.person : undefined;
+        const report = await buildPreparationReport(day, person);
+        const pdf = await createPreparationReportPdfBuffer(report, person);
+        res.setHeader("Content-Type", "application/pdf");
+        const disposition = req.query.download === "1" ? "attachment" : "inline";
+        res.setHeader("Content-Disposition", `${disposition}; filename="preparation-report-${day}.pdf"`);
+        res.status(200).send(pdf);
+    } catch (error) {
+        console.error('Error building the preparation report:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to build the preparation report' });
     }
 }

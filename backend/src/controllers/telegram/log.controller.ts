@@ -119,7 +119,8 @@ export async function getOrderPreparation(req: Request, res: Response) {
     try {
         const orderId = req.params.orderId;
         if (!orderId) throw new Error("orderId not provided")
-        res.status(200).json({ ...(await orderPreparation(String(orderId))), loading: await shippedSummary(String(orderId)) });
+        const { current: _messages, ...preparation } = await orderPreparation(String(orderId));
+        res.status(200).json({ ...preparation, loading: await shippedSummary(String(orderId)) });
     } catch (error) {
         console.error('Error reading order preparation:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });

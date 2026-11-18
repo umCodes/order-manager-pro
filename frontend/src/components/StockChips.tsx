@@ -1,14 +1,14 @@
-import { PackageCheck, Truck } from "lucide-react";
+import { ClipboardList, PackageCheck, Truck } from "lucide-react";
 
 export type StockChip = {
-  kind: "ready" | "truck";
+  kind: "ready" | "truck" | "lists";
   value: number;
   unit: string;
   /** Out of how much (an invoice line's quantity): colours the chip green / amber / red. Without it, plain. */
   of?: number;
 };
 
-const LABEL = { ready: "Reported available by the preparers", truck: "Loaded on the truck" } as const;
+const LABEL = { ready: "Reported available by the preparers", truck: "Loaded on the truck", lists: "On the backup lists" } as const;
 
 /**
  * Small icon chips, no words: 📦 what the preparers reported available, 🚚
@@ -25,7 +25,7 @@ export default function StockChips({ chips }: { chips: StockChip[] }) {
         const text = `${Math.round(chip.value * 1000) / 1000}${chip.of !== undefined ? `/${chip.of}` : ""} ${chip.unit}`.trim();
         return (
           <span key={chip.kind} className={`stock-chip stock-chip--${tone}`} title={`${LABEL[chip.kind]}: ${text}`} aria-label={`${LABEL[chip.kind]}: ${text}`}>
-            {chip.kind === "ready" ? <PackageCheck size={12} /> : <Truck size={12} />}
+            {chip.kind === "ready" ? <PackageCheck size={12} /> : chip.kind === "truck" ? <Truck size={12} /> : <ClipboardList size={12} />}
             {text}
           </span>
         );

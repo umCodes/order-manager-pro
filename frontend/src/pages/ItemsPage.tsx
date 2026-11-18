@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchOrderLoadings, fetchPreparationStatuses, sendLoadingBatch } from "../lib/api";
-import { loadingsForBreakdown, pendingKey, shortagesForBreakdown, type BreakdownLoading, type PendingLoading } from "../lib/shortages";
+import { loadingsForBreakdown, pendingKey, type BreakdownLoading, type PendingLoading } from "../lib/shortages";
+import { sentLabel } from "../lib/backupLists";
+import { businessDayKey } from "../lib/businessTime";
 import ItemLoadingSheet from "../components/ItemLoadingSheet";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
@@ -12,7 +14,7 @@ import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
 import BackupMergedView from "../components/BackupMergedView";
 import BackupMissingSection from "../components/BackupMissingSection";
-import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderLoadingView, OrderShortageItem } from "../types";
+import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderLoadingView } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -37,10 +39,10 @@ export default function ItemsPage() {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   // Invoice items or backups, and for the backups all lists merged into one or one block per list.
-  const [tab, setTab] = useState<"invoices" | "backups">("invoices");
+  const [tab, setTab] = useState<"invoices" | "backups" | "all">("invoices");
   const [backupView, setBackupView] = useState<"merged" | "grouped">("merged");
-  // Shortages reported in the Telegram group, by draft — read fresh with every load of the items.
-  const [shortagesByInvoice, setShortagesByInvoice] = useState<Record<string, OrderShortageItem[]>>({});
+  // Drafts the preparers have seen to in the Telegram group (👍 or a report) — their 📦 is shown.
+  const [seenDrafts, setSeenDrafts] = useState<Set<string>>(new Set());
   // Each draft's items on its Telegram group messages and what the driver confirmed loaded of them.
   const [loadingsByInvoice, setLoadingsByInvoice] = useState<Record<string, OrderLoadingView>>({});
   // The breakdown entry whose loading choices are open.
@@ -111,7 +113,7 @@ export default function ItemsPage() {
         const invoiceIds = [...new Set(list.flatMap((item) => item.breakdown.map((entry) => entry.invoice_id)))];
         fetchPreparationStatuses(invoiceIds)
           .then((statuses) =>
-            setShortagesByInvoice(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.items ?? []]))),
+            setSeenDrafts(new Set(Object.entries(statuses).filter(([, entry]) => entry.status !== "not_reported").map(([id]) => id))),
           )
           .catch(() => {});
         fetchOrderLoadings(invoiceIds)
@@ -145,19 +147,57 @@ export default function ItemsPage() {
     });
   }
 
-  const dayGroups = useMemo(() => {
-    const direction = sortDirection === "asc" ? 1 : -1;
-    return groupItemsByScheduledDay(items).map((group) => {
-      const sorted = [...group.items].sort((a, b) => {
-        if (sortKey === "quantity") return direction * (a.quantity - b.quantity);
-        return direction * a.name.localeCompare(b.name);
+  // Backup lists' items as items (each list a source), for the All tab — with the category of the same item on drafts.
+  const allItems = useMemo(() => {
+    const categories = new Map(items.map((item) => [item.name, item.category]));
+    const backupItems: DraftLineItemSummary[] = backupLists.lists.flatMap((list) =>
+      list.items.map((item) => {
+        const name = item.name || item.description;
+        return {
+          name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          category: categories.get(name) ?? null,
+          breakdown: [
+            {
+              invoice_id: list.id,
+              invoice_number: sentLabel(list.created_at),
+              customer_name: "Backup",
+              date: list.date ?? businessDayKey(),
+              quantity: item.quantity,
+              unit: item.unit,
+              item_id: item.item_id,
+              description: item.description,
+            },
+          ],
+        };
+      }),
+    );
+    return [...items, ...backupItems];
+  }, [items, backupLists]);
+
+  const groupDays = useCallback(
+    (list: DraftLineItemSummary[]) => {
+      const direction = sortDirection === "asc" ? 1 : -1;
+      return groupItemsByScheduledDay(list).map((group) => {
+        const sorted = [...group.items].sort((a, b) => {
+          if (sortKey === "quantity") return direction * (a.quantity - b.quantity);
+          return direction * a.name.localeCompare(b.name);
+        });
+        return { ...group, items: sorted, categories: groupItemsByCategory(sorted, categoryOrder) };
       });
-      return { ...group, items: sorted, categories: groupItemsByCategory(sorted, categoryOrder) };
-    });
-  }, [items, sortKey, sortDirection, categoryOrder]);
+    },
+    [sortKey, sortDirection, categoryOrder],
+  );
+  const dayGroups = useMemo(() => groupDays(tab === "all" ? allItems : items), [groupDays, tab, allItems, items]);
+
+  // Orders whose 📦 is shown: drafts the preparers saw to, and backup lists anyone replied or reacted to.
+  const isSeen = (orderId: string) =>
+    seenDrafts.has(orderId) || backupLists.lists.some((list) => list.id === orderId && !!list.status && list.status !== "not_reported");
 
   // Category headings only help once items actually have categories.
-  const hasCategories = items.some((item) => item.category);
+  const hasCategories = (tab === "all" ? allItems : items).some((item) => item.category);
 
   return (
     <div>
@@ -183,19 +223,28 @@ export default function ItemsPage() {
         >
           Backups
         </button>
+        <button
+          type="button"
+          className={`mode-toggle__option${tab === "all" ? " mode-toggle__option--active" : ""}`}
+          onClick={() => setTab("all")}
+        >
+          All
+        </button>
       </div>
 
-      {tab === "invoices" ? (
+      {tab !== "backups" ? (
         <>
           <p className="page-subtitle">
-            {items.length} item{items.length === 1 ? "" : "s"} across drafts
+            {tab === "all"
+              ? "Drafts and backup lists together"
+              : `${items.length} item${items.length === 1 ? "" : "s"} across drafts`}
           </p>
 
           <SortRow options={SORT_OPTIONS} activeKey={sortKey} direction={sortDirection} onToggle={toggleSort} />
 
           {dayGroups.length === 0 ? (
             <div className="line-items">
-              <div className="items-area__empty">No items in drafts</div>
+              <div className="items-area__empty">{tab === "all" ? "No items in drafts or backup lists" : "No items in drafts"}</div>
             </div>
           ) : (
             dayGroups.map((group) => (
@@ -220,7 +269,7 @@ export default function ItemsPage() {
                     )}
                     <div className="line-items day-group__line-items">
                       {categoryGroup.items.map((item) => {
-                        const rowKey = `${group.date ?? ""}|${item.name}`;
+                        const rowKey = `${tab}|${group.date ?? ""}|${item.name}`;
                         return (
                           <ItemBreakdownRow
                             key={rowKey}
@@ -229,7 +278,7 @@ export default function ItemsPage() {
                             isExpanded={expandedItems.has(rowKey)}
                             onToggleChecked={() => toggleChecked(rowKey)}
                             onToggleExpanded={() => toggleExpanded(rowKey)}
-                            shortages={shortagesForBreakdown(item.breakdown, shortagesByInvoice)}
+                            isSeen={isSeen}
                             loadings={loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)}
                             onLoadingTap={(index) => {
                               const loading = loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)[index];

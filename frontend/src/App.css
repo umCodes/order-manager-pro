@@ -4933,3 +4933,14 @@ button.backup-list-line:active {
   color: #1e40af;
   background: #dbeafe;
 }
+
+/* Items tab breakdown: a source's name, then its 📦 / 🚚 chips under it. */
+.item-breakdown__source--stacked {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-breakdown__source--stacked .stock-chips {
+  margin-top: 3px;
+}

@@ -1,4 +1,4 @@
-import type { OrderLoadingView, BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
+import type { BackupList, BackupMissingItem, CatalogItem, Contact, CustomerPayment, DraftInvoice, DraftLineItemSummary, InvoiceDetail, OrderPreparation } from "../types";
 import { cachedFetch, invalidateCache, updateCachedValue } from "./requestCache";
 
 /**
@@ -830,7 +830,7 @@ export type PreparationReportPeople = {
   today: string;
   previous: string;
   day: string;
-  people: { id: string; name: string; orders: number; reports: number; problems?: number }[];
+  people: { id: string; name: string; orders: number; reports: number }[];
 };
 
 export async function fetchPreparationReportPeople(day?: string): Promise<PreparationReportPeople> {
@@ -899,42 +899,8 @@ export async function recordAppliedShortage(orderId: string, itemKey: string, qu
 
 
 
-/** Several orders' loading at once, by order id (for the Items tab). */
-export async function fetchOrderLoadings(orderIds: string[]): Promise<Record<string, OrderLoadingView>> {
-  if (orderIds.length === 0) return {};
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/loading?ids=${orderIds.map(encodeURIComponent).join(",")}`);
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to fetch loadings (${response.status})`);
-  }
-  const data = await response.json();
-  return data.loadings ?? {};
-}
 
-/** One loading confirmation from the Items tab: what was received of an item of an order (null clears it). */
-export type LoadingChange = { order_id: string; item_key: string; received: number | null };
 
-/**
- * Sends the Items tab's loading confirmations at once: each order is saved
- * and its Telegram group messages edited once. Answers with each order's
- * loading, the orders that failed, and how many Telegram edits failed.
- */
-export async function sendLoadingBatch(changes: LoadingChange[]): Promise<{
-  loadings: Record<string, OrderLoadingView>;
-  failed: { order_id: string; error: string }[];
-  telegram_failed: number;
-}> {
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/group/loading/batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ changes }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to send (${response.status})`);
-  }
-  return response.json();
-}
 
 
 /** Several orders' preparation at once, by order id (for the drafts list and the Items tab). */

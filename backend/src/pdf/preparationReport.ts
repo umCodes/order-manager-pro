@@ -3,19 +3,17 @@ import { FONT_ETHIOPIC_MERGED_BOLD, FONT_ETHIOPIC_MERGED_REGULAR } from "./asset
 import { businessDayWindow, businessTimeParts } from "../utils/businessDate.js";
 import { toAmharicUnit } from "../utils/units.js";
 import { drawMixedLine, registerArabicFonts } from "./mixedText.js";
-import type { DriverCheck, ItemCheck, PersonOrder, PersonReport, PreparationReportData, ReportIssue } from "../services/preparationReport.js";
+import type { PersonOrder, PersonReport, PreparationReportData } from "../services/preparationReport.js";
 import type { PreparationStatus } from "../services/telegram/groupOrders.js";
 
 /**
  * The preparation report (A4, Amharic, large print): who in the Telegram
- * group prepared which invoices and backup lists on a business day, against
- * what the driver confirmed loading. Every order is a row with three
- * columns side by side — what the preparers said, what the driver found,
- * and whether the two agree — each with an icon (drawn, so they print the
- * same everywhere) and a word. Items where they differ are listed under the
- * order. For everyone: a legend, a summary per person, the problems to look
- * at again, each person's page, and the orders nobody confirmed. For one
- * person: their page and their problems.
+ * group prepared which invoices and backup lists on a business day — all
+ * from the group (👍, shortage reports, ❤️). Every order is a row with the
+ * preparers' status as an icon (drawn, so they print the same everywhere)
+ * and a word; items they reported short are listed under it. For everyone:
+ * a legend, a summary per person, each person's page, and the orders
+ * nobody confirmed. For one person: their page.
  */
 
 const WEEKDAYS = ["እሁድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"];
@@ -31,8 +29,6 @@ const AMBER = "#d97706";
 const RED = "#dc2626";
 const GREY = "#9ca3af";
 const BLUE = "#2563eb";
-const PROBLEM_FILL = "#fef2f2";
-const WARN_FILL = "#fffbeb";
 const MARGIN = 36;
 
 type IconKind = "ok" | "partial" | "missing" | "unknown" | "problem" | "pending" | "none" | "person" | "invoice" | "list" | "report";
@@ -43,20 +39,6 @@ const PREPARERS: Record<PreparationStatus, Mark> = {
   partial: { icon: "partial", text: "በከፊል", color: AMBER },
   missing: { icon: "missing", text: "የለም", color: RED },
   not_reported: { icon: "unknown", text: "አልተዘገበም", color: GREY },
-};
-const DRIVER: Record<DriverCheck["status"], Mark> = {
-  complete: { icon: "ok", text: "ሙሉ ደርሷል", color: GREEN },
-  partial: { icon: "partial", text: "በከፊል", color: AMBER },
-  missing: { icon: "missing", text: "አልደረሰም", color: RED },
-  partly_checked: { icon: "pending", text: "ከፊሉ ብቻ", color: AMBER },
-  not_checked: { icon: "unknown", text: "አልተረጋገጠም", color: GREY },
-  none: { icon: "none", text: "—", color: GREY },
-};
-const VERDICT: Record<DriverCheck["verdict"], Mark> = {
-  ok: { icon: "ok", text: "ትክክል", color: GREEN },
-  problem: { icon: "problem", text: "ችግር አለ", color: RED },
-  pending: { icon: "pending", text: "ይጠበቃል", color: GREY },
-  none: { icon: "none", text: "—", color: GREY },
 };
 const HOW: Record<PersonOrder["how"], string> = {
   thumb: "ዝግጁ ብሏል",
@@ -237,59 +219,27 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
     function legend() {
       ensure(80);
       const y = doc.y;
-      doc.roundedRect(L, y, W, 66, 8).lineWidth(0.8).strokeColor(RULE).stroke();
+      doc.roundedRect(L, y, W, 50, 8).lineWidth(0.8).strokeColor(RULE).stroke();
       doc.font("B").fontSize(10.5).fillColor(SECOND).text("ምልክቶች", L + 12, y + 8, { lineBreak: false });
       const items: Mark[] = [
-        { icon: "ok", text: "ሙሉ / ትክክል", color: GREEN },
+        { icon: "ok", text: "ዝግጁ", color: GREEN },
         { icon: "partial", text: "በከፊል", color: AMBER },
         { icon: "missing", text: "የለም", color: RED },
-        { icon: "unknown", text: "አልተዘገበም / አልተረጋገጠም", color: GREY },
-        { icon: "problem", text: "ችግር አለ — መታየት አለበት", color: RED },
-        { icon: "pending", text: "ሹፌሩ ገና አላረጋገጠም", color: GREY },
+        { icon: "unknown", text: "አልተዘገበም", color: GREY },
       ];
-      const colW = (W - 24) / 3;
-      items.forEach((m, i) => mark(m, L + 12 + (i % 3) * colW, y + 32 + Math.floor(i / 3) * 20, colW));
-      doc.y = y + 78;
-    }
-
-    // ---------- problems ----------
-    const issueCols: Col[] = [{ w: 34 }, { w: 120 }, { w: 100 }, { w: W - 254 }];
-    function issuesTable(issues: ReportIssue[]) {
-      if (issues.length === 0) {
-        empty("ምንም ችግር የለም — አዘጋጆቹና ሹፌሩ ይስማማሉ።");
-        return;
-      }
-      header(issueCols, ["", "ደረሰኝ", "ያዘጋጀው", "ችግሩ"]);
-      issues.forEach((issue) => {
-        const high = issue.severity === "high";
-        row(
-          issueCols,
-          [
-            (x, _t, _w, mid) => icon(high ? "problem" : "pending", x + 9, mid, 8, high ? RED : AMBER),
-            text(issue.order_number, { bold: true, sub: kindLabel(issue) }),
-            text(issue.people.length ? issue.people.join("፣ ") : "ማንም", { color: issue.people.length ? INK : RED }),
-            text(issue.text, { bold: high, size: 11.5, color: high ? "#7f1d1d" : INK }),
-          ],
-          42,
-          high ? PROBLEM_FILL : WARN_FILL,
-        );
-      });
+      const colW = (W - 24) / 4;
+      items.forEach((m, i) => mark(m, L + 12 + i * colW, y + 32, colW));
+      doc.y = y + 60;
     }
 
     // ---------- one person ----------
     const invoicesOf = (person: PersonReport) => person.orders.filter((order) => order.kind === "invoice");
     const listsOf = (person: PersonReport) => person.orders.filter((order) => order.kind === "backup_list");
 
-    const orderCols: Col[] = [{ w: 26, align: "right" }, { w: 150 }, { w: 112 }, { w: 112 }, { w: W - 400 }];
-    /** An item under its order: name (ordered), then the preparers' and the driver's amounts in their columns. */
-    function itemRow(item: ItemCheck) {
-      const prepMark = item.prepared >= item.ordered ? PREPARERS.ready : item.prepared > 0 ? PREPARERS.partial : PREPARERS.missing;
-      const driverMark =
-        item.received === null ? null : item.received >= item.ordered ? DRIVER.complete : item.received > 0 ? DRIVER.partial : DRIVER.missing;
-      const small = (x: number, mid: number, w: number, m: Mark | null, value: string) => {
-        if (m) icon(m.icon, x + 6, mid, 5);
-        drawMixedLine(doc, value, x + (m ? 16 : 4), mid - 7, { font: "R", size: 11, color: m ? INK : SECOND, width: w - 16 });
-      };
+    const orderCols: Col[] = [{ w: 26, align: "right" }, { w: 190 }, { w: 150 }, { w: W - 366, align: "right" }];
+    /** An item the preparers reported short, under its order: name (ordered), then what they said is available. */
+    function shortRow(item: PersonOrder["short"][number]) {
+      const m = item.available > 0 ? PREPARERS.partial : PREPARERS.missing;
       row(
         orderCols,
         [
@@ -299,33 +249,29 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
             doc.moveTo(x + 2, top - 6).lineTo(x + 2, mid - 4).lineTo(x + 9, mid - 4).lineWidth(1).strokeColor(GREY).stroke();
             text(item.description, { size: 11, sub: `ታዝዟል ${amount(item.ordered, item.unit)}` })(x + 14, top, w - 14, mid);
           },
-          (x, _t, w, mid) => small(x, mid, w, prepMark, amount(item.prepared, item.unit)),
-          (x, _t, w, mid) => small(x, mid, w, driverMark, item.received === null ? "—" : amount(item.received, item.unit)),
           (x, _t, w, mid) => {
-            if (!item.problem) return;
-            icon("problem", x + 6, mid, 5);
-            drawMixedLine(doc, item.problem === "not_found" ? "አልተገኘም" : "ተገኝቷል", x + 16, mid - 7, { font: "B", bold: true, size: 11, color: RED, width: w - 16 });
+            icon(m.icon, x + 6, mid, 5);
+            drawMixedLine(doc, amount(item.available, item.unit), x + 16, mid - 7, { font: "B", bold: true, size: 11, color: m.color, width: w - 16 });
           },
+          text(`−${amount(item.short, item.unit)}`, { size: 11, color: m.color, align: "right" }),
         ],
         36,
-        item.problem ? PROBLEM_FILL : "#fafafa",
+        "#fafafa",
       );
     }
 
-    function orderRow(order: { order_number: string; check: DriverCheck }, index: number, sub: string, preparers: Mark) {
+    function orderRow(order: { order_number: string; items: number; short?: PersonOrder["short"] }, index: number, sub: string, preparers: Mark) {
       row(
         orderCols,
         [
           text(String(index + 1), { color: SECOND, align: "right" }),
           text(order.order_number, { bold: true, sub }),
           markCell(preparers),
-          markCell(DRIVER[order.check.status]),
-          markCell(VERDICT[order.check.verdict]),
+          text(`${order.items} እቃዎች`, { color: SECOND, align: "right" }),
         ],
         44,
-        order.check.verdict === "problem" ? PROBLEM_FILL : undefined,
       );
-      for (const item of order.check.items) itemRow(item);
+      for (const item of order.short ?? []) shortRow(item);
     }
 
     function personPage(person: PersonReport) {
@@ -334,13 +280,12 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
         ["ደረሰኞች", invoicesOf(person).length, "invoice", INK],
         ["ትርፍ ዝርዝሮች", listsOf(person).length, "list", INK],
         ["የጎደሉ ሪፖርቶች", person.reports, "report", BLUE],
-        ["ችግሮች", person.problems, "problem", person.problems > 0 ? RED : GREY],
       ]);
       if (person.orders.length === 0) {
         empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።", "unknown");
         return;
       }
-      header(orderCols, ["#", "ደረሰኝ", "አዘጋጅ", "ሹፌር", "ውጤት"]);
+      header(orderCols, ["#", "ደረሰኝ", "ሁኔታ", "እቃዎች"]);
       person.orders.forEach((order, i) =>
         orderRow(order, i, `${time(order.at)} · ${order.kind === "backup_list" ? "ትርፍ · " : ""}${HOW[order.how]}`, PREPARERS[order.status]),
       );
@@ -362,26 +307,24 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
     if (personId) {
       if (single) {
         personPage(single);
-        section("መታየት ያለባቸው", "በዚህ ሰው ደረሰኞች ላይ አዘጋጁና ሹፌሩ ያልተስማሙባቸው ወይም ያልተረጋገጡ።", "problem");
-        issuesTable(report.issues);
       } else {
         empty("በዚህ ቀን ያዘጋጀው ደረሰኝ የለም።", "unknown");
       }
     } else {
       // ---------- summary ----------
-      const high = report.issues.filter((issue) => issue.severity === "high").length;
-      const waiting = report.issues.filter((issue) => issue.severity === "medium").length;
       const unreported = report.unreported.filter((order) => order.kind === "invoice").length;
+      const prepared = new Set(report.people.flatMap((person) => invoicesOf(person).map((order) => order.order_id))).size;
+      const reports = report.people.reduce((sum, person) => sum + person.reports, 0);
       section("ማጠቃለያ", "", "person");
       stats([
-        ["ችግሮች", high, "problem", high > 0 ? RED : GREY],
-        ["ሹፌሩ ያላረጋገጣቸው", waiting, "pending", AMBER],
+        ["የተዘጋጁ ደረሰኞች", prepared, "ok", GREEN],
+        ["የጎደሉ ሪፖርቶች", reports, "report", BLUE],
         ["ያልተዘገቡ ደረሰኞች", unreported, "unknown", GREY],
       ]);
-      const summaryCols: Col[] = [{ w: W - 320 }, { w: 80, align: "right" }, { w: 80, align: "right" }, { w: 80, align: "right" }, { w: 80, align: "right" }];
+      const summaryCols: Col[] = [{ w: W - 300 }, { w: 100, align: "right" }, { w: 100, align: "right" }, { w: 100, align: "right" }];
       if (report.people.length === 0) empty("በዚህ ቀን ማንም ያዘጋጀው ደረሰኝ የለም።", "unknown");
       else {
-        header(summaryCols, ["ስም", "ደረሰኞች", "ትርፍ", "ሪፖርቶች", "ችግሮች"]);
+        header(summaryCols, ["ስም", "ደረሰኞች", "ትርፍ", "ሪፖርቶች"]);
         report.people.forEach((person) =>
           row(
             summaryCols,
@@ -393,31 +336,19 @@ export function createPreparationReportPdfBuffer(report: PreparationReportData, 
               text(String(invoicesOf(person).length), { align: "right" }),
               text(String(listsOf(person).length), { align: "right" }),
               text(String(person.reports), { align: "right" }),
-              (x, _t, w, mid) => {
-                if (person.problems > 0) {
-                  icon("problem", x + w - 28, mid, 6);
-                  drawMixedLine(doc, String(person.problems), x, mid - 9, { font: "B", bold: true, size: 12.5, color: RED, width: w, align: "right" });
-                } else icon("ok", x + w - 6, mid, 6);
-              },
             ],
             36,
-            person.problems > 0 ? PROBLEM_FILL : undefined,
           ),
         );
       }
-
-      section("መታየት ያለባቸው", "ቀይ፦ አዘጋጁ ያለውና ሹፌሩ ያገኘው አይስማሙም። ቢጫ፦ ሹፌሩ ገና አላረጋገጠም።", "problem");
-      issuesTable(report.issues);
 
       for (const person of report.people) personPage(person);
 
       section("ያልተዘገቡ ደረሰኞች", "በዚህ ቀን ተልከው ማንም ዝግጁ መሆናቸውን ያላረጋገጠላቸው።", "unknown");
       if (report.unreported.length === 0) empty("ሁሉም ደረሰኞች ተዘግበዋል።");
       else {
-        header(orderCols, ["#", "ደረሰኝ", "አዘጋጅ", "ሹፌር", "ውጤት"]);
-        report.unreported.forEach((order, i) =>
-          orderRow(order, i, `${time(order.posted_at)} · ${kindLabel(order)} · ${order.items} እቃዎች`, PREPARERS.not_reported),
-        );
+        header(orderCols, ["#", "ደረሰኝ", "ሁኔታ", "እቃዎች"]);
+        report.unreported.forEach((order, i) => orderRow(order, i, `${time(order.posted_at)} · ${kindLabel(order)}`, PREPARERS.not_reported));
       }
     }
 

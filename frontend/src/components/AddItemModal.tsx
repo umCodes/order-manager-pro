@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
-import { fetchBackupLists, fetchGeneralItemIds, fetchItemCategorySettings, fetchItems, fetchOrderLoadings } from "../lib/api";
+import { fetchBackupLists, fetchGeneralItemIds, fetchItemCategorySettings, fetchItems } from "../lib/api";
 import { backupStockByItem, stockIn, type BackupStockPart } from "../lib/backupLists";
 import type { StockChip } from "./StockChips";
 import { unitOptions } from "../lib/units";
@@ -136,16 +136,15 @@ function SheetContent({
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // General items (Settings): their unit can be changed per line.
   const [generalItemIds, setGeneralItemIds] = useState<Set<string>>(new Set());
-  // Backup stock per item: what the preparers reported ready, and what's on the truck.
+  // Backup stock per item: what the preparers reported ready.
   const [backupStock, setBackupStock] = useState<Map<string, BackupStockPart[]>>(new Map());
 
   useEffect(() => {
     if (returnItems) return;
     let cancelled = false;
     fetchBackupLists()
-      .then(async ({ lists }) => {
-        const loadings = await fetchOrderLoadings(lists.map((list) => list.id)).catch(() => ({}));
-        if (!cancelled) setBackupStock(backupStockByItem(lists, loadings));
+      .then(({ lists }) => {
+        if (!cancelled) setBackupStock(backupStockByItem(lists));
       })
       .catch(() => {});
     return () => {
@@ -153,13 +152,10 @@ function SheetContent({
     };
   }, [returnItems]);
 
-  /** 📦 / 🚚 chips for an item in its own unit (only what's known). */
+  /** 📦 chip for an item in its own unit (only when the preparers reported some backup stock of it). */
   function stockChips(item: CatalogItem): StockChip[] {
-    const { ready, truck } = stockIn(backupStock.get(item.item_id), item.unit);
-    return [
-      ...(ready !== null ? [{ kind: "ready" as const, value: ready, unit: item.unit }] : []),
-      ...(truck !== null ? [{ kind: "truck" as const, value: truck, unit: item.unit }] : []),
-    ];
+    const ready = stockIn(backupStock.get(item.item_id), item.unit);
+    return ready !== null ? [{ kind: "ready" as const, value: ready, unit: item.unit }] : [];
   }
 
   useEffect(() => {

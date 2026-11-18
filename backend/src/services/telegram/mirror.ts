@@ -16,7 +16,7 @@ import { forgetGroupOrderMessage } from "./groupOrders.js"
 const KEEP_SECONDS = 30 * 24 * 60 * 60
 const toGroupKey = (channelMessageId: number) => `telegram:mirror:${channelMessageId}`
 const toChannelKey = (groupMessageId: number) => `telegram:mirror:group:${groupMessageId}`
-/** The plain text a group copy was last posted or edited with (before any loading marks), so the marks can be redrawn on it. */
+/** The plain text a group copy was last posted or edited with — kept 30 days, after the message is deleted too. */
 const groupTextKey = (groupMessageId: number) => `telegram:mirror:group-text:${groupMessageId}`
 
 async function rememberGroupText(groupMessageId: number, text: string) {
@@ -76,23 +76,13 @@ export async function mirrorSend(text: string, channelMessageId: number, replyTo
     }
 }
 
-/**
- * Edits the copy of a channel message the same way, if it has one — keeping
- * its loading marks (🚚, see loading.ts) when its order was marked loaded.
- */
+/** Edits the copy of a channel message the same way, if it has one. */
 export async function mirrorEdit(text: string, channelMessageId: number) {
     try {
         const copyId = await groupMessageId(channelMessageId)
         if (!copyId) return
         await rememberGroupText(copyId, text)
-        const { loadingMarksFor } = await import("./loading.js")
-        const marked = await loadingMarksFor(copyId, text)
-        const response = await TelegramApi("editMessageText", "POST", {
-            chat_id: TELEGRAM_GROUP_CHATID,
-            message_id: copyId,
-            text: marked.text,
-            ...(marked.entities.length ? { entities: marked.entities } : {}),
-        })
+        const response = await TelegramApi("editMessageText", "POST", { chat_id: TELEGRAM_GROUP_CHATID, message_id: copyId, text })
         if (!response.ok) throw response
     } catch (error) {
         console.error(`Telegram group copy: couldn't edit the copy of message ${channelMessageId}:`, error)

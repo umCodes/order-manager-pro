@@ -4453,240 +4453,6 @@ label {
   }
 }
 
-/* 🚚 icon (no text): every item of the order confirmed loaded on the Items tab. */
-.shipped-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-  color: var(--color-green-700);
-  background: #dcfce7;
-  flex-shrink: 0;
-  vertical-align: middle;
-}
-
-.shipped-badge--short {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-/* Items tab: loading each draft's item (tap a breakdown row → ItemLoadingSheet). */
-.item-breakdown__row--tappable {
-  width: 100%;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  margin: 0 -6px;
-  padding: 7px 6px;
-  width: calc(100% + 12px);
-  font: inherit;
-  text-align: start;
-  color: inherit;
-  cursor: pointer;
-  align-items: center;
-}
-
-.item-breakdown__row--tappable:hover,
-.item-breakdown__row--tappable:active {
-  background: var(--color-gray-100);
-}
-
-.item-breakdown__row--tappable .item-breakdown__quantity {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.item-breakdown__chevron {
-  color: var(--color-gray-400);
-  flex-shrink: 0;
-}
-
-.item-loading-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-inline-end: 6px;
-  border-radius: 50%;
-  vertical-align: -2px;
-  border: 1.5px solid var(--color-gray-300, #d1d5db);
-  color: #fff;
-}
-
-.item-loading-dot--complete {
-  background: #16a34a;
-  border-color: #16a34a;
-}
-
-.item-loading-dot--partial {
-  background: #f59e0b;
-  border-color: #f59e0b;
-}
-
-.item-loading-dot--missing {
-  background: #dc2626;
-  border-color: #dc2626;
-}
-
-.item-loading-struck {
-  text-decoration: line-through;
-  color: var(--color-gray-400);
-}
-
-.item-loading-got {
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
-}
-
-.item-loading-got--partial {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-.item-loading-got--missing {
-  color: #991b1b;
-  background: #fee2e2;
-}
-
-.item-loading-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--color-gray-500);
-}
-
-.item-loading-progress--done {
-  color: var(--color-green-700);
-  font-weight: 600;
-}
-
-.item-loading-sheet__subtitle {
-  margin-top: -6px;
-  font-size: 13px;
-  color: var(--color-gray-500);
-}
-
-.item-loading-sheet__facts {
-  margin: 8px 0 14px;
-  font-size: 13px;
-  color: var(--color-gray-700);
-}
-
-.item-loading-sheet__choices {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.item-loading-choice {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--color-gray-200, #e5e7eb);
-  background: #fff;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: start;
-  cursor: pointer;
-}
-
-.item-loading-choice span {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--color-gray-500);
-}
-
-.item-loading-choice--complete {
-  color: #15803d;
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
-.item-loading-choice--current {
-  border-color: #16a34a;
-}
-
-.item-loading-choice--incomplete {
-  color: #b45309;
-  border-color: #fde68a;
-  background: #fffbeb;
-}
-
-.item-loading-choice--clear {
-  color: var(--color-gray-700);
-}
-
-.item-loading-sheet__hint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--color-gray-500);
-}
-
-/* A change not sent to Telegram yet. */
-.item-loading-unsent {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-inline-start: 6px;
-  border-radius: 50%;
-  background: #2563eb;
-  vertical-align: middle;
-}
-
-.item-breakdown__all {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 6px 0 4px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.item-breakdown__all--done {
-  cursor: default;
-  opacity: 0.7;
-}
-
-/* Items tab: unsent loading changes, sent to Telegram in one go. */
-.loading-send-bar {
-  position: sticky;
-  bottom: calc(68px + env(safe-area-inset-bottom));
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.loading-send-bar__message {
-  font-size: 13px;
-  color: var(--color-gray-700);
-}
 
 /* Preparation report: day choice, then everyone or one person. */
 .prep-report__days {
@@ -4754,10 +4520,6 @@ label {
   color: var(--color-gray-500);
 }
 
-.prep-report__problems {
-  color: var(--color-red-600);
-  font-weight: 600;
-}
 
 /* Backups tab: one simple card per item (BackupItemRow). */
 .backup-items {
@@ -4839,23 +4601,8 @@ label {
   color: inherit;
 }
 
-button.backup-list-line {
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-button.backup-list-line:hover,
-button.backup-list-line:active {
-  background: var(--color-gray-100);
-}
-
 .backup-list-line:last-child {
   border-bottom: none;
-}
-
-.backup-list-line .item-loading-dot {
-  margin: 0;
-  flex-shrink: 0;
 }
 
 .backup-list-line__main {
@@ -4893,7 +4640,7 @@ button.backup-list-line:active {
   color: var(--color-gray-500);
 }
 
-/* 📦 reported available / 🚚 loaded: icon chips, no words (StockChips). */
+/* 📦 reported available / 📋 on the lists: icon chips, no words (StockChips). */
 .stock-chips {
   display: inline-flex;
   flex-wrap: wrap;
@@ -4934,7 +4681,7 @@ button.backup-list-line:active {
   background: #dbeafe;
 }
 
-/* Items tab breakdown: a source's name, then its 📦 / 🚚 chips under it. */
+/* Items tab breakdown: a source's name, then its 📦 chip under it. */
 .item-breakdown__source--stacked {
   display: flex;
   flex-direction: column;

@@ -28,8 +28,7 @@ import PreparationReportButton from "../components/PreparationReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
-import ShippedBadge from "../components/ShippedBadge";
-import type { DraftInvoice, LoadingSummary, PreparationStatus } from "../types";
+import type { DraftInvoice, PreparationStatus } from "../types";
 import Skeleton from "../components/Skeleton";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
@@ -107,22 +106,15 @@ export default function DraftsPage({
   // Each draft's preparation in the Telegram group (👍 and shortages), read
   // fresh with every load of the drafts; missing ones show nothing.
   const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
-  // Each draft's "Shipped" badge, once every item on it was confirmed loaded.
-  const [loadings, setLoadings] = useState<Record<string, LoadingSummary>>({});
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
     return fetchDraftInvoices(options)
       .then((list) => {
         setDrafts(list);
         fetchPreparationStatuses(list.map((draft) => draft.invoice_id))
-          .then((statuses) => {
-            setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status])));
-            setLoadings(
-              Object.fromEntries(
-                Object.entries(statuses).flatMap(([id, entry]) => (entry.loading ? [[id, entry.loading]] : [])),
-              ),
-            );
-          })
+          .then((statuses) =>
+            setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status]))),
+          )
           .catch(() => {});
       })
       .catch(() => setDrafts([]));
@@ -322,8 +314,7 @@ export default function DraftsPage({
                         <div className="draft-card__top">
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                            {/* Right to left: send, PDF, status, the preparers' report, then shipped. */}
-                            {loadings[invoice.invoice_id] && <ShippedBadge loading={loadings[invoice.invoice_id]} />}
+                            {/* Right to left: send, PDF, status, then the preparers' report. */}
                             {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />

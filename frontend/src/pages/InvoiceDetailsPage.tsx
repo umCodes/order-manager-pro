@@ -15,7 +15,6 @@ import {
   updateInvoiceLineItems,
   updateInvoiceCustomer,
   fetchOrderPreparation,
-  fetchOrderLoadings,
   recordAppliedShortage,
   fetchInvoiceSentNotifySetting,
 } from "../lib/api";
@@ -46,11 +45,10 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
-import ShippedBadge from "../components/ShippedBadge";
 import StockChips from "../components/StockChips";
-import { linesWithReportApplied, matchShortagesToLines, loadingsForBreakdown } from "../lib/shortages";
+import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
-import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderLoadingView, OrderPreparation, OrderShortageItem } from "../types";
+import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
 import Skeleton from "../components/Skeleton";
 
 type Props = {
@@ -219,21 +217,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
     fetchOrderPreparation(invoice.invoice_id)
       .then((result) => {
         if (!cancelled) setPreparation(result);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [invoice]);
-
-  // What was loaded on the truck for each item (confirmed on the Items tab), re-read with the invoice.
-  const [loadingView, setLoadingView] = useState<OrderLoadingView | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (!invoice || invoice.status !== "draft") return;
-    fetchOrderLoadings([invoice.invoice_id])
-      .then((views) => {
-        if (!cancelled) setLoadingView(views[invoice.invoice_id] ?? null);
       })
       .catch(() => {});
     return () => {
@@ -474,23 +457,19 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
   // (sent ones with an automatic reason, see lib/invoiceChangeReason) —
   // splitting is the one exception, still draft-only.
   const isDraft = invoice?.status === "draft";
-  // Each line's 📦 (reported available, once the preparers saw to the order) and 🚚 (loaded) chips.
-  const lineLoadings = new Map(
-    (isDraft && loadingView?.order_id === invoice?.invoice_id ? displayLineItems : []).flatMap((line) => {
-      const match = loadingsForBreakdown([{ invoice_id: invoice!.invoice_id, item_id: line.item_id, description: line.description }], { [invoice!.invoice_id]: loadingView! })[0];
-      if (!match) return [];
-      const reported = !!preparation && preparation.order_id === invoice?.invoice_id && preparation.status !== "not_reported";
-      const chips = [
-        ...(reported ? [{ kind: "ready" as const, value: match.item.reported, of: match.item.ordered, unit: match.item.unit }] : []),
-        ...(match.loaded ? [{ kind: "truck" as const, value: match.loaded.received, of: match.item.ordered, unit: match.item.unit }] : []),
-      ];
-      return chips.length ? [[line.line_item_id, chips] as const] : [];
-    }),
-  );
   const { byLine: shortagesByLine, unmatched: unmatchedShortages } = matchShortagesToLines(
     displayLineItems,
     isDraft && preparation?.order_id === invoice?.invoice_id ? preparation.items : [],
   );
+
+  // Each line's 📦: what the preparers reported available (its reported shortage, or all of it), once they saw to the order.
+  const lineReported = (line: InvoiceDetailLineItem) => {
+    if (!isDraft || !preparation || preparation.order_id !== invoice?.invoice_id || preparation.status === "not_reported") return null;
+    const shortage = shortagesByLine.get(line.line_item_id);
+    return shortage
+      ? { kind: "ready" as const, value: shortage.available, of: shortage.ordered, unit: shortage.unit }
+      : { kind: "ready" as const, value: line.quantity, of: line.quantity, unit: line.unit };
+  };
 
   // A selection only matters if it's a draft (splitting a sent invoice's
   // line items isn't supported) and it's a strict subset of the items —
@@ -995,12 +974,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                   <>
                     {" "}
                     <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
-                    {preparation.loading && (
-                      <>
-                        {" "}
-                        <ShippedBadge loading={preparation.loading} />
-                      </>
-                    )}
+
                   </>
                 )}
               </span>
@@ -1048,9 +1022,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                       <div className="line-item__meta">
                         {item.quantity} {item.unit} × {currency(item.rate)}
                       </div>
-                      {lineLoadings.get(item.line_item_id) && (
-                        <StockChips chips={lineLoadings.get(item.line_item_id)!} />
-                      )}
+                      {lineReported(item) && <StockChips chips={[lineReported(item)!]} />}
                       {shortage && (
                         <ShortageNote
                           shortage={shortage}

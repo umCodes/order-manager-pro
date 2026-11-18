@@ -5,7 +5,6 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { orderLoadingView, setItemsLoading } from '../../services/telegram/loading.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -120,7 +119,7 @@ export async function getOrderPreparation(req: Request, res: Response) {
         const orderId = req.params.orderId;
         if (!orderId) throw new Error("orderId not provided")
         const { current: _messages, ...preparation } = await orderPreparation(String(orderId));
-        res.status(200).json({ ...preparation, loading: await shippedSummary(String(orderId)) });
+        res.status(200).json(preparation);
     } catch (error) {
         console.error('Error reading order preparation:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });
@@ -131,11 +130,9 @@ export async function getOrderPreparation(req: Request, res: Response) {
 export async function listOrderPreparationStatuses(req: Request, res: Response) {
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
-        const results = await Promise.all(
-            ids.map(async (id) => ({ ...(await orderPreparation(id)), loading: await shippedSummary(id) })),
-        );
+        const results = await Promise.all(ids.map((id) => orderPreparation(id)));
         res.status(200).json({
-            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, loading }) => [order_id, { status, confirmed, items, loading }])),
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items }) => [order_id, { status, confirmed, items }])),
         });
     } catch (error) {
         console.error('Error reading preparation statuses:', error);
@@ -160,80 +157,5 @@ export async function postAppliedReport(req: Request, res: Response) {
     } catch (error) {
         console.error('Error recording an applied report:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to record the change' });
-    }
-}
-
-/**
- * An order's "shipped" badge: set once every item on it was confirmed loaded
- * on the Items tab — when, and how many items weren't all received. Null
- * before that (or when it can't be read).
- */
-async function shippedSummary(orderId: string) {
-    try {
-        const { loading, complete } = await orderLoadingView(orderId)
-        if (!loading || !complete) return null
-        return { at: loading.at, short_items: loading.items.filter((item) => item.received < item.ordered).length }
-    } catch {
-        return null
-    }
-}
-
-/** An order's loading (invoice id or BK- id): its current items, the loading if confirmed, and what changed since. */
-export async function getOrderLoading(req: Request, res: Response) {
-    try {
-        res.status(200).json(await orderLoadingView(String(req.params.orderId)));
-    } catch (error) {
-        console.error('Error reading order loading:', error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the loading' });
-    }
-}
-
-/**
- * Sends the Items tab's loading confirmations at once: body { changes:
- * [{ order_id, item_key, received }] } — received in the item's own unit
- * (its full quantity when complete, 0 when missing), or null to clear it.
- * Each order is saved and its Telegram group messages edited once. Answers
- * with each order's loading, and the orders that failed.
- */
-export async function postLoadingBatch(req: Request, res: Response) {
-    try {
-        const changes = req.body?.changes;
-        if (!Array.isArray(changes) || changes.length === 0) throw new Error("changes is required")
-        const byOrder = new Map<string, Record<string, number | null>>();
-        for (const change of changes) {
-            const { order_id, item_key, received } = change ?? {};
-            if (typeof order_id !== "string" || !order_id || typeof item_key !== "string" || !item_key) throw new Error("Each change needs order_id and item_key")
-            if (received !== null && typeof received !== "number") throw new Error("received must be a number or null")
-            byOrder.set(order_id, { ...(byOrder.get(order_id) ?? {}), [item_key]: received });
-        }
-        const loadings: Record<string, unknown> = {};
-        const failed: { order_id: string; error: string }[] = [];
-        let telegramFailed = 0;
-        // One order after another: the group's edits stay within Telegram's rate limits.
-        for (const [orderId, orderChanges] of byOrder) {
-            try {
-                const { telegram } = await setItemsLoading(orderId, orderChanges);
-                telegramFailed += telegram.failed.length;
-                loadings[orderId] = await orderLoadingView(orderId);
-            } catch (error) {
-                failed.push({ order_id: orderId, error: error instanceof Error ? error.message : String(error) });
-            }
-        }
-        res.status(200).json({ loadings, failed, telegram_failed: telegramFailed });
-    } catch (error) {
-        console.error('Error sending loading confirmations:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to send the confirmations' });
-    }
-}
-
-/** Several orders' loading at once (for the Items tab): `?ids=a,b,c` → { loadings: { id: view } }. */
-export async function listOrderLoadings(req: Request, res: Response) {
-    try {
-        const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
-        const views = await Promise.all(ids.map((id) => orderLoadingView(id)));
-        res.status(200).json({ loadings: Object.fromEntries(views.map((view) => [view.order_id, view])) });
-    } catch (error) {
-        console.error('Error reading loadings:', error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the loadings' });
     }
 }

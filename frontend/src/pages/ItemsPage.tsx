@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchOrderLoadings, fetchPreparationStatuses, sendLoadingBatch } from "../lib/api";
-import { loadingsForBreakdown, pendingKey, type BreakdownLoading, type PendingLoading } from "../lib/shortages";
+import { fetchBackupLists, fetchDraftLineItems, fetchItemCategorySettings, fetchPreparationStatuses } from "../lib/api";
+import { shortagesForBreakdown } from "../lib/shortages";
 import { sentLabel } from "../lib/backupLists";
 import { businessDayKey } from "../lib/businessTime";
-import ItemLoadingSheet from "../components/ItemLoadingSheet";
 import { formatItemsForCopy, groupItemsByCategory, groupItemsByScheduledDay } from "../lib/itemSummary";
 import { useSortState } from "../hooks/useSortState";
 import SortRow from "../components/SortRow";
@@ -14,7 +13,7 @@ import DayGroupHeader from "../components/DayGroupHeader";
 import BackupListsSection from "../components/BackupListsSection";
 import BackupMergedView from "../components/BackupMergedView";
 import BackupMissingSection from "../components/BackupMissingSection";
-import type { BackupList, BackupMissingItem, DraftLineItemSummary, OrderLoadingView } from "../types";
+import type { BackupList, BackupMissingItem, DraftItemBreakdownEntry, DraftLineItemSummary, OrderShortageItem } from "../types";
 
 type SortKey = "name" | "quantity";
 
@@ -41,57 +40,9 @@ export default function ItemsPage() {
   // Invoice items or backups, and for the backups all lists merged into one or one block per list.
   const [tab, setTab] = useState<"invoices" | "backups" | "all">("invoices");
   const [backupView, setBackupView] = useState<"merged" | "grouped">("merged");
-  // Drafts the preparers have seen to in the Telegram group (👍 or a report) — their 📦 is shown.
+  // Drafts the preparers have seen to in the Telegram group (👍 or a report), and what they reported short — for 📦.
   const [seenDrafts, setSeenDrafts] = useState<Set<string>>(new Set());
-  // Each draft's items on its Telegram group messages and what the driver confirmed loaded of them.
-  const [loadingsByInvoice, setLoadingsByInvoice] = useState<Record<string, OrderLoadingView>>({});
-  // The breakdown entry whose loading choices are open.
-  const [loadingTarget, setLoadingTarget] = useState<{ loading: BreakdownLoading; name: string; source: string } | null>(null);
-  // Loading changes made here and not sent to Telegram yet (kept in this browser until sent or discarded).
-  const [pending, setPending] = useState<PendingLoading>(readPending);
-  const [isSending, setIsSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const pendingCount = Object.keys(pending).length;
-
-  function updatePending(next: PendingLoading) {
-    setPending(next);
-    writePending(next);
-  }
-
-  function setLoading(entries: BreakdownLoading[], received: (entry: BreakdownLoading) => number | null) {
-    const next = { ...pending };
-    for (const entry of entries) {
-      const key = pendingKey(entry.invoice_id, entry.item.item_key);
-      const value = received(entry);
-      const sent = loadingsByInvoice[entry.invoice_id]?.loading?.items.find((item) => item.item_key === entry.item.item_key);
-      // Back to what was sent: nothing left to send.
-      if ((value === null && !sent) || (value !== null && sent?.received === value)) delete next[key];
-      else next[key] = value;
-    }
-    updatePending(next);
-  }
-
-  async function sendPending() {
-    setIsSending(true);
-    setSendError(null);
-    try {
-      const changes = Object.entries(pending).map(([key, received]) => {
-        const at = key.indexOf("|");
-        return { order_id: key.slice(0, at), item_key: key.slice(at + 1), received };
-      });
-      const result = await sendLoadingBatch(changes);
-      setLoadingsByInvoice((current) => ({ ...current, ...result.loadings }));
-      // Keep what failed, to send again.
-      const failedOrders = new Set(result.failed.map((failure) => failure.order_id));
-      updatePending(Object.fromEntries(Object.entries(pending).filter(([key]) => failedOrders.has(key.slice(0, key.indexOf("|"))))));
-      if (result.failed.length > 0) setSendError(`${result.failed.length} invoice(s) couldn't be saved: ${result.failed[0].error}`);
-      else if (result.telegram_failed > 0) setSendError(`Saved, but ${result.telegram_failed} Telegram message(s) couldn't be updated`);
-    } catch (err) {
-      setSendError(err instanceof Error ? err.message : "Failed to send");
-    } finally {
-      setIsSending(false);
-    }
-  }
+  const [shortagesByInvoice, setShortagesByInvoice] = useState<Record<string, OrderShortageItem[]>>({});
 
   const loadItems = useCallback((options?: { force?: boolean }) => {
     // The category order only affects how items are arranged; without it they still list.
@@ -99,25 +50,17 @@ export default function ItemsPage() {
       .then((settings) => setCategoryOrder(settings.order))
       .catch(() => setCategoryOrder([]));
     fetchBackupLists(options)
-      .then((result) => {
-        setBackupLists(result);
-        // Backup lists are confirmed loaded the same way as invoices (keyed by their BK- id).
-        fetchOrderLoadings(result.lists.map((list) => list.id))
-          .then((loadings) => setLoadingsByInvoice((current) => ({ ...current, ...loadings })))
-          .catch(() => {});
-      })
+      .then(setBackupLists)
       .catch(() => setBackupLists({ lists: [], missing: [] }));
     return fetchDraftLineItems(options)
       .then((list) => {
         setItems(list);
         const invoiceIds = [...new Set(list.flatMap((item) => item.breakdown.map((entry) => entry.invoice_id)))];
         fetchPreparationStatuses(invoiceIds)
-          .then((statuses) =>
-            setSeenDrafts(new Set(Object.entries(statuses).filter(([, entry]) => entry.status !== "not_reported").map(([id]) => id))),
-          )
-          .catch(() => {});
-        fetchOrderLoadings(invoiceIds)
-          .then((loadings) => setLoadingsByInvoice((current) => ({ ...current, ...loadings })))
+          .then((statuses) => {
+            setSeenDrafts(new Set(Object.entries(statuses).filter(([, entry]) => entry.status !== "not_reported").map(([id]) => id)));
+            setShortagesByInvoice(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.items ?? []])));
+          })
           .catch(() => {});
       })
       .catch(() => setItems([]));
@@ -192,9 +135,24 @@ export default function ItemsPage() {
   );
   const dayGroups = useMemo(() => groupDays(tab === "all" ? allItems : items), [groupDays, tab, allItems, items]);
 
-  // Orders whose 📦 is shown: drafts the preparers saw to, and backup lists anyone replied or reacted to.
-  const isSeen = (orderId: string) =>
-    seenDrafts.has(orderId) || backupLists.lists.some((list) => list.id === orderId && !!list.status && list.status !== "not_reported");
+  /**
+   * Each source's 📦: what the preparers reported available — a draft they
+   * saw to (its reported shortage, or all of it), or a backup list anyone
+   * replied or reacted to; undefined while nobody has.
+   */
+  function reportedFor(entries: DraftItemBreakdownEntry[]): (number | undefined)[] {
+    const shortages = shortagesForBreakdown(entries, shortagesByInvoice);
+    return entries.map((entry, index) => {
+      const list = backupLists.lists.find((candidate) => candidate.id === entry.invoice_id);
+      if (list) {
+        if (!list.status || list.status === "not_reported") return undefined;
+        const item = list.items.find((candidate) => candidate.item_id === entry.item_id && candidate.description === entry.description);
+        return item ? (item.available ?? item.quantity) : undefined;
+      }
+      if (!seenDrafts.has(entry.invoice_id)) return undefined;
+      return shortages[index]?.available ?? entry.quantity;
+    });
+  }
 
   // Category headings only help once items actually have categories.
   const hasCategories = (tab === "all" ? allItems : items).some((item) => item.category);
@@ -278,22 +236,7 @@ export default function ItemsPage() {
                             isExpanded={expandedItems.has(rowKey)}
                             onToggleChecked={() => toggleChecked(rowKey)}
                             onToggleExpanded={() => toggleExpanded(rowKey)}
-                            isSeen={isSeen}
-                            loadings={loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)}
-                            onLoadingTap={(index) => {
-                              const loading = loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending)[index];
-                              const entry = item.breakdown[index];
-                              if (!loading || !entry) return;
-                              setLoadingTarget({ loading, name: item.name, source: `${entry.customer_name} · ${entry.invoice_number}` });
-                            }}
-                            onAllComplete={() =>
-                              setLoading(
-                                loadingsForBreakdown(item.breakdown, loadingsByInvoice, pending).filter(
-                                  (entry): entry is BreakdownLoading => !!entry,
-                                ),
-                                (entry) => entry.item.ordered,
-                              )
-                            }
+                            reported={reportedFor(item.breakdown)}
                           />
                         );
                       })}
@@ -320,12 +263,7 @@ export default function ItemsPage() {
           </div>
           <BackupMissingSection missing={backupLists.missing} />
           {backupView === "merged" ? (
-            <BackupMergedView
-              lists={backupLists.lists}
-              loadingsFor={(entries) => loadingsForBreakdown(entries, loadingsByInvoice, pending)}
-              onLoadingTap={(loading, name, source) => setLoadingTarget({ loading, name, source })}
-              onAllComplete={(loadings) => setLoading(loadings, (entry) => entry.item.ordered)}
-            />
+            <BackupMergedView lists={backupLists.lists} />
           ) : backupLists.lists.length === 0 ? (
             <div className="line-items">
               <div className="items-area__empty">No backup lists</div>
@@ -338,70 +276,6 @@ export default function ItemsPage() {
           )}
         </>
       )}
-      {loadingTarget && (
-        <ItemLoadingSheet
-          title={loadingTarget.name}
-          subtitle={loadingTarget.source}
-          loading={loadingTarget.loading}
-          onSave={(received) => {
-            setLoading([loadingTarget.loading], () => received);
-            setLoadingTarget(null);
-          }}
-          onCancel={() => setLoadingTarget(null)}
-        />
-      )}
-      {(pendingCount > 0 || sendError) && (
-        <div className="loading-send-bar">
-          <span className="loading-send-bar__message">
-            {sendError ?? `${pendingCount} change${pendingCount === 1 ? "" : "s"} not sent`}
-          </span>
-          <div className="save-items-bar__actions">
-            {pendingCount > 0 && (
-              <button
-                type="button"
-                className="btn btn--secondary btn--discard"
-                disabled={isSending}
-                onClick={() => {
-                  updatePending({});
-                  setSendError(null);
-                }}
-              >
-                Discard
-              </button>
-            )}
-            {pendingCount > 0 ? (
-              <button type="button" className="btn btn--save" disabled={isSending} onClick={sendPending}>
-                {isSending ? "Sending..." : "Send to Telegram"}
-              </button>
-            ) : (
-              <button type="button" className="btn btn--secondary btn--discard" onClick={() => setSendError(null)}>
-                OK
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-const PENDING_STORAGE_KEY = "items-loading-pending";
-
-/** Unsent loading changes kept in this browser (none when storage isn't available). */
-function readPending(): PendingLoading {
-  try {
-    const raw = localStorage.getItem(PENDING_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as PendingLoading) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writePending(pending: PendingLoading) {
-  try {
-    if (Object.keys(pending).length === 0) localStorage.removeItem(PENDING_STORAGE_KEY);
-    else localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending));
-  } catch {
-    // Not kept across reloads; still sent from memory.
-  }
 }

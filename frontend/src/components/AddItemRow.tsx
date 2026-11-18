@@ -31,7 +31,7 @@ type Props = {
   maxQuantity?: number;
   /** General items: the units this line can be set to, shown as a dropdown. */
   unitOptions?: string[];
-  /** Backup stock of this item: 📦 reported ready, 🚚 on the truck (icons only). */
+  /** Backup stock of this item: 📦 reported ready (icon only). */
   stock?: StockChip[];
 };
 

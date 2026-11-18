@@ -76,7 +76,7 @@ export default function PreparationReportButton() {
                 <div className="prep-report__row prep-report__row--all">
                   <div>
                     <div className="prep-report__name">Everyone</div>
-                    <div className="prep-report__meta">Summary, problems to check, each person, and invoices nobody prepared</div>
+                    <div className="prep-report__meta">Summary, each person, and invoices nobody prepared</div>
                   </div>
                   <PdfFileButton
                     url={preparationReportUrl(current)}
@@ -101,12 +101,6 @@ export default function PreparationReportButton() {
                         <div className="prep-report__name">{person.name}</div>
                         <div className="prep-report__meta">
                           {person.orders} prepared · {person.reports} shortage report{person.reports === 1 ? "" : "s"}
-                          {!!person.problems && (
-                            <span className="prep-report__problems">
-                              {" "}
-                              · {person.problems} problem{person.problems === 1 ? "" : "s"}
-                            </span>
-                          )}
                         </div>
                       </div>
                       <PdfFileButton

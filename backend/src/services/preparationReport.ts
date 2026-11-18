@@ -1,8 +1,6 @@
 import { redisClient } from "../config/redis.js"
 import { businessDayKey, businessDayWindow } from "../utils/businessDate.js"
-import { orderPreparation, type GroupOrderMessage, type GroupReport, type OrderPreparation, type PreparationStatus } from "./telegram/groupOrders.js"
-import { readOrderLoading } from "./telegram/loading.js"
-import { toAmharicUnit } from "../utils/units.js"
+import { orderPreparation, type GroupOrderMessage, type GroupReport, type PreparationStatus } from "./telegram/groupOrders.js"
 
 /**
  * The preparation report: for a business day (4am to 4am), who in the
@@ -14,37 +12,6 @@ import { toAmharicUnit } from "../utils/units.js"
  * group records are kept after their messages are deleted (30 days).
  */
 
-/**
- * What the driver found, against what the preparers said: per item (in its
- * own unit) what the order asks for, what the preparers said is there, and
- * what the driver confirmed received (null: not confirmed yet). Only items
- * worth showing: short, or where the two disagree.
- */
-export type ItemCheck = { description: string; unit: string; ordered: number; prepared: number; received: number | null; problem: "not_found" | "found" | null }
-export type DriverCheck = {
-    /**
-     * What the driver confirmed: complete (every item, all of it), partial
-     * (some items short), missing (nothing found), partly_checked (some
-     * items not confirmed yet), not_checked (none), none (nothing to confirm).
-     */
-    status: "complete" | "partial" | "missing" | "partly_checked" | "not_checked" | "none"
-    /** Preparers and driver together: ok (they agree), problem (they don't), pending (the driver hasn't confirmed), none. */
-    verdict: "ok" | "problem" | "pending" | "none"
-    items: ItemCheck[]
-}
-
-/** Something to look at again: an order where the preparers and the driver disagree, or that wasn't checked. */
-export type ReportIssue = {
-    order_id: string
-    order_number: string
-    kind: GroupOrderMessage["kind"]
-    /** Who confirmed it (empty: nobody). */
-    people: string[]
-    severity: "high" | "medium"
-    /** What's wrong, in Amharic. */
-    text: string
-}
-
 export type PersonOrder = {
     order_id: string
     order_number: string
@@ -55,8 +22,8 @@ export type PersonOrder = {
     /** The order's status now, as the app shows it. */
     status: PreparationStatus
     items: number
-    short: { description: string; short: number; unit: string; available: number }[]
-    check: DriverCheck
+    /** Items the preparers reported short: ordered, and what they said is available (in the item's own unit). */
+    short: { description: string; short: number; unit: string; available: number; ordered: number }[]
 }
 
 export type PersonReport = {
@@ -66,8 +33,6 @@ export type PersonReport = {
     orders: PersonOrder[]
     /** Shortage reports this person sent that day (saved, not deleted). */
     reports: number
-    /** Their orders where the driver's count differs from what was reported. */
-    problems: number
 }
 
 export type PreparationReportData = {
@@ -77,82 +42,7 @@ export type PreparationReportData = {
     isComplete: boolean
     people: PersonReport[]
     /** Orders first posted that day that nobody confirmed. */
-    unreported: { order_id: string; order_number: string; kind: GroupOrderMessage["kind"]; posted_at: string; items: number; check: DriverCheck }[]
-    /** Every problem of the day, the most serious first. */
-    issues: ReportIssue[]
-}
-
-const round = (value: number) => Math.round(value * 1000) / 1000
-
-/** The driver's loading of an order against what the preparers reported (see DriverCheck). */
-async function driverCheck(current: GroupOrderMessage[], preparation: OrderPreparation): Promise<DriverCheck> {
-    // What the order asks for now, per item.
-    const ordered = new Map<string, { description: string; unit: string; quantity: number }>()
-    for (const message of current) {
-        for (const item of message.items) {
-            ordered.set(item.item_key, { description: item.description, unit: item.unit, quantity: item.change ? (item.order_quantity ?? 0) : item.quantity })
-        }
-    }
-    const reported = new Map(preparation.items.map((item) => [item.item_key, item.available]))
-    const loading = await readOrderLoading(preparation.order_id).catch(() => null)
-    const received = new Map((loading?.items ?? []).map((item) => [item.item_key, item.received]))
-
-    const items: ItemCheck[] = []
-    let total = 0
-    let confirmed = 0
-    let full = 0
-    let none = 0
-    let mismatch = false
-    for (const [key, item] of ordered) {
-        if (item.quantity <= 0) continue
-        total++
-        const prepared = round(Math.min(item.quantity, reported.get(key) ?? item.quantity))
-        const got = received.has(key) ? round(received.get(key)!) : null
-        if (got !== null) {
-            confirmed++
-            if (got >= item.quantity) full++
-            if (got === 0) none++
-        }
-        const problem = got === null || got === prepared ? null : got < prepared ? "not_found" : "found"
-        if (problem) mismatch = true
-        if (problem || prepared < item.quantity || (got !== null && got < item.quantity)) {
-            items.push({ description: item.description, unit: item.unit, ordered: round(item.quantity), prepared, received: got, problem })
-        }
-    }
-    const status =
-        confirmed === 0 ? "not_checked" : confirmed < total ? "partly_checked" : full === total ? "complete" : none === total ? "missing" : "partial"
-    const unconfirmedButLoaded = preparation.status === "not_reported" && confirmed > 0
-    const verdict = mismatch || unconfirmedButLoaded ? "problem" : confirmed < total ? "pending" : "ok"
-    return { status, verdict, items }
-}
-
-const amount = (value: number, unit: string) => `${value} ${toAmharicUnit(unit)}`.trim()
-
-/** The day's problems with an order, if any (see ReportIssue). */
-function issuesOf(
-    order: { order_id: string; order_number: string; kind: GroupOrderMessage["kind"]; check: DriverCheck },
-    people: string[],
-    status: PreparationStatus,
-): ReportIssue[] {
-    const base = { order_id: order.order_id, order_number: order.order_number, kind: order.kind, people }
-    const issues: ReportIssue[] = []
-    for (const item of order.check.items) {
-        if (item.problem === "not_found") {
-            issues.push({ ...base, severity: "high", text: `${item.description}፦ ተዘጋጅቷል ተብሎ ${amount(item.prepared, item.unit)} — ሹፌሩ ያገኘው ${amount(item.received ?? 0, item.unit)}` })
-        } else if (item.problem === "found") {
-            issues.push({ ...base, severity: "high", text: `${item.description}፦ ${item.prepared === 0 ? "የለም ተብሎ" : `${amount(item.prepared, item.unit)} ብቻ ተብሎ`} — ሹፌሩ ያገኘው ${amount(item.received ?? 0, item.unit)}` })
-        }
-    }
-    {
-        if (status === "not_reported" && order.check.verdict === "problem") {
-            issues.push({ ...base, severity: "high", text: "ማንም አላረጋገጠም — ሹፌሩ ግን ጭኖታል" })
-        } else if (status !== "not_reported" && order.check.status === "not_checked") {
-            issues.push({ ...base, severity: "medium", text: "ሹፌሩ መጫኑን ገና አላረጋገጠም" })
-        } else if (status !== "not_reported" && order.check.status === "partly_checked") {
-            issues.push({ ...base, severity: "medium", text: "ሹፌሩ ያረጋገጠው ከፊሉን እቃ ብቻ ነው" })
-        }
-    }
-    return issues
+    unreported: { order_id: string; order_number: string; kind: GroupOrderMessage["kind"]; posted_at: string; items: number }[]
 }
 
 type Confirmation = { personId: string; name: string; at: string; how: PersonOrder["how"] }
@@ -226,12 +116,11 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
             if (name) existing.name = name
             return existing
         }
-        const created: PersonReport = { id, name: name || "?", orders: [], reports: 0, problems: 0 }
+        const created: PersonReport = { id, name: name || "?", orders: [], reports: 0 }
         people.set(id, created)
         return created
     }
     const unreported: PreparationReportData["unreported"] = []
-    const issues: ReportIssue[] = []
 
     for (const [orderId, records] of await ordersInGroup()) {
         // Posted after the day: nothing to count.
@@ -248,11 +137,10 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
         if (confirmations.length === 0 && reportIds.length === 0 && !inDay(first.posted_at)) continue
 
         const preparation = await orderPreparation(orderId, true)
-        const check = await driverCheck(current, preparation)
         const items = new Set(current.flatMap((message) => message.items.map((item) => item.item_key))).size
         const short = preparation.items
             .filter((item) => item.short > 0)
-            .map((item) => ({ description: item.description, short: item.short, unit: item.unit, available: item.available }))
+            .map((item) => ({ description: item.description, short: item.short, unit: item.unit, available: item.available, ordered: item.ordered }))
 
         const byPerson = new Map<string, Confirmation>()
         for (const confirmation of confirmations) {
@@ -269,13 +157,7 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
                 status: preparation.status,
                 items,
                 short,
-                check,
             })
-        }
-        const orderIssues = issuesOf({ order_id: orderId, order_number: first.order_number, kind: first.kind, check }, [...byPerson.values()].map((c) => c.name), preparation.status)
-        if (byPerson.size > 0 || inDay(first.posted_at)) issues.push(...orderIssues)
-        if (orderIssues.some((issue) => issue.severity === "high")) {
-            for (const confirmation of byPerson.values()) person(confirmation.personId, confirmation.name).problems++
         }
 
         // Shortage reports sent that day, credited to their senders.
@@ -290,7 +172,7 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
         }
 
         if (preparation.status === "not_reported" && inDay(first.posted_at)) {
-            unreported.push({ order_id: orderId, order_number: first.order_number, kind: first.kind, posted_at: first.posted_at, items, check })
+            unreported.push({ order_id: orderId, order_number: first.order_number, kind: first.kind, posted_at: first.posted_at, items })
         }
     }
 
@@ -304,9 +186,6 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
         isComplete: day < businessDayKey(),
         people: list,
         unreported: personId ? [] : unreported.sort((a, b) => a.posted_at.localeCompare(b.posted_at)),
-        issues: issues
-            .filter((issue) => !personId || list.some((entry) => entry.orders.some((order) => order.order_id === issue.order_id)))
-            .sort((a, b) => (a.severity === b.severity ? a.order_number.localeCompare(b.order_number) : a.severity === "high" ? -1 : 1)),
     }
 }
 
@@ -316,5 +195,5 @@ export async function buildPreparationReport(day: string, personId?: string): Pr
  */
 export async function preparationPeople(day: string) {
     const report = await buildPreparationReport(day)
-    return report.people.map((entry) => ({ id: entry.id, name: entry.name, orders: entry.orders.length, reports: entry.reports, problems: entry.problems }))
+    return report.people.map((entry) => ({ id: entry.id, name: entry.name, orders: entry.orders.length, reports: entry.reports }))
 }

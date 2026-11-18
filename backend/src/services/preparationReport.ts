@@ -25,8 +25,7 @@ export type DriverCheck = {
     /**
      * What the driver confirmed: complete (every item, all of it), partial
      * (some items short), missing (nothing found), partly_checked (some
-     * items not confirmed yet), not_checked (none), none (a backup list —
-     * not confirmed by the driver).
+     * items not confirmed yet), not_checked (none), none (nothing to confirm).
      */
     status: "complete" | "partial" | "missing" | "partly_checked" | "not_checked" | "none"
     /** Preparers and driver together: ok (they agree), problem (they don't), pending (the driver hasn't confirmed), none. */
@@ -87,7 +86,6 @@ const round = (value: number) => Math.round(value * 1000) / 1000
 
 /** The driver's loading of an order against what the preparers reported (see DriverCheck). */
 async function driverCheck(current: GroupOrderMessage[], preparation: OrderPreparation): Promise<DriverCheck> {
-    if (current[0]?.kind === "backup_list") return { status: "none", verdict: "none", items: [] }
     // What the order asks for now, per item.
     const ordered = new Map<string, { description: string; unit: string; quantity: number }>()
     for (const message of current) {
@@ -145,7 +143,7 @@ function issuesOf(
             issues.push({ ...base, severity: "high", text: `${item.description}፦ ${item.prepared === 0 ? "የለም ተብሎ" : `${amount(item.prepared, item.unit)} ብቻ ተብሎ`} — ሹፌሩ ያገኘው ${amount(item.received ?? 0, item.unit)}` })
         }
     }
-    if (order.kind === "invoice") {
+    {
         if (status === "not_reported" && order.check.verdict === "problem") {
             issues.push({ ...base, severity: "high", text: "ማንም አላረጋገጠም — ሹፌሩ ግን ጭኖታል" })
         } else if (status !== "not_reported" && order.check.status === "not_checked") {

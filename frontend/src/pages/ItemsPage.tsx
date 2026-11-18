@@ -96,7 +96,15 @@ export default function ItemsPage() {
     fetchItemCategorySettings(options)
       .then((settings) => setCategoryOrder(settings.order))
       .catch(() => setCategoryOrder([]));
-    fetchBackupLists(options).then(setBackupLists).catch(() => setBackupLists({ lists: [], missing: [] }));
+    fetchBackupLists(options)
+      .then((result) => {
+        setBackupLists(result);
+        // Backup lists are confirmed loaded the same way as invoices (keyed by their BK- id).
+        fetchOrderLoadings(result.lists.map((list) => list.id))
+          .then((loadings) => setLoadingsByInvoice((current) => ({ ...current, ...loadings })))
+          .catch(() => {});
+      })
+      .catch(() => setBackupLists({ lists: [], missing: [] }));
     return fetchDraftLineItems(options)
       .then((list) => {
         setItems(list);
@@ -106,7 +114,9 @@ export default function ItemsPage() {
             setShortagesByInvoice(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.items ?? []]))),
           )
           .catch(() => {});
-        fetchOrderLoadings(invoiceIds).then(setLoadingsByInvoice).catch(() => {});
+        fetchOrderLoadings(invoiceIds)
+          .then((loadings) => setLoadingsByInvoice((current) => ({ ...current, ...loadings })))
+          .catch(() => {});
       })
       .catch(() => setItems([]));
   }, []);
@@ -261,7 +271,12 @@ export default function ItemsPage() {
           </div>
           <BackupMissingSection missing={backupLists.missing} />
           {backupView === "merged" ? (
-            <BackupMergedView lists={backupLists.lists} />
+            <BackupMergedView
+              lists={backupLists.lists}
+              loadingsFor={(entries) => loadingsForBreakdown(entries, loadingsByInvoice, pending)}
+              onLoadingTap={(loading, name, source) => setLoadingTarget({ loading, name, source })}
+              onAllComplete={(loadings) => setLoading(loadings, (entry) => entry.item.ordered)}
+            />
           ) : backupLists.lists.length === 0 ? (
             <div className="line-items">
               <div className="items-area__empty">No backup lists</div>

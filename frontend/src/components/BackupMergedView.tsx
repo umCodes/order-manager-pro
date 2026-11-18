@@ -1,7 +1,32 @@
+import { useState } from "react";
 import DayGroupHeader from "./DayGroupHeader";
+import ItemBreakdownRow from "./ItemBreakdownRow";
 import { mergeBackupLists, sentLabel, type MergedRow } from "../lib/backupLists";
 import { groupByScheduledDay } from "../lib/scheduledDate";
-import type { BackupList } from "../types";
+import type { BreakdownLoading } from "../lib/shortages";
+import type { BackupList, DraftItemBreakdownEntry, DraftLineItemSummary } from "../types";
+
+/** A merged row as an Items-tab item: its lists as the breakdown (each list's own quantity), to confirm loading per list. */
+function asItem(row: MergedRow): DraftLineItemSummary {
+  const breakdown: DraftItemBreakdownEntry[] = row.parts.map((part) => ({
+    invoice_id: part.list_id,
+    invoice_number: part.list_id,
+    customer_name: sentLabel(part.created_at),
+    date: part.date ?? "",
+    quantity: part.quantity,
+    unit: part.unit,
+    item_id: part.item_id,
+    description: part.description,
+  }));
+  return { name: row.name, description: row.description, quantity: row.remaining, unit: row.unit, category: null, breakdown };
+}
+
+type LoadingProps = {
+  /** Each list's item and what was confirmed loaded of it (as the Items tab works it out). */
+  loadingsFor?: (entries: DraftItemBreakdownEntry[]) => (BreakdownLoading | undefined)[];
+  onLoadingTap?: (loading: BreakdownLoading, name: string, source: string) => void;
+  onAllComplete?: (loadings: BreakdownLoading[]) => void;
+};
 
 /**
  * What the preparers said about a merged item: on the lists they've seen to,
@@ -31,8 +56,19 @@ function AvailabilityBadges({ row }: { row: MergedRow }) {
  * day they're wanted for (past days counted under today, as on the Invoice
  * items tab), the same item in one row (see mergeBackupLists) with what's
  * left on the right and what the preparers reported available under it.
+ * Like the Invoice items tab, a row opens to the lists it's on: tap one to
+ * confirm what was loaded of it, or "All complete" for every list at once.
  */
-export default function BackupMergedView({ lists }: { lists: BackupList[] }) {
+export default function BackupMergedView({ lists, loadingsFor, onLoadingTap, onAllComplete }: { lists: BackupList[] } & LoadingProps) {
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (set: Set<string>, key: string) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  };
+
   if (lists.length === 0) {
     return (
       <div className="line-items">
@@ -53,29 +89,44 @@ export default function BackupMergedView({ lists }: { lists: BackupList[] }) {
               carriedOverCount={group.entries.filter((entry) => entry.isCarriedOver).length}
             />
             <div className="line-items day-group__line-items">
-              {rows.map((row) => (
-                <div key={row.key} className="line-item">
-                  <div className="line-item__main">
-                    <div className="line-item__name">
-                      <span className="line-item__name-text">{row.name}</span>
-                    </div>
-                    {row.description && <div className="line-item__meta">{row.description}</div>}
-                    <div className="backup-badges">
-                      <AvailabilityBadges row={row} />
-                    </div>
-                    {row.parts.length > 1 && (
-                      <div className="line-item__meta backup-taken">
-                        {row.parts.map((part) => `${part.remaining} ${part.unit} · ${sentLabel(part.created_at)}`).join("  |  ")}
+              {rows.map((row) => {
+                const item = asItem(row);
+                const rowKey = `${group.date ?? ""}|${row.key}`;
+                const loadings = loadingsFor?.(item.breakdown) ?? [];
+                return (
+                  <ItemBreakdownRow
+                    key={rowKey}
+                    item={item}
+                    isChecked={checked.has(rowKey)}
+                    isExpanded={expanded.has(rowKey)}
+                    onToggleChecked={() => setChecked((current) => toggle(current, rowKey))}
+                    onToggleExpanded={() => setExpanded((current) => toggle(current, rowKey))}
+                    loadings={loadings}
+                    onLoadingTap={
+                      onLoadingTap
+                        ? (index) => {
+                            const loading = loadings[index];
+                            const entry = item.breakdown[index];
+                            if (loading && entry) onLoadingTap(loading, row.name, `${entry.invoice_number} · ${entry.customer_name}`);
+                          }
+                        : undefined
+                    }
+                    onAllComplete={
+                      onAllComplete ? () => onAllComplete(loadings.filter((entry): entry is BreakdownLoading => !!entry)) : undefined
+                    }
+                    extra={
+                      <div className="backup-badges">
+                        <AvailabilityBadges row={row} />
                       </div>
-                    )}
-                  </div>
-                  <div className="line-item__right">
-                    <span className={`line-item__total${row.remaining === 0 ? " backup-used-up" : ""}`}>
-                      {row.remaining} {row.unit}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                    }
+                    quantityLabel={
+                      <span className={row.remaining === 0 ? "backup-used-up" : undefined}>
+                        {row.remaining} {row.unit}
+                      </span>
+                    }
+                  />
+                );
+              })}
             </div>
           </section>
         );

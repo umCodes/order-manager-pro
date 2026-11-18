@@ -1,4 +1,5 @@
 import { Check, ChevronDown, ChevronRight, Truck } from "lucide-react";
+import type { ReactNode } from "react";
 import type { DraftLineItemSummary, OrderShortageItem } from "../types";
 import type { BreakdownLoading } from "../lib/shortages";
 import ShortageBadge from "./ShortageBadge";
@@ -17,6 +18,10 @@ type Props = {
   onLoadingTap?: (index: number) => void;
   /** Marks every draft's share of this item complete (all of it loaded). */
   onAllComplete?: () => void;
+  /** Shown under the item's name (the Backups tab's availability badges). */
+  extra?: ReactNode;
+  /** Shown instead of "<quantity> <unit>" on the right. */
+  quantityLabel?: ReactNode;
 };
 
 /** An entry's loading state: complete, partial, missing, or not confirmed yet. */
@@ -39,6 +44,8 @@ export default function ItemBreakdownRow({
   loadings = [],
   onLoadingTap,
   onAllComplete,
+  extra,
+  quantityLabel,
 }: Props) {
   // How many of the item's drafts were confirmed loaded (each draft once, however many lines it has the item on).
   const loadable = [...new Map(loadings.filter((entry): entry is BreakdownLoading => !!entry).map((entry) => [entry.invoice_id, entry])).values()];
@@ -73,6 +80,7 @@ export default function ItemBreakdownRow({
           <div className="line-item__name">{item.name}</div>
           {item.description && <div className="line-item__meta">{item.description}</div>}
           {total && totalUnit && <ShortageBadge short={total.short} ordered={total.ordered} unit={totalUnit} />}
+          {extra}
           {loadable.length > 0 && (
             <span className={`item-loading-progress${loadedCount === loadable.length ? " item-loading-progress--done" : ""}`}>
               <Truck size={12} /> {loadedCount}/{loadable.length}
@@ -81,7 +89,11 @@ export default function ItemBreakdownRow({
         </div>
         <div className="item-quantity-stack">
           <span className="line-item__total item-quantity">
-            {item.quantity} {item.unit}
+            {quantityLabel ?? (
+              <>
+                {item.quantity} {item.unit}
+              </>
+            )}
           </span>
           <button
             type="button"
@@ -107,7 +119,8 @@ export default function ItemBreakdownRow({
               onClick={onAllComplete}
             >
               <Check size={13} strokeWidth={3} />
-              {allComplete ? "All complete" : `All complete · ${item.quantity} ${item.unit}`}
+              {/* The amount only where the row's total is what gets confirmed (the Backups tab shows what's left instead). */}
+              {allComplete || quantityLabel ? "All complete" : `All complete · ${item.quantity} ${item.unit}`}
             </button>
           )}
           {item.breakdown.map((entry, index) => {

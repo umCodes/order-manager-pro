@@ -26,8 +26,17 @@ export type MergedRow = {
   needed: number;
   available: number;
   not_reported: number;
-  /** What's left of it on each list. */
-  parts: { list_id: string; created_at: string; remaining: number; unit: string }[];
+  /** What's left of it on each list, and the list's own item (for confirming its loading). */
+  parts: {
+    list_id: string;
+    created_at: string;
+    remaining: number;
+    unit: string;
+    quantity: number;
+    item_id: string;
+    description: string;
+    date?: string;
+  }[];
 };
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
@@ -76,7 +85,16 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
         needed: sumOf(seen, (item) => item.quantity),
         available: sumOf(seen, (item) => item.available ?? item.quantity),
         not_reported: sumOf(unseen, (item) => item.quantity),
-        parts: unitEntries.map(({ list, item }) => ({ list_id: list.id, created_at: list.created_at, remaining: left(item), unit: item.unit })),
+        parts: unitEntries.map(({ list, item }) => ({
+          list_id: list.id,
+          created_at: list.created_at,
+          remaining: left(item),
+          unit: item.unit,
+          quantity: item.quantity,
+          item_id: item.item_id,
+          description: item.description,
+          ...(list.date ? { date: list.date } : {}),
+        })),
       });
     }
   }

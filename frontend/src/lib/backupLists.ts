@@ -1,4 +1,4 @@
-import type { BackupList } from "../types";
+import type { BackupList, OrderLoadingView } from "../types";
 
 /** "27 Oct, 3:45 PM" in business time (UTC+3), whatever the device's time zone. */
 export function sentLabel(iso: string) {
@@ -110,4 +110,60 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
 /** A part's amount in its row's unit: kg when the row adds boxes and kg up (a box is 10kg). */
 export function inRowUnit(quantity: number, partUnit: string, rowUnit: string) {
   return round(rowUnit === "kg" && partUnit === "box" ? quantity * 10 : quantity);
+}
+
+/** An amount in another unit, when it can be: a box is 10kg; otherwise only the same unit. */
+export function convertUnit(quantity: number, from: string, to: string): number | null {
+  if (from === to) return quantity;
+  if (from === "box" && to === "kg") return round(quantity * 10);
+  if (from === "kg" && to === "box") return round(quantity / 10);
+  return null;
+}
+
+/** An item's backup stock, per list it's on: what the preparers reported ready (less what quick invoices took), and what's on the truck. */
+export type BackupStockPart = { unit: string; ready: number | null; truck: number | null };
+
+/**
+ * Backup stock by Zoho item id, from the open backup lists: on each list,
+ * what's ready (reported available less what quick invoices took; null while
+ * nobody has seen to the list) and what's on the truck (confirmed loaded less
+ * what quick invoices took; null until the driver confirmed it).
+ */
+export function backupStockByItem(lists: BackupList[], loadings: Record<string, OrderLoadingView>): Map<string, BackupStockPart[]> {
+  const stock = new Map<string, BackupStockPart[]>();
+  for (const list of lists) {
+    const loaded = new Map((loadings[list.id]?.loading?.items ?? []).map((item) => [item.item_key, item.received]));
+    const seen = !!list.status && list.status !== "not_reported";
+    for (const item of list.items) {
+      if (!item.item_id) continue;
+      const taken = item.taken ?? 0;
+      const received = loaded.get(item.item_key ?? item.item_id);
+      stock.set(item.item_id, [
+        ...(stock.get(item.item_id) ?? []),
+        {
+          unit: item.unit,
+          ready: seen ? round(item.remaining ?? (item.available ?? item.quantity) - taken) : null,
+          truck: received === undefined ? null : round(Math.max(0, received - taken)),
+        },
+      ]);
+    }
+  }
+  return stock;
+}
+
+/** An item's backup stock added up in `unit` (parts in a unit that can't be converted are left out). */
+export function stockIn(parts: BackupStockPart[] | undefined, unit: string): { ready: number | null; truck: number | null } {
+  let ready: number | null = null;
+  let truck: number | null = null;
+  for (const part of parts ?? []) {
+    if (part.ready !== null) {
+      const value = convertUnit(part.ready, part.unit, unit);
+      if (value !== null) ready = round((ready ?? 0) + value);
+    }
+    if (part.truck !== null) {
+      const value = convertUnit(part.truck, part.unit, unit);
+      if (value !== null) truck = round((truck ?? 0) + value);
+    }
+  }
+  return { ready, truck };
 }

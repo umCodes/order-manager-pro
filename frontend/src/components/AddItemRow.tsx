@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import { ChevronDown, MessageSquareOff } from "lucide-react";
 import { currency } from "../lib/currency";
 import type { CatalogItem, CartLine } from "../types";
+import StockChips, { type StockChip } from "./StockChips";
 
 export type DraftForm = {
   description: string;
@@ -30,6 +31,8 @@ type Props = {
   maxQuantity?: number;
   /** General items: the units this line can be set to, shown as a dropdown. */
   unitOptions?: string[];
+  /** Backup stock of this item: 📦 reported ready, 🚚 on the truck (icons only). */
+  stock?: StockChip[];
 };
 
 /** One catalog item in the add-item sheet: a header row that expands into a qty/rate/description editor. */
@@ -45,6 +48,7 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
   showExcludeFromTelegram = true,
   maxQuantity,
   unitOptions,
+  stock,
 }, ref) {
   const formTotal = (Number(form.rate) || 0) * (Number(form.quantity) || 0);
   const isReturn = maxQuantity !== undefined;
@@ -77,6 +81,7 @@ const AddItemRow = forwardRef<HTMLDivElement, Props>(function AddItemRow({
           <div className="item-row__description">
             {isReturn ? `${maxQuantity} returnable${item.description ? ` · ${item.description}` : ""}` : item.description}
           </div>
+          {stock && stock.length > 0 && <StockChips chips={stock} />}
         </div>
         <div className="item-row__side">
           <span className="item-row__rate">{currency(item.rate)}</span>

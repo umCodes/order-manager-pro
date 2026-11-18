@@ -4967,3 +4967,44 @@ button.backup-list-line:active {
   font-weight: 400;
   color: var(--color-gray-500);
 }
+
+/* 📦 reported available / 🚚 loaded: icon chips, no words (StockChips). */
+.stock-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.stock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--color-gray-700);
+  background: var(--color-gray-100);
+}
+
+.stock-chip--full {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.stock-chip--part {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.stock-chip--none {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.stock-chip--plain {
+  color: #1e40af;
+  background: #dbeafe;
+}

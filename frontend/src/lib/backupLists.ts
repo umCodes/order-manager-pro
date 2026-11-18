@@ -36,6 +36,10 @@ export type MergedRow = {
     item_id: string;
     description: string;
     date?: string;
+    /** What the preparers said is available on this list; null while nobody has seen to the list. */
+    available: number | null;
+    /** How much quick invoices took from it. */
+    taken: number;
   }[];
 };
 
@@ -94,9 +98,16 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
           item_id: item.item_id,
           description: item.description,
           ...(list.date ? { date: list.date } : {}),
+          available: list.status && list.status !== "not_reported" ? (item.available ?? item.quantity) : null,
+          taken: item.taken ?? 0,
         })),
       });
     }
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** A part's amount in its row's unit: kg when the row adds boxes and kg up (a box is 10kg). */
+export function inRowUnit(quantity: number, partUnit: string, rowUnit: string) {
+  return round(rowUnit === "kg" && partUnit === "box" ? quantity * 10 : quantity);
 }

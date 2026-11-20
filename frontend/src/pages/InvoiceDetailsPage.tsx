@@ -1230,6 +1230,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           confirmLabel={isVoiding ? "Voiding..." : "Void invoice"}
           error={voidError}
           isConfirming={isVoiding}
+          requireDoubleTap
+          armedLabel="Tap again to void"
           onConfirm={handleVoidConfirm}
           onCancel={() => setIsVoidConfirmOpen(false)}
         />

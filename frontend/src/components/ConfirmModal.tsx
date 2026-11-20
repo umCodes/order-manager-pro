@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 type Props = {
   title: string;
   message: string;
@@ -7,9 +9,18 @@ type Props = {
   error?: string | null;
   /** Disables both buttons while a confirm is in flight. */
   isConfirming?: boolean;
+  /**
+   * "Load then shoot": the first tap only arms the confirm button (it turns red and
+   * shows `armedLabel`); a second tap actually confirms. Disarms itself after a few seconds.
+   * Use for actions that are hard to undo, like voiding an invoice.
+   */
+  requireDoubleTap?: boolean;
+  armedLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
+
+const ARM_TIMEOUT_MS = 4000;
 
 /** Generic yes/no confirmation modal, styled to match the app's other modals — never use window.confirm. */
 export default function ConfirmModal({
@@ -19,9 +30,35 @@ export default function ConfirmModal({
   cancelLabel = "Cancel",
   error,
   isConfirming,
+  requireDoubleTap,
+  armedLabel = "Tap again to confirm",
   onConfirm,
   onCancel,
 }: Props) {
+  const [isArmed, setIsArmed] = useState(false);
+
+  useEffect(() => {
+    if (!isArmed) return;
+    const t = setTimeout(() => setIsArmed(false), ARM_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [isArmed]);
+
+  // A failed attempt should need re-arming before the next try.
+  useEffect(() => {
+    if (error) setIsArmed(false);
+  }, [error]);
+
+  function handleConfirmClick() {
+    if (requireDoubleTap && !isArmed) {
+      setIsArmed(true);
+      return;
+    }
+    setIsArmed(false);
+    onConfirm();
+  }
+
+  const showArmed = requireDoubleTap && isArmed && !isConfirming;
+
   return (
     <div className="modal-overlay">
       <div className="modal-overlay__backdrop" onClick={onCancel} />
@@ -35,8 +72,13 @@ export default function ConfirmModal({
           <button type="button" className="btn btn--secondary" disabled={isConfirming} onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button type="button" className="btn btn--primary" disabled={isConfirming} onClick={onConfirm}>
-            {confirmLabel}
+          <button
+            type="button"
+            className={`btn btn--primary${showArmed ? " btn--armed" : ""}`}
+            disabled={isConfirming}
+            onClick={handleConfirmClick}
+          >
+            {showArmed ? armedLabel : confirmLabel}
           </button>
         </div>
       </div>

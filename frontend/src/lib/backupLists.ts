@@ -38,8 +38,9 @@ export type MergedRow = {
     date?: string;
     /** What the preparers said is available on this list; null while nobody has seen to the list. */
     available: number | null;
-    /** How much quick invoices took from it. */
+    /** How much quick invoices took from it (sold from backup stock), and to whom. */
     taken: number;
+    taken_by: { invoice_number: string; customer_name: string; quantity: number }[];
   }[];
 };
 
@@ -100,6 +101,7 @@ export function mergeBackupLists(lists: BackupList[]): MergedRow[] {
           ...(list.date ? { date: list.date } : {}),
           available: list.status && list.status !== "not_reported" ? (item.available ?? item.quantity) : null,
           taken: item.taken ?? 0,
+          taken_by: item.taken_by ?? [],
         })),
       });
     }

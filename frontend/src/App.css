@@ -4691,3 +4691,37 @@ label {
 .item-breakdown__source--stacked .stock-chips {
   margin-top: 3px;
 }
+
+.stock-chip--sold {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.backup-item__side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.backup-item__total {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.backup-list-line__qty {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+/* Who a backup item was sold to (a quick invoice). */
+.backup-sale {
+  margin-top: 3px;
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid #c4b5fd;
+  font-size: 12px;
+  color: var(--color-gray-700);
+}

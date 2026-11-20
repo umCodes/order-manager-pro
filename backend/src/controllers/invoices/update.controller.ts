@@ -16,6 +16,7 @@ import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
 import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
+import { refreshBackupUsage } from "../../services/backupUsage.js";
 
 /**
  * Reschedules an invoice and edits its existing channel message in place, so
@@ -101,6 +102,8 @@ export async function updateInvoiceLineItems(req: Request, res: Response) {
     });
     // A sent invoice's total is part of the customer's balance due in the cached list.
     if (invoice.status !== "draft") deleteCache("customers");
+    // A sent quick invoice takes from backup only what it has now (a removed item goes back to the list).
+    if (invoice.status !== "draft") await refreshBackupUsage(invoice);
 
     await refreshReportInvoice(invoice);
     res.status(200).json({ invoice });

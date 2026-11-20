@@ -4,6 +4,7 @@ import { getGeneralItemIds } from "./generalItems.js"
 import { itemKeyFor } from "./telegram/invoices/itemNumbers.js"
 import { fromTelegramAmount, telegramAmount } from "../utils/quantity.js"
 import { businessDayWindow, businessDayKey } from "../utils/businessDate.js"
+import { excludeInternalLineItems } from "../utils/internalLineItems.js"
 
 /**
  * Backup stock taken by quick invoices: an invoice marked as sent (or paid
@@ -92,71 +93,113 @@ async function withLock<T>(work: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Takes a quick invoice's items from the backup lists (see above). Does
- * nothing for an invoice that wasn't quick, or was already taken for.
- * Best-effort: a failure is logged, never thrown, so sending the invoice
- * never fails over it. Returns what was recorded, if anything.
+ * Works out what an invoice takes from the backup lists, from the items it
+ * has now (internal lines, hidden from Telegram and the PDF, never take
+ * anything), against what's left on the lists — this invoice's own earlier
+ * take not counted, so it can be worked out again after an edit.
+ */
+async function computeUsage(invoice: any, at: Date): Promise<BackupUsage> {
+    const invoiceId = String(invoice.invoice_id)
+    const keyOf = itemKeyFor(await getGeneralItemIds())
+    const lists = (await withReportedAvailability(await listBackupLists())).reverse() // oldest first
+    const taken = await takenFromBackup()
+    const left = new Map<string, number>()
+    const leftOf = (list: BackupList, item: BackupList["items"][number] & { available?: number }) => {
+        const key = `${list.id}:${item.number}`
+        if (!left.has(key)) left.set(key, round((item.available ?? item.quantity) - (taken.get(key)?.quantity ?? 0)))
+        return left.get(key)!
+    }
+
+    const usage: BackupUsage = {
+        invoice_id: invoiceId,
+        invoice_number: String(invoice.invoice_number ?? ""),
+        customer_name: String(invoice.customer_name ?? ""),
+        at: at.toISOString(),
+        takes: [],
+        missing: [],
+    }
+
+    for (const line of excludeInternalLineItems(invoice.line_items ?? [])) {
+        const need = telegramAmount(Number(line.quantity) || 0, String(line.unit ?? ""))
+        if (need.amount <= 0) continue
+        let remaining = need.amount
+        for (const list of lists) {
+            for (const item of list.items) {
+                if (remaining <= 0) break
+                if (keyOf(item) !== keyOf(line)) continue
+                const has = telegramAmount(leftOf(list, item), item.unit)
+                if (has.unit !== need.unit || has.amount <= 0) continue
+                const take = Math.min(has.amount, remaining)
+                const inItsUnit = round(fromTelegramAmount(take, item.unit))
+                left.set(`${list.id}:${item.number}`, round(leftOf(list, item) - inItsUnit))
+                remaining = round(remaining - take)
+                usage.takes.push({ list_id: list.id, number: item.number, item_id: item.item_id, description: item.description, quantity: inItsUnit, unit: item.unit })
+            }
+        }
+        if (remaining > 0) {
+            usage.missing.push({
+                item_id: String(line.item_id ?? ""),
+                name: String(line.name ?? ""),
+                description: String(line.description ?? ""),
+                quantity: round(fromTelegramAmount(remaining, String(line.unit ?? ""))),
+                unit: String(line.unit ?? ""),
+            })
+        }
+    }
+    return usage
+}
+
+async function saveUsage(usage: BackupUsage) {
+    await redisClient.set(usageKey(usage.invoice_id), JSON.stringify(usage), { EX: KEEP_SECONDS })
+    await redisClient.zAdd(INDEX_KEY, { score: Date.parse(usage.at), value: usage.invoice_id })
+}
+
+/**
+ * Takes a quick invoice's items from the backup lists (see above), as the
+ * invoice is when it's sent. Does nothing for an invoice that wasn't quick,
+ * or was already taken for. Best-effort: a failure is logged, never thrown,
+ * so sending the invoice never fails over it. Returns what was recorded, if anything.
  */
 export async function takeBackupForQuickInvoice(invoice: any, sentAt: Date = new Date()): Promise<BackupUsage | null> {
     try {
         if (!isQuickInvoice(invoice, sentAt)) return null
-        const invoiceId = String(invoice.invoice_id)
         return await withLock(async () => {
-            if (await redisClient.exists(usageKey(invoiceId))) return null
-
-            const keyOf = itemKeyFor(await getGeneralItemIds())
-            const lists = (await withReportedAvailability(await listBackupLists())).reverse() // oldest first
-            const taken = await takenFromBackup()
-            const left = new Map<string, number>()
-            const leftOf = (list: BackupList, item: BackupList["items"][number] & { available?: number }) => {
-                const key = `${list.id}:${item.number}`
-                if (!left.has(key)) left.set(key, round((item.available ?? item.quantity) - (taken.get(key)?.quantity ?? 0)))
-                return left.get(key)!
-            }
-
-            const usage: BackupUsage = {
-                invoice_id: invoiceId,
-                invoice_number: String(invoice.invoice_number ?? ""),
-                customer_name: String(invoice.customer_name ?? ""),
-                at: sentAt.toISOString(),
-                takes: [],
-                missing: [],
-            }
-
-            for (const line of invoice.line_items ?? []) {
-                const need = telegramAmount(Number(line.quantity) || 0, String(line.unit ?? ""))
-                let remaining = need.amount
-                for (const list of lists) {
-                    for (const item of list.items) {
-                        if (remaining <= 0) break
-                        if (keyOf(item) !== keyOf(line)) continue
-                        const has = telegramAmount(leftOf(list, item), item.unit)
-                        if (has.unit !== need.unit || has.amount <= 0) continue
-                        const take = Math.min(has.amount, remaining)
-                        const inItsUnit = round(fromTelegramAmount(take, item.unit))
-                        left.set(`${list.id}:${item.number}`, round(leftOf(list, item) - inItsUnit))
-                        remaining = round(remaining - take)
-                        usage.takes.push({ list_id: list.id, number: item.number, item_id: item.item_id, description: item.description, quantity: inItsUnit, unit: item.unit })
-                    }
-                }
-                if (remaining > 0) {
-                    usage.missing.push({
-                        item_id: String(line.item_id ?? ""),
-                        name: String(line.name ?? ""),
-                        description: String(line.description ?? ""),
-                        quantity: round(fromTelegramAmount(remaining, String(line.unit ?? ""))),
-                        unit: String(line.unit ?? ""),
-                    })
-                }
-            }
-
-            await redisClient.set(usageKey(invoiceId), JSON.stringify(usage), { EX: KEEP_SECONDS })
-            await redisClient.zAdd(INDEX_KEY, { score: sentAt.getTime(), value: invoiceId })
+            if (await redisClient.exists(usageKey(String(invoice.invoice_id)))) return null
+            const usage = await computeUsage(invoice, sentAt)
+            await saveUsage(usage)
             console.log(`Backup: ${usage.invoice_number} took ${usage.takes.length} item(s) from backup, ${usage.missing.length} missing`)
             return usage
         })
     } catch (error) {
         console.error(`Backup: couldn't take ${invoice?.invoice_number}'s items from backup`, error)
+        return null
+    }
+}
+
+/**
+ * After a sent invoice's items were edited: works out again what it takes
+ * from backup, from the items it has now — a removed item is given back, a
+ * lowered quantity takes less, an added one is taken. Only for an invoice
+ * that took from backup in the first place (its original time is kept).
+ * Best-effort, like taking.
+ */
+export async function refreshBackupUsage(invoice: any): Promise<BackupUsage | null> {
+    try {
+        const invoiceId = String(invoice.invoice_id)
+        return await withLock(async () => {
+            const raw = await redisClient.get(usageKey(invoiceId))
+            if (!raw) return null
+            const previous = JSON.parse(raw) as BackupUsage
+            // Its own earlier take mustn't count against it.
+            await redisClient.del(usageKey(invoiceId))
+            await redisClient.zRem(INDEX_KEY, invoiceId)
+            const usage = await computeUsage(invoice, new Date(previous.at))
+            await saveUsage(usage)
+            console.log(`Backup: ${usage.invoice_number} edited — now takes ${usage.takes.length} item(s) from backup, ${usage.missing.length} missing`)
+            return usage
+        })
+    } catch (error) {
+        console.error(`Backup: couldn't update what ${invoice?.invoice_number} takes from backup`, error)
         return null
     }
 }

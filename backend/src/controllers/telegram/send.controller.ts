@@ -13,22 +13,15 @@ import { createBackupList, type BackupListItem } from '../../services/backupList
 import { ENV } from '../../constants/env.js';
 import { businessDayKey } from '../../utils/businessDate.js';
 import { orderMessageItems, saveGroupOrderMessage } from '../../services/telegram/groupOrders.js';
-import { routeForNewOrder } from '../../services/telegram/destinations.js';
-import { readRoute } from '../../services/telegram/invoices/notifications.js';
 
-/**
- * Posts a free-text message to the team: the channel and/or the group, as
- * Settings → Telegram says (see destinations.ts). Refused when both are off.
- */
+/** Posts a free-text message to the team's channel. */
 export async function sendMessage(req: Request, res: Response) {
     try {
         const { text } = req.body;
 
         if (!text) throw new Error("Text not provided")
 
-        const route = await routeForNewOrder();
-        if (!route) throw new Error("Sending to the channel and the group are both turned off in Settings → Telegram");
-        const message = await TelegramSendMessage(text, route.chatId, { mirror: route.mirror });
+        const message = await TelegramSendMessage(text);
         res.status(201).json({ message });
         return
     } catch (error) {
@@ -102,8 +95,6 @@ export async function sendItemsList(req: Request, res: Response) {
  * in that invoice's thread. When we have no message id on file for the
  * invoice (never sent, or expired), falls back to a standalone message with
  * the invoice number appended so the team can still tell what it refers to.
- * A reply stays in the invoice's thread wherever it was posted; a standalone
- * message goes where Settings → Telegram says.
  */
 export async function replyToMessage(req: Request, res: Response) {
     try {
@@ -120,15 +111,12 @@ export async function replyToMessage(req: Request, res: Response) {
             const invoice = await ZohoGetInvoiceById(access_token, String(invoice_id));
             const fallbackText = `${text}\n\n${invoice.invoice_number}`;
 
-            const route = await routeForNewOrder();
-            if (!route) throw new Error("Sending to the channel and the group are both turned off in Settings → Telegram");
-            const message = await TelegramSendMessage(fallbackText, route.chatId, { mirror: route.mirror });
+            const message = await TelegramSendMessage(fallbackText);
             res.status(201).json({ message });
             return
         }
 
-        const route = await readRoute(String(invoice_id));
-        const message = await TelegramReplyToMessage(text, Number(message_id), route.chatId, { mirror: route.mirror });
+        const message = await TelegramReplyToMessage(text, Number(message_id));
         res.status(201).json({ message });
         return
     } catch (error) {

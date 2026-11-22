@@ -233,15 +233,7 @@ export type OrderPreparation = {
   status: PreparationStatus;
   confirmed: PreparationConfirmation | null;
   items: OrderShortageItem[];
-  /** An invoice's Telegram message: held for a later day, already sent, or null (never posted). */
-  telegram?: InvoiceTelegramState;
 };
-
-/** Where an invoice's Telegram message stands: held until `due_at`, or sent (`sent_at` when known). */
-export type InvoiceTelegramState =
-  | { state: "scheduled"; date: string; due_at: number }
-  | { state: "sent"; sent_at: number | null }
-  | null;
 
 export type InvoiceDetail = {
   invoice_id: string;

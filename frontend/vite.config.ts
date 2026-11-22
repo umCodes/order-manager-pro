@@ -16,26 +16,37 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Precached so the launch screen and icons show even offline.
-      includeAssets: ['logo.svg', 'favicon.svg', 'app-icon.png', 'app-icon-192.png', 'app-icon-512.png', 'app-icon-maskable-512.png'],
+      includeAssets: ['app-icon.png', 'app-icon-192.png'],
       devOptions: {
         enabled: true,
         type: 'module',
       },
-      // Android uses background_color and the icon for its own launch screen:
-      // white, like the in-app one (see index.html).
       manifest: {
-        name: 'Order Manager Pro',
-        short_name: 'Order Manager',
+        name: 'Order Manager',
+        short_name: 'OrderManager',
         theme_color: '#ffffff',
-        background_color: '#ffffff',
+        background_color: '#3B82F6',
         display: 'standalone',
         start_url: '/',
         icons: [
-          { src: 'app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: 'app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: 'app-icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: 'logo.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          {
+            src: 'app-icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'app-icon.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'app-icon.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
       workbox: {

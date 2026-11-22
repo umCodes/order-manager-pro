@@ -4,7 +4,6 @@ import {
   deleteTelegramMessage,
   editTelegramMessage,
   fetchDraftInvoices,
-  fetchHeldInvoiceMessages,
   fetchTelegramMessages,
   replyToTelegramMessage,
   sendTelegramMessage,
@@ -12,9 +11,7 @@ import {
 import ConfirmModal from "../components/ConfirmModal";
 import WhatsAppInbox from "../components/WhatsAppInbox";
 import { getUnread, useUnread } from "../lib/unread";
-import type { HeldInvoiceMessage, TelegramLogMessage } from "../lib/api";
-import TelegramStateBadge from "../components/TelegramStateBadge";
-import { scheduledSendDateTime } from "../lib/telegramSchedule";
+import type { TelegramLogMessage } from "../lib/api";
 import type { DraftInvoice } from "../types";
 import Skeleton from "../components/Skeleton";
 
@@ -42,15 +39,13 @@ export default function MessagesPage() {
   const [logMessages, setLogMessages] = useState<TelegramLogMessage[]>([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
-  // Invoices dated a later day: not sent yet, they go out on their day.
-  const [heldMessages, setHeldMessages] = useState<HeldInvoiceMessage[]>([]);
 
-  const [editingMessage, setEditingMessage] = useState<TelegramLogMessage | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const [deletingMessage, setDeletingMessage] = useState<TelegramLogMessage | null>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
@@ -63,7 +58,6 @@ export default function MessagesPage() {
   function loadMessages() {
     setIsLoadingLog(true);
     setLogError(null);
-    fetchHeldInvoiceMessages().then(setHeldMessages).catch(() => setHeldMessages([]));
     fetchTelegramMessages()
       .then(setLogMessages)
       .catch((e) => setLogError(e instanceof Error ? e.message : "Failed to load messages"))
@@ -93,24 +87,24 @@ export default function MessagesPage() {
   }
 
   function startEdit(message: TelegramLogMessage) {
-    setEditingMessage(message);
+    setEditingMessageId(message.message_id);
     setEditText(message.text);
     setEditError(null);
   }
 
   function cancelEdit() {
-    setEditingMessage(null);
+    setEditingMessageId(null);
     setEditText("");
     setEditError(null);
   }
 
   function saveEdit() {
-    if (editingMessage === null || !editText.trim()) return;
+    if (editingMessageId === null || !editText.trim()) return;
     setIsSavingEdit(true);
     setEditError(null);
-    editTelegramMessage(editingMessage.message_id, editText, editingMessage.chat_id)
+    editTelegramMessage(editingMessageId, editText)
       .then(() => {
-        setEditingMessage(null);
+        setEditingMessageId(null);
         setEditText("");
         loadMessages();
       })
@@ -119,11 +113,11 @@ export default function MessagesPage() {
   }
 
   function handleDelete() {
-    if (deletingMessage === null) return;
+    if (deletingMessageId === null) return;
     setIsDeleting(true);
     setDeleteError(null);
     setDeleteNotice(null);
-    deleteTelegramMessage(deletingMessage.message_id, deletingMessage.chat_id)
+    deleteTelegramMessage(deletingMessageId)
       .then((result) => {
         if (!result.deleted_from_telegram) {
           setDeleteNotice(
@@ -132,7 +126,7 @@ export default function MessagesPage() {
             } — remove it there by hand if needed.`,
           );
         }
-        setDeletingMessage(null);
+        setDeletingMessageId(null);
         loadMessages();
       })
       .catch((e) => setDeleteError(e instanceof Error ? e.message : "Failed to delete message"))
@@ -210,33 +204,6 @@ export default function MessagesPage() {
             {isSubmitting ? "Sending..." : "Send to Telegram"}
           </button>
 
-          {heldMessages.length > 0 && (
-            <>
-              <div className="page-header" style={{ marginTop: 28 }}>
-                <h2 className="page-title" style={{ fontSize: 16 }}>
-                  Scheduled ({heldMessages.length})
-                </h2>
-              </div>
-              <p className="page-subtitle">Invoices for a later day: each goes to Telegram on its day</p>
-              <div className="telegram-log">
-                {heldMessages.map((held) => (
-                  <div key={held.invoice_id} className="telegram-log__row">
-                    <div className="telegram-log__main">
-                      <div className="telegram-log__text">
-                        {held.invoice_number}
-                        {held.customer_name ? ` · ${held.customer_name}` : ""}
-                      </div>
-                      <div className="telegram-log__meta">
-                        <TelegramStateBadge telegram={{ state: "scheduled", date: held.date, due_at: held.due_at }} />{" "}
-                        {scheduledSendDateTime(held.due_at)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
           <div className="page-header" style={{ marginTop: 28 }}>
             <h2 className="page-title" style={{ fontSize: 16 }}>
               Recent Messages
@@ -254,8 +221,8 @@ export default function MessagesPage() {
           ) : (
             <div className="telegram-log">
               {logMessages.map((message) => (
-                <div key={`${message.chat_id}:${message.message_id}`} className="telegram-log__row">
-                  {editingMessage?.message_id === message.message_id && editingMessage.chat_id === message.chat_id ? (
+                <div key={message.message_id} className="telegram-log__row">
+                  {editingMessageId === message.message_id ? (
                     <div className="telegram-log__edit">
                       <textarea
                         className="textarea"
@@ -290,8 +257,6 @@ export default function MessagesPage() {
                         <div className="telegram-log__meta">
                           {new Date(message.created_at).toLocaleString()}
                           {message.edited && <span className="badge">edited</span>}
-                          <span className="badge">sent</span>
-                          {message.in_group && <span className="badge">group</span>}
                         </div>
                       </div>
                       <div className="telegram-log__actions">
@@ -311,7 +276,7 @@ export default function MessagesPage() {
                           title="Delete message"
                           onClick={() => {
                             setDeleteError(null);
-                            setDeletingMessage(message);
+                            setDeletingMessageId(message.message_id);
                           }}
                         >
                           <Trash2 size={14} />
@@ -326,7 +291,7 @@ export default function MessagesPage() {
         </>
       )}
 
-      {deletingMessage !== null && (
+      {deletingMessageId !== null && (
         <ConfirmModal
           title="Delete message"
           message="Delete this message from the Telegram channel and the history? This can't be undone."
@@ -334,7 +299,7 @@ export default function MessagesPage() {
           error={deleteError}
           isConfirming={isDeleting}
           onConfirm={handleDelete}
-          onCancel={() => setDeletingMessage(null)}
+          onCancel={() => setDeletingMessageId(null)}
         />
       )}
     </div>

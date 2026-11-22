@@ -16,16 +16,11 @@ import { forgetGroupOrderMessage } from "./groupOrders.js"
 const KEEP_SECONDS = 30 * 24 * 60 * 60
 const toGroupKey = (channelMessageId: number) => `telegram:mirror:${channelMessageId}`
 const toChannelKey = (groupMessageId: number) => `telegram:mirror:group:${groupMessageId}`
-/** The plain text a group message was last posted or edited with. */
+/** The plain text a group copy was last posted or edited with. */
 const groupTextKey = (groupMessageId: number) => `telegram:mirror:group-text:${groupMessageId}`
 
-export async function rememberGroupText(groupMessageId: number, text: string) {
+async function rememberGroupText(groupMessageId: number, text: string) {
     await redisClient.set(groupTextKey(groupMessageId), text, { EX: KEEP_SECONDS })
-}
-
-/** Whether `chatId` is the preparers' group (a message posted there directly, not as a copy). */
-export function isGroupChat(chatId: string | number) {
-    return !!TELEGRAM_GROUP_CHATID && String(chatId) === String(TELEGRAM_GROUP_CHATID)
 }
 
 /** Whether an action on `chatId` should be copied: it's the channel, and a group is set. */
@@ -73,31 +68,16 @@ export async function mirrorEdit(text: string, channelMessageId: number) {
     try {
         const copyId = await groupMessageId(channelMessageId)
         if (!copyId) return
-        await editGroupMessage(text, copyId)
+        await rememberGroupText(copyId, text)
+        const response = await TelegramApi("editMessageText", "POST", {
+            chat_id: TELEGRAM_GROUP_CHATID,
+            message_id: copyId,
+            text,
+        })
+        if (!response.ok) throw response
     } catch (error) {
         console.error(`Telegram group copy: couldn't edit the copy of message ${channelMessageId}:`, error)
     }
-}
-
-/**
- * Edits a message in the group — a copy, or one posted there directly (the
- * channel turned off in Settings). Throws when Telegram refuses.
- */
-export async function editGroupMessage(text: string, groupMessageId: number) {
-    await rememberGroupText(groupMessageId, text)
-    const response = await TelegramApi("editMessageText", "POST", {
-        chat_id: TELEGRAM_GROUP_CHATID,
-        message_id: groupMessageId,
-        text,
-    })
-    if (!response.ok) throw response
-    return response.result
-}
-
-/** Forgets what's kept about a group message posted directly (not a copy) once it's deleted. */
-export async function forgetGroupMessage(groupMessageId: number) {
-    await redisClient.del(groupTextKey(groupMessageId))
-    await forgetGroupOrderMessage(groupMessageId)
 }
 
 /** Deletes the copy of a channel message, if it has one, and forgets it. */

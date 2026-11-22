@@ -27,8 +27,7 @@ import DailyReportButton from "../components/DailyReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
-import TelegramStateBadge from "../components/TelegramStateBadge";
-import type { DraftInvoice, InvoiceTelegramState, PreparationStatus } from "../types";
+import type { DraftInvoice, PreparationStatus } from "../types";
 import Skeleton from "../components/Skeleton";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
@@ -106,8 +105,6 @@ export default function DraftsPage({
   // Each draft's preparation in the Telegram group (👍 and shortages), read
   // fresh with every load of the drafts; missing ones show nothing.
   const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
-  // Each draft's Telegram message: held for a later day (⏰) or sent.
-  const [telegramStates, setTelegramStates] = useState<Record<string, InvoiceTelegramState>>({});
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
     return fetchDraftInvoices(options)
@@ -116,7 +113,6 @@ export default function DraftsPage({
         fetchPreparationStatuses(list.map((draft) => draft.invoice_id))
           .then((statuses) => {
             setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status])));
-            setTelegramStates(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.telegram ?? null])));
           })
           .catch(() => {});
       })
@@ -316,11 +312,7 @@ export default function DraftsPage({
                         <div className="draft-card__top">
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                            <TelegramStateBadge telegram={telegramStates[invoice.invoice_id]} />
-                            {/* Nothing to prepare yet while its message is held for a later day. */}
-                            {preparation[invoice.invoice_id] && telegramStates[invoice.invoice_id]?.state !== "scheduled" && (
-                              <PreparationBadge status={preparation[invoice.invoice_id]} />
-                            )}
+                            {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />
                             <ResendButton

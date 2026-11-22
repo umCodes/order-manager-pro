@@ -5,12 +5,6 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { listHeldInvoices } from "../../services/telegram/invoices/schedule.js";
-import { invoiceTelegramState } from "../../services/telegram/invoices/notifications.js";
-
-/** Backup lists (BK-…) have no invoice message to report on. */
-const telegramStateOf = (orderId: string) => (orderId.startsWith("BK-") ? Promise.resolve(null) : invoiceTelegramState(orderId).catch(() => null));
-import { ENV } from '../../constants/env.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -19,18 +13,9 @@ import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orde
  * this can only ever cover messages the app itself sent, edited, or deleted
  * — not messages posted by anyone else.
  */
-/** The chat a Messages-tab action is for: `chat_id` in the query or body, the channel when not given. */
-function chatIdFrom(req: Request): string {
-    const chatId = req.query.chat_id ?? req.body?.chat_id;
-    return chatId ? String(chatId) : String(ENV.TELEGRAM_CHATID);
-}
-
 export async function listMessages(req: Request, res: Response) {
     try {
-        const messages = (await listTelegramMessages()).map((message) => ({
-            ...message,
-            in_group: message.chat_id !== String(ENV.TELEGRAM_CHATID),
-        }));
+        const messages = await listTelegramMessages();
         res.status(200).json({ messages });
     } catch (error) {
         console.error('Error listing messages:', error);
@@ -48,8 +33,7 @@ export async function editMessage(req: Request, res: Response) {
         if (!text) throw new Error("Text not provided")
         if (!messageId) throw new Error("messageId not provided")
 
-        // Message ids are per chat: one posted to the group directly says so.
-        const message = await TelegramEditMessage(text, Number(messageId), chatIdFrom(req));
+        const message = await TelegramEditMessage(text, Number(messageId));
         res.status(200).json({ message });
         return
     } catch (error) {
@@ -73,10 +57,9 @@ export async function deleteMessage(req: Request, res: Response) {
 
         if (!messageId) throw new Error("messageId not provided")
 
-        const chatId = chatIdFrom(req);
-        const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId), chatId);
-        // A backup list's message (always on the channel) going means the list is done with too.
-        if (chatId === String(ENV.TELEGRAM_CHATID)) await removeBackupListByMessage(Number(messageId)).catch((err) => console.error('Error removing backup list for deleted message:', err));
+        const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId));
+        // A backup list's message going means the list is done with too.
+        await removeBackupListByMessage(Number(messageId)).catch((err) => console.error('Error removing backup list for deleted message:', err));
         res.status(200).json({ ok: true, deleted_from_telegram: deletedFromTelegram, telegram_error: error });
         return
     } catch (error) {
@@ -135,26 +118,22 @@ export async function getOrderPreparation(req: Request, res: Response) {
     try {
         const orderId = req.params.orderId;
         if (!orderId) throw new Error("orderId not provided")
-        const [preparation, telegram] = await Promise.all([orderPreparation(String(orderId)), telegramStateOf(String(orderId))]);
-        res.status(200).json({ ...preparation, telegram });
+        res.status(200).json(await orderPreparation(String(orderId)));
     } catch (error) {
         console.error('Error reading order preparation:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });
     }
 }
 
-/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items, telegram } } } (`telegram`: the invoice message scheduled / sent, see invoiceTelegramState). */
+/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items } } }. */
 export async function listOrderPreparationStatuses(req: Request, res: Response) {
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
         const results = await Promise.all(
-            ids.map(async (id) => ({
-                ...(await orderPreparation(id)),
-                telegram: await telegramStateOf(id),
-            })),
+            ids.map((id) => orderPreparation(id)),
         );
         res.status(200).json({
-            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, telegram }) => [order_id, { status, confirmed, items, telegram }])),
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items }) => [order_id, { status, confirmed, items }])),
         });
     } catch (error) {
         console.error('Error reading preparation statuses:', error);
@@ -179,15 +158,5 @@ export async function postAppliedReport(req: Request, res: Response) {
     } catch (error) {
         console.error('Error recording an applied report:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to record the change' });
-    }
-}
-
-/** Invoices held for a later day (see telegram/invoices/schedule.ts), soonest first. */
-export async function listHeldInvoiceMessages(_req: Request, res: Response) {
-    try {
-        res.status(200).json({ held: await listHeldInvoices() });
-    } catch (error) {
-        console.error("Error listing held invoice messages:", error);
-        res.status(500).json({ error: "Failed to list held invoice messages" });
     }
 }

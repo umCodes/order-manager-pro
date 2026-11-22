@@ -8,6 +8,37 @@
   position: relative;
 }
 
+.server-wakeup {
+  max-width: var(--app-max-width);
+  min-height: 100vh;
+  margin: 0 auto;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.server-wakeup__spinner {
+  color: var(--color-blue-600);
+  animation: refresh-spin 0.9s linear infinite;
+}
+
+.server-wakeup__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.server-wakeup__subtitle {
+  font-size: 13.5px;
+  color: var(--color-gray-500);
+  max-width: 300px;
+}
+
 .app-frame__body {
   flex: 1;
   padding: 20px 16px calc(80px + env(safe-area-inset-bottom));
@@ -67,19 +98,9 @@
 }
 
 .app-header__title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-gray-700);
-}
-
-.app-header__logo {
-  display: block;
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
 }
 
 .app-header__actions {
@@ -4495,27 +4516,5 @@ label {
 .loading-check__unit {
   font-size: 12px;
   color: var(--color-gray-500);
-}
-
-/* An invoice's Telegram message: held for a later day, or sent (see TelegramStateBadge). */
-.telegram-state-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 6px;
-  white-space: nowrap;
-}
-
-.telegram-state-badge--scheduled {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-.telegram-state-badge--sent {
-  color: var(--color-gray-500);
-  background: var(--color-gray-100);
-  font-weight: 500;
 }
 

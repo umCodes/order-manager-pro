@@ -1,10 +1,9 @@
 import { Router } from "express";
-import { sendMessage, sendItemsList, replyToMessage, listMessages, editMessage, deleteMessage, getGroupOrderMessage, listGroupReplies, getOrderShortages, getOrderPreparation, listOrderPreparationStatuses, postAppliedReport, listHeldInvoiceMessages } from "../controllers/telegram/index.js";
+import { sendMessage, sendItemsList, replyToMessage, listMessages, editMessage, deleteMessage, getGroupOrderMessage, listGroupReplies, getOrderShortages, getOrderPreparation, listOrderPreparationStatuses, postAppliedReport } from "../controllers/telegram/index.js";
 
 export const telegramRouter = Router();
 
 telegramRouter.get('/telegram/messages', listMessages);
-telegramRouter.get('/telegram/held', listHeldInvoiceMessages);
 telegramRouter.post('/telegram/messages', sendMessage);
 telegramRouter.post('/telegram/messages/reply', replyToMessage);
 telegramRouter.post('/telegram/items-list', sendItemsList);

@@ -45,7 +45,6 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
-import TelegramStateBadge from "../components/TelegramStateBadge";
 import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
 import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
@@ -963,14 +962,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                 Items ({displayLineItems.length})
                 {isDraft && preparation?.order_id === invoice.invoice_id && (
                   <>
-                    {/* Nothing to prepare yet while its message is held for a later day. */}
-                    {preparation.telegram?.state !== "scheduled" && (
-                      <>
-                        {" "}
-                        <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
-                      </>
-                    )}{" "}
-                    <TelegramStateBadge telegram={preparation.telegram} />
+                    {" "}
+                    <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
                   </>
                 )}
               </span>
@@ -1054,6 +1047,7 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           {unmatchedShortages.map((shortage) => (
             <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "Removed item"} />
           ))}
+
 
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">

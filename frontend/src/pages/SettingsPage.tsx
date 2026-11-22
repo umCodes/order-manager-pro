@@ -7,14 +7,12 @@ import InvoiceSentNotifySettings from "../components/InvoiceSentNotifySettings";
 import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import GeneralItemsWhatsAppSettings from "../components/GeneralItemsWhatsAppSettings";
 import NotificationTemplateSettings from "../components/NotificationTemplateSettings";
-import TelegramDestinationsSettings from "../components/TelegramDestinationsSettings";
-import TelegramScheduleSettings from "../components/TelegramScheduleSettings";
 
 type Props = {
   onBack: () => void;
 };
 
-type SectionKey = "categories" | "general-items" | "invoices" | "notifications" | "daily-report" | "telegram";
+type SectionKey = "categories" | "general-items" | "invoices" | "notifications" | "daily-report";
 
 /** The Settings menu, top to bottom: each entry opens a page of its own. */
 const SECTIONS: { key: SectionKey; title: string; description: string; render: () => ReactNode }[] = [
@@ -43,17 +41,6 @@ const SECTIONS: { key: SectionKey; title: string; description: string; render: (
       <>
         <InvoiceDueSettings />
         <InvoiceSentNotifySettings />
-      </>
-    ),
-  },
-  {
-    key: "telegram",
-    title: "Telegram",
-    description: "When dated invoices are sent, and whether messages go to the channel, the group or both",
-    render: () => (
-      <>
-        <TelegramScheduleSettings />
-        <TelegramDestinationsSettings />
       </>
     ),
   },

@@ -1,40 +1,22 @@
 import { ENV } from "../../constants/env.js"
 import { TelegramApi } from "./client.js"
 import { recordTelegramMessage, updateTelegramMessageLogText, removeTelegramMessageFromLog } from "./log.js"
-import { editGroupMessage, forgetGroupMessage, isGroupChat, isMirrored, mirrorDelete, mirrorEdit, mirrorSend, rememberGroupText } from "./mirror.js"
+import { isMirrored, mirrorDelete, mirrorEdit, mirrorSend } from "./mirror.js"
 
 // Everything done on the channel here is also done on its copy in the
-// preparers' group, when one is set (see mirror.ts) — unless a send says
-// `mirror: false` (Settings turned the group off for that message, see
-// destinations.ts). A message can also be posted to the group directly
-// (the channel turned off): then it is its own group message. A sent
-// message comes back with `group_message_id`: the id of its group copy, its
-// own id when it was posted to the group, or null when the group has none.
+// preparers' group, when one is set (see mirror.ts). A sent message comes
+// back with `group_message_id`: its copy's id, or null without one.
 
-type SendOptions = { mirror?: boolean }
-
-const shouldMirror = (chatId: string | number, options?: SendOptions) => (options?.mirror ?? true) && isMirrored(chatId)
-
-/** What a message posted to `chatId` is in the group: its copy's id, itself, or nothing. */
-async function groupMessageIdFor(chatId: string | number, messageId: number, text: string, options: SendOptions | undefined, copy: () => Promise<number | null>) {
-    if (isGroupChat(chatId)) {
-        await rememberGroupText(messageId, text)
-        return messageId
-    }
-    return shouldMirror(chatId, options) ? copy() : null
-}
-
-/** Posts a message to the channel (or `chatId`) and records it in the log. */
-export async function TelegramSendMessage(text: string, chatId: string | number = String(ENV.TELEGRAM_CHATID), options?: SendOptions) {
+/** Posts a message to the channel and records it in the log. */
+export async function TelegramSendMessage(text: string, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("sendMessage", "POST", {
             chat_id: chatId,
             text,
         })
         if (!response.ok) throw response
-        const messageId = Number(response.result.message_id)
-        await recordTelegramMessage({ message_id: messageId, chat_id: String(chatId), text })
-        const group_message_id = await groupMessageIdFor(chatId, messageId, text, options, () => mirrorSend(text, messageId))
+        await recordTelegramMessage({ message_id: response.result.message_id, chat_id: String(chatId), text })
+        const group_message_id = isMirrored(chatId) ? await mirrorSend(text, response.result.message_id) : null
         return { ...response.result, group_message_id };
     } catch (error) {
         console.error('Error sending message:', error);
@@ -43,7 +25,7 @@ export async function TelegramSendMessage(text: string, chatId: string | number 
 }
 
 /** Posts a message as a reply to an existing one, and records it in the log. */
-export async function TelegramReplyToMessage(text: string, replyToMessageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID), options?: SendOptions) {
+export async function TelegramReplyToMessage(text: string, replyToMessageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         const response = await TelegramApi("sendMessage", "POST", {
             chat_id: chatId,
@@ -52,9 +34,8 @@ export async function TelegramReplyToMessage(text: string, replyToMessageId: num
         })
 
         if (!response.ok) throw response
-        const messageId = Number(response.result.message_id)
-        await recordTelegramMessage({ message_id: messageId, chat_id: String(chatId), text })
-        const group_message_id = await groupMessageIdFor(chatId, messageId, text, options, () => mirrorSend(text, messageId, replyToMessageId))
+        await recordTelegramMessage({ message_id: response.result.message_id, chat_id: String(chatId), text })
+        const group_message_id = isMirrored(chatId) ? await mirrorSend(text, response.result.message_id, replyToMessageId) : null
         return { ...response.result, group_message_id };
     } catch (error) {
         console.error('Error replying to message:', error);
@@ -65,19 +46,13 @@ export async function TelegramReplyToMessage(text: string, replyToMessageId: num
 /** Rewrites an already-posted message in place, updating its log entry. */
 export async function TelegramEditMessage(text: string, messageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
-        if (isGroupChat(chatId)) {
-            // Posted to the group directly: edited like a group copy.
-            const result = await editGroupMessage(text, messageId)
-            await updateTelegramMessageLogText(messageId, text, chatId)
-            return result
-        }
         const response = await TelegramApi("editMessageText", "POST", {
             chat_id: chatId,
             message_id: messageId,
             text,
         })
         if (!response.ok) throw response
-        await updateTelegramMessageLogText(messageId, text, chatId)
+        await updateTelegramMessageLogText(messageId, text)
         if (isMirrored(chatId)) await mirrorEdit(text, messageId)
         return response.result;
     } catch (error) {
@@ -87,11 +62,10 @@ export async function TelegramEditMessage(text: string, messageId: number, chatI
 }
 
 /**
- * Deletes a message from the channel (or `chatId`) and drops it from the
- * log. The log entry goes whether or not Telegram agrees (bots can't delete
- * messages older than 48 hours, or ones already removed by hand) — so this
- * never throws; it reports whether the message is gone, and why not when
- * it isn't. Its group copy goes too.
+ * Deletes a message from the channel and drops it from the log. The log entry
+ * goes whether or not Telegram agrees (bots can't delete messages older than
+ * 48 hours, or ones already removed by hand) — so this never throws; it
+ * reports whether the channel copy is gone, and why not when it isn't.
  */
 export async function TelegramDeleteMessage(
     messageId: number,
@@ -111,8 +85,7 @@ export async function TelegramDeleteMessage(
     }
     if (!result.deletedFromTelegram) console.error(`Error deleting message ${messageId} from Telegram:`, result.error);
 
-    await removeTelegramMessageFromLog(messageId, chatId)
-    if (isGroupChat(chatId)) await forgetGroupMessage(messageId)
-    else if (isMirrored(chatId)) await mirrorDelete(messageId)
+    await removeTelegramMessageFromLog(messageId)
+    if (isMirrored(chatId)) await mirrorDelete(messageId)
     return result;
 }

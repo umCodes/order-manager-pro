@@ -7,8 +7,6 @@ import {
     getGeneralItemsWhatsApp,
     getItemCategories,
     getNotificationTemplates,
-    getTelegramSchedule,
-    getTelegramDestinationsSetting,
     updateDailyReportWhatsApp,
     updateInvoiceDue,
     updateInvoiceSentNotify,
@@ -16,8 +14,6 @@ import {
     updateGeneralItemsWhatsApp,
     updateItemCategoryOrder,
     updateNotificationTemplates,
-    updateTelegramSchedule,
-    updateTelegramDestinationsSetting,
 } from "../controllers/settings.controller.js";
 
 export const settingsRouter = Router();
@@ -36,7 +32,3 @@ settingsRouter.get('/settings/general-items', getGeneralItems);
 settingsRouter.put('/settings/general-items', updateGeneralItems);
 settingsRouter.get('/settings/general-items-whatsapp', getGeneralItemsWhatsApp);
 settingsRouter.put('/settings/general-items-whatsapp', updateGeneralItemsWhatsApp);
-settingsRouter.get('/settings/telegram-schedule', getTelegramSchedule);
-settingsRouter.put('/settings/telegram-schedule', updateTelegramSchedule);
-settingsRouter.get('/settings/telegram-destinations', getTelegramDestinationsSetting);
-settingsRouter.put('/settings/telegram-destinations', updateTelegramDestinationsSetting);

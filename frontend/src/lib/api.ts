@@ -1964,3 +1964,23 @@ export async function saveTelegramDestinations(setting: { channel: boolean; grou
     "Failed to save where Telegram messages go",
   );
 }
+
+/** An invoice whose Telegram message is held for a later day: it goes out at `due_at`. */
+export type HeldInvoiceMessage = {
+  invoice_id: string;
+  invoice_number: string;
+  customer_name?: string;
+  date: string;
+  due_at: number;
+  held_at: number;
+};
+
+/** Invoices held for a later day, soonest first. */
+export async function fetchHeldInvoiceMessages(): Promise<HeldInvoiceMessage[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/held`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load scheduled messages (${response.status})`);
+  }
+  return (await response.json()).held ?? [];
+}

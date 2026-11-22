@@ -235,7 +235,15 @@ export type OrderPreparation = {
   items: OrderShortageItem[];
   /** Only from the statuses list: the order's loading, if confirmed. */
   loading?: LoadingSummary | null;
+  /** An invoice's Telegram message: held for a later day, already sent, or null (never posted). */
+  telegram?: InvoiceTelegramState;
 };
+
+/** Where an invoice's Telegram message stands: held until `due_at`, or sent (`sent_at` when known). */
+export type InvoiceTelegramState =
+  | { state: "scheduled"; date: string; due_at: number }
+  | { state: "sent"; sent_at: number | null }
+  | null;
 
 /**
  * What the driver loaded for an order (an invoice or a backup list), as

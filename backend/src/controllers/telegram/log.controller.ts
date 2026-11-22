@@ -7,6 +7,10 @@ import {
 import { removeBackupListByMessage } from '../../services/backupLists.js';
 import { confirmOrderLoading, orderLoadingView, readOrderLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
 import { listHeldInvoices } from "../../services/telegram/invoices/schedule.js";
+import { invoiceTelegramState } from "../../services/telegram/invoices/notifications.js";
+
+/** Backup lists (BK-…) have no invoice message to report on. */
+const telegramStateOf = (orderId: string) => (orderId.startsWith("BK-") ? Promise.resolve(null) : invoiceTelegramState(orderId).catch(() => null));
 import { ENV } from '../../constants/env.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
@@ -132,22 +136,27 @@ export async function getOrderPreparation(req: Request, res: Response) {
     try {
         const orderId = req.params.orderId;
         if (!orderId) throw new Error("orderId not provided")
-        res.status(200).json(await orderPreparation(String(orderId)));
+        const [preparation, telegram] = await Promise.all([orderPreparation(String(orderId)), telegramStateOf(String(orderId))]);
+        res.status(200).json({ ...preparation, telegram });
     } catch (error) {
         console.error('Error reading order preparation:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the preparation' });
     }
 }
 
-/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items } } }. */
+/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items, loading, telegram } } } (`telegram`: the invoice message scheduled / sent, see invoiceTelegramState). */
 export async function listOrderPreparationStatuses(req: Request, res: Response) {
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
         const results = await Promise.all(
-            ids.map(async (id) => ({ ...(await orderPreparation(id)), loading: loadingSummary(await readOrderLoading(id).catch(() => null)) })),
+            ids.map(async (id) => ({
+                ...(await orderPreparation(id)),
+                loading: loadingSummary(await readOrderLoading(id).catch(() => null)),
+                telegram: await telegramStateOf(id),
+            })),
         );
         res.status(200).json({
-            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, loading }) => [order_id, { status, confirmed, items, loading }])),
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, loading, telegram }) => [order_id, { status, confirmed, items, loading, telegram }])),
         });
     } catch (error) {
         console.error('Error reading preparation statuses:', error);

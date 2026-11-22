@@ -4,6 +4,7 @@ import {
   deleteTelegramMessage,
   editTelegramMessage,
   fetchDraftInvoices,
+  fetchHeldInvoiceMessages,
   fetchTelegramMessages,
   replyToTelegramMessage,
   sendTelegramMessage,
@@ -11,7 +12,9 @@ import {
 import ConfirmModal from "../components/ConfirmModal";
 import WhatsAppInbox from "../components/WhatsAppInbox";
 import { getUnread, useUnread } from "../lib/unread";
-import type { TelegramLogMessage } from "../lib/api";
+import type { HeldInvoiceMessage, TelegramLogMessage } from "../lib/api";
+import TelegramStateBadge from "../components/TelegramStateBadge";
+import { scheduledSendDateTime } from "../lib/telegramSchedule";
 import type { DraftInvoice } from "../types";
 import Skeleton from "../components/Skeleton";
 
@@ -39,6 +42,8 @@ export default function MessagesPage() {
   const [logMessages, setLogMessages] = useState<TelegramLogMessage[]>([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
+  // Invoices dated a later day: not sent yet, they go out on their day.
+  const [heldMessages, setHeldMessages] = useState<HeldInvoiceMessage[]>([]);
 
   const [editingMessage, setEditingMessage] = useState<TelegramLogMessage | null>(null);
   const [editText, setEditText] = useState("");
@@ -58,6 +63,7 @@ export default function MessagesPage() {
   function loadMessages() {
     setIsLoadingLog(true);
     setLogError(null);
+    fetchHeldInvoiceMessages().then(setHeldMessages).catch(() => setHeldMessages([]));
     fetchTelegramMessages()
       .then(setLogMessages)
       .catch((e) => setLogError(e instanceof Error ? e.message : "Failed to load messages"))
@@ -204,6 +210,33 @@ export default function MessagesPage() {
             {isSubmitting ? "Sending..." : "Send to Telegram"}
           </button>
 
+          {heldMessages.length > 0 && (
+            <>
+              <div className="page-header" style={{ marginTop: 28 }}>
+                <h2 className="page-title" style={{ fontSize: 16 }}>
+                  Scheduled ({heldMessages.length})
+                </h2>
+              </div>
+              <p className="page-subtitle">Invoices for a later day: each goes to Telegram on its day</p>
+              <div className="telegram-log">
+                {heldMessages.map((held) => (
+                  <div key={held.invoice_id} className="telegram-log__row">
+                    <div className="telegram-log__main">
+                      <div className="telegram-log__text">
+                        {held.invoice_number}
+                        {held.customer_name ? ` · ${held.customer_name}` : ""}
+                      </div>
+                      <div className="telegram-log__meta">
+                        <TelegramStateBadge telegram={{ state: "scheduled", date: held.date, due_at: held.due_at }} />{" "}
+                        {scheduledSendDateTime(held.due_at)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="page-header" style={{ marginTop: 28 }}>
             <h2 className="page-title" style={{ fontSize: 16 }}>
               Recent Messages
@@ -257,6 +290,7 @@ export default function MessagesPage() {
                         <div className="telegram-log__meta">
                           {new Date(message.created_at).toLocaleString()}
                           {message.edited && <span className="badge">edited</span>}
+                          <span className="badge">sent</span>
                           {message.in_group && <span className="badge">group</span>}
                         </div>
                       </div>

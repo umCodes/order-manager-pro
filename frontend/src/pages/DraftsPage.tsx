@@ -27,7 +27,8 @@ import DailyReportButton from "../components/DailyReportButton";
 import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
-import type { DraftInvoice, LoadingSummary, PreparationStatus } from "../types";
+import TelegramStateBadge from "../components/TelegramStateBadge";
+import type { DraftInvoice, InvoiceTelegramState, LoadingSummary, PreparationStatus } from "../types";
 import Skeleton from "../components/Skeleton";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
@@ -107,6 +108,8 @@ export default function DraftsPage({
   const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
   // Each draft's loading by the driver (🚚), when confirmed.
   const [loadings, setLoadings] = useState<Record<string, LoadingSummary>>({});
+  // Each draft's Telegram message: held for a later day (⏰) or sent.
+  const [telegramStates, setTelegramStates] = useState<Record<string, InvoiceTelegramState>>({});
 
   const loadDrafts = useCallback((options?: { force?: boolean }) => {
     return fetchDraftInvoices(options)
@@ -115,6 +118,7 @@ export default function DraftsPage({
         fetchPreparationStatuses(list.map((draft) => draft.invoice_id))
           .then((statuses) => {
             setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status])));
+            setTelegramStates(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.telegram ?? null])));
             setLoadings(
               Object.fromEntries(
                 Object.entries(statuses).flatMap(([id, entry]) => (entry.loading ? [[id, entry.loading]] : [])),
@@ -319,7 +323,11 @@ export default function DraftsPage({
                         <div className="draft-card__top">
                           <span className="draft-card__invoice-number">{invoice.invoice_number}</span>
                           <div className="draft-card__top-right" onClick={(e) => e.stopPropagation()}>
-                            {preparation[invoice.invoice_id] && <PreparationBadge status={preparation[invoice.invoice_id]} />}
+                            <TelegramStateBadge telegram={telegramStates[invoice.invoice_id]} />
+                            {/* Nothing to prepare yet while its message is held for a later day. */}
+                            {preparation[invoice.invoice_id] && telegramStates[invoice.invoice_id]?.state !== "scheduled" && (
+                              <PreparationBadge status={preparation[invoice.invoice_id]} />
+                            )}
                             {loadings[invoice.invoice_id] && (
                               <span
                                 className={`loading-mark${loadings[invoice.invoice_id].short_items > 0 ? " loading-mark--short" : ""}`}

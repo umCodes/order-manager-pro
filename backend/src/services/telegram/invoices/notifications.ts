@@ -13,7 +13,7 @@ import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
 import { getGeneralItemIds } from "../../generalItems.js"
 import { forgetSentGeneralItems } from "../../generalItemsWhatsApp.js"
 import { changesMessageItems, orderMessageItems, saveGroupOrderMessage } from "../groupOrders.js"
-import { holdInvoiceMessage, isLaterDay, releaseHeldInvoice, type HeldInvoice } from "./schedule.js"
+import { heldInvoice, holdInvoiceMessage, isLaterDay, releaseHeldInvoice, type HeldInvoice } from "./schedule.js"
 
 /** How this order's items are told apart: general items by their description too (see itemKeyFor). */
 const orderItemKeys = async () => itemKeyFor(await getGeneralItemIds())
@@ -295,4 +295,26 @@ export async function cleanUpLeftoverInvoiceMessages(
     } catch (error) {
         console.error("Telegram: couldn't clean up messages of invoices no longer in draft", error)
     }
+}
+
+/**
+ * Where an invoice's Telegram message stands, for the app's badges:
+ * "scheduled" (held for a later day, posted at `due_at`), "sent" (posted;
+ * `sent_at` is when its current message went out, when still in the log),
+ * or null (never posted: no date yet sent, Telegram skipped, or both chats
+ * turned off).
+ */
+export type InvoiceTelegramState =
+    | { state: "scheduled"; date: string; due_at: number }
+    | { state: "sent"; sent_at: number | null }
+    | null
+
+export async function invoiceTelegramState(invoiceId: string): Promise<InvoiceTelegramState> {
+    const held = await heldInvoice(invoiceId)
+    if (held) return { state: "scheduled", date: held.date, due_at: held.due_at }
+    const messageId = await redisClient.get(invoiceId)
+    if (!messageId) return null
+    const { chatId } = await readRoute(invoiceId)
+    const entry = await findLoggedTelegramMessage(Number(messageId), chatId)
+    return { state: "sent", sent_at: entry?.created_at ?? null }
 }

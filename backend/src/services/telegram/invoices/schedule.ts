@@ -20,7 +20,7 @@ const heldInfoKey = (invoiceId: string) => `telegram:held-invoice:${invoiceId}`
 const SETTINGS_KEY = "settings:telegram-schedule"
 
 export type TelegramScheduleSetting = { sendTime: string }
-export type HeldInvoice = { invoice_id: string; invoice_number: string; date: string; due_at: number; held_at: number }
+export type HeldInvoice = { invoice_id: string; invoice_number: string; customer_name?: string; date: string; due_at: number; held_at: number }
 
 const DEFAULT_SETTING: TelegramScheduleSetting = { sendTime: "00:00" }
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
@@ -62,11 +62,12 @@ export function dueAt(date: string, sendTime: string): number {
 }
 
 /** Holds an invoice's message until its day's send time (moving it, if it was already held). */
-export async function holdInvoiceMessage(invoice: { invoice_id: any; invoice_number?: any; date: string }): Promise<HeldInvoice> {
+export async function holdInvoiceMessage(invoice: { invoice_id: any; invoice_number?: any; customer_name?: any; date: string }): Promise<HeldInvoice> {
     const { sendTime } = await getTelegramScheduleSetting()
     const held: HeldInvoice = {
         invoice_id: String(invoice.invoice_id),
         invoice_number: String(invoice.invoice_number ?? ""),
+        ...(invoice.customer_name ? { customer_name: String(invoice.customer_name) } : {}),
         date: invoice.date,
         due_at: dueAt(invoice.date, sendTime),
         held_at: Date.now(),

@@ -45,6 +45,7 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
+import TelegramStateBadge from "../components/TelegramStateBadge";
 import LoadingPanel from "../components/LoadingPanel";
 import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
@@ -963,8 +964,14 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
                 Items ({displayLineItems.length})
                 {isDraft && preparation?.order_id === invoice.invoice_id && (
                   <>
-                    {" "}
-                    <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
+                    {/* Nothing to prepare yet while its message is held for a later day. */}
+                    {preparation.telegram?.state !== "scheduled" && (
+                      <>
+                        {" "}
+                        <PreparationBadge status={preparation.status} confirmed={preparation.confirmed} />
+                      </>
+                    )}{" "}
+                    <TelegramStateBadge telegram={preparation.telegram} />
                   </>
                 )}
               </span>

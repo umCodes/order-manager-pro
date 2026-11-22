@@ -16,6 +16,8 @@ type Props = {
    */
   requireDoubleTap?: boolean;
   armedLabel?: string;
+  /** A quieter third choice, shown as a link under the buttons (e.g. "Ignore these…"). */
+  secondaryAction?: { label: string; onClick: () => void };
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -32,6 +34,7 @@ export default function ConfirmModal({
   isConfirming,
   requireDoubleTap,
   armedLabel = "Tap again to confirm",
+  secondaryAction,
   onConfirm,
   onCancel,
 }: Props) {
@@ -81,6 +84,13 @@ export default function ConfirmModal({
             {showArmed ? armedLabel : confirmLabel}
           </button>
         </div>
+        {secondaryAction && (
+          <div style={{ marginTop: 12, textAlign: "center" }}>
+            <button type="button" className="link-btn" disabled={isConfirming} onClick={secondaryAction.onClick}>
+              {secondaryAction.label}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

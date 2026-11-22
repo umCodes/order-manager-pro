@@ -53,7 +53,7 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - The Lambda deploy workflow switches from `claude/daily-report` to `main` after merging.
 
 ## Dated invoices (scheduled Telegram sends) — on `main` only
-Owner's decision: this feature is built and deployed on **`main` only**, not `claude/daily-report` (the testing branch runs on a free Render instance that sleeps, so a timed send can't work there). Don't merge `main` into `claude/daily-report` without the owner's say-so.
+Built on `main`, then merged into `claude/daily-report` with the owner's OK. The testing branch runs on a free Render instance that sleeps: a timed run can't fire while it's asleep, and the run on start-up posts whatever came due once it wakes. The scheduler never lets an error escape (it logs it and plans the next run, retrying hourly if it can't), so it can't crash the server.
 
 **Rules (approved plan):**
 - **When:** an invoice with no date, today's date or a past date is posted at once, as before. One dated a **later calendar day** (business time, UTC+3; not the 4am business day) is **held** and posted at the **send time** on that day — midnight by default, changed in Settings → Telegram. The message is built when it's posted (items read from Zoho then).

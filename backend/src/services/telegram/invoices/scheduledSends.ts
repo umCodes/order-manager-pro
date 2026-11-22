@@ -96,20 +96,41 @@ export function nextRunAt(sendTime: string, now = Date.now()): number {
     return Math.min(...runs.filter((at) => at > now))
 }
 
-/** Sets the timer for the next main or backup run (call again when the send time changes). */
+const RETRY_PLANNING_MS = 60 * 60 * 1000
+
+/**
+ * Sets the timer for the next main or backup run (call again when the send
+ * time changes). Never throws, and nothing thrown inside the timer escapes
+ * it — an unhandled error there would stop the server. If planning fails
+ * (Redis unreachable), it tries again in an hour.
+ */
 export async function planNextScheduledSend() {
     if (timer) clearTimeout(timer)
-    const { sendTime } = await getTelegramScheduleSetting()
-    const at = nextRunAt(sendTime)
-    const shifted = new Date(at + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000).toISOString().slice(0, 16).replace("T", " ")
-    console.log(`Telegram scheduled sends: next run at ${shifted} business time`)
-    timer = setTimeout(async () => {
-        await sendDueHeldInvoices("scheduled")
-        await planNextScheduledSend()
-    }, Math.max(1000, at - Date.now()))
+    timer = null
+    let delay = RETRY_PLANNING_MS
+    try {
+        const { sendTime } = await getTelegramScheduleSetting()
+        const at = nextRunAt(sendTime)
+        const shifted = new Date(at + BUSINESS_UTC_OFFSET_HOURS * 60 * 60 * 1000).toISOString().slice(0, 16).replace("T", " ")
+        console.log(`Telegram scheduled sends: next run at ${shifted} business time`)
+        delay = Math.max(1000, at - Date.now())
+    } catch (error) {
+        console.error("Telegram scheduled sends: couldn't plan the next run, trying again in an hour", error)
+    }
+    timer = setTimeout(() => {
+        void (async () => {
+            try {
+                await sendDueHeldInvoices("scheduled")
+            } finally {
+                await planNextScheduledSend()
+            }
+        })().catch((error) => console.error("Telegram scheduled sends: timer failed", error))
+    }, delay)
+    // The timer alone never keeps the process alive.
+    timer.unref?.()
 }
 
-/** On server start: posts anything that came due while the server was down, then plans the next run. */
+/** On server start: posts anything that came due while the server was down, then plans the next run. Never throws. */
 export async function startScheduledSends() {
     await sendDueHeldInvoices("server start")
     await planNextScheduledSend()

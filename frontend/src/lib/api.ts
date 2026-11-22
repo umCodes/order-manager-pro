@@ -659,8 +659,6 @@ export type TelegramLogMessage = {
   text: string;
   created_at: number;
   edited?: boolean;
-  /** Posted to the preparers' group directly (the channel was turned off in Settings), not to the channel. */
-  in_group?: boolean;
 };
 
 /**
@@ -679,14 +677,13 @@ export async function fetchTelegramMessages(): Promise<TelegramLogMessage[]> {
   return data.messages;
 }
 
-/** `chatId`: the chat the message is in (message ids are per chat); the channel when not given. */
-export async function editTelegramMessage(messageId: number, text: string, chatId?: string) {
+export async function editTelegramMessage(messageId: number, text: string) {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text, ...(chatId ? { chat_id: chatId } : {}) }),
+    body: JSON.stringify({ text }),
   });
 
   if (!response.ok) {
@@ -704,10 +701,8 @@ export async function editTelegramMessage(messageId: number, text: string, chatI
  */
 export async function deleteTelegramMessage(
   messageId: number,
-  chatId?: string,
 ): Promise<{ ok: true; deleted_from_telegram: boolean; telegram_error?: string }> {
-  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : "";
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}${query}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}`, {
     method: "DELETE",
   });
 
@@ -1319,22 +1314,6 @@ export async function fetchFailedWhatsAppMessages(): Promise<FailedWhatsAppMessa
  * already resent elsewhere is skipped. `failed` lists the ones WhatsApp
  * refused again, with its reason.
  */
-/**
- * Forgets failed messages for good: they leave the failed list and can't be
- * resent (from the prompt or the chat). Only the messages passed are ignored.
- * The server refuses without the explicit confirmation sent here. Can't be undone.
- */
-export async function ignoreFailedWhatsAppMessages(
-  messages: { phone: string; id: string }[],
-): Promise<{ ignored: number; skipped: number }> {
-  return postJson<{ ignored: number; skipped: number }>(
-    `${API_BASE_URL}/api/whatsapp/failed/ignore`,
-    "POST",
-    { messages: messages.map(({ phone, id }) => ({ phone, id })), confirm: "ignore" },
-    "Failed to ignore the messages",
-  );
-}
-
 export async function resendFailedWhatsAppMessages(
   messages: { phone: string; id: string }[],
 ): Promise<{ sent: number; skipped: number; failed: { phone: string; id: string; error: string }[] }> {
@@ -1890,69 +1869,4 @@ export async function saveInvoiceSentNotifySetting(setting: InvoiceSentNotifySet
     setting,
     "Failed to save the WhatsApp setting",
   );
-}
-
-/** When invoices dated a later day are posted to Telegram on their day ("HH:MM", 24-hour, business time). */
-export type TelegramScheduleSetting = { sendTime: string };
-
-export async function fetchTelegramScheduleSetting(): Promise<TelegramScheduleSetting> {
-  const response = await apiFetch(`${API_BASE_URL}/api/settings/telegram-schedule`, { cache: "no-store" });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to load the Telegram send time (${response.status})`);
-  }
-  return response.json();
-}
-
-export async function saveTelegramScheduleSetting(setting: TelegramScheduleSetting): Promise<TelegramScheduleSetting> {
-  return postJson<TelegramScheduleSetting>(
-    `${API_BASE_URL}/api/settings/telegram-schedule`,
-    "PUT",
-    setting,
-    "Failed to save the Telegram send time",
-  );
-}
-
-/**
- * Where bot messages caused by an action in the app go: the channel and/or the
- * preparers' group (both by default). `groupAvailable` is false when no group is set up.
- */
-export type TelegramDestinationsSetting = { channel: boolean; group: boolean; groupAvailable?: boolean };
-
-export async function fetchTelegramDestinations(): Promise<TelegramDestinationsSetting> {
-  const response = await apiFetch(`${API_BASE_URL}/api/settings/telegram-destinations`, { cache: "no-store" });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to load where Telegram messages go (${response.status})`);
-  }
-  return response.json();
-}
-
-export async function saveTelegramDestinations(setting: { channel: boolean; group: boolean }): Promise<TelegramDestinationsSetting> {
-  return postJson<TelegramDestinationsSetting>(
-    `${API_BASE_URL}/api/settings/telegram-destinations`,
-    "PUT",
-    setting,
-    "Failed to save where Telegram messages go",
-  );
-}
-
-/** An invoice whose Telegram message is held for a later day: it goes out at `due_at`. */
-export type HeldInvoiceMessage = {
-  invoice_id: string;
-  invoice_number: string;
-  customer_name?: string;
-  date: string;
-  due_at: number;
-  held_at: number;
-};
-
-/** Invoices held for a later day, soonest first. */
-export async function fetchHeldInvoiceMessages(): Promise<HeldInvoiceMessage[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/held`, { cache: "no-store" });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `Failed to load scheduled messages (${response.status})`);
-  }
-  return (await response.json()).held ?? [];
 }

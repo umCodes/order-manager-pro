@@ -6,7 +6,6 @@ import {
     retryWhatsAppChatMessage,
     listFailedWhatsAppMessages,
     resendFailedWhatsAppMessages,
-    ignoreFailedWhatsAppMessages,
     sendWhatsAppChatMedia,
     getWhatsAppChatMedia,
     getWhatsAppUnread,
@@ -36,7 +35,6 @@ whatsappRouter.post('/whatsapp/chats/:phone/messages', sendWhatsAppChatMessage);
 whatsappRouter.post('/whatsapp/chats/:phone/messages/:messageId/retry', retryWhatsAppChatMessage);
 whatsappRouter.get('/whatsapp/failed', listFailedWhatsAppMessages);
 whatsappRouter.post('/whatsapp/failed/resend', resendFailedWhatsAppMessages);
-whatsappRouter.post('/whatsapp/failed/ignore', ignoreFailedWhatsAppMessages);
 whatsappRouter.post('/whatsapp/chats/:phone/templates', sendWhatsAppChatTemplate);
 whatsappRouter.get('/whatsapp/templates', getWhatsAppTemplates);
 whatsappRouter.post('/whatsapp/templates', createWhatsAppTemplate);

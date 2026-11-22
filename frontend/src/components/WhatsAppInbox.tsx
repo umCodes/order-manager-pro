@@ -3,7 +3,6 @@ import { AlertCircle, ArrowLeft, Check, CheckCheck, LayoutTemplate, Phone, Rotat
 import {
   fetchWhatsAppChats,
   fetchFailedWhatsAppMessages,
-  ignoreFailedWhatsAppMessages,
   resendFailedWhatsAppMessages,
   type FailedWhatsAppMessage,
   fetchWhatsAppConversation,
@@ -197,11 +196,6 @@ export default function WhatsAppInbox() {
   const [isResending, setIsResending] = useState(false);
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendNotice, setResendNotice] = useState<string | null>(null);
-  // Ignoring failed messages: a separate confirm (two taps) after choosing it in the prompt,
-  // for exactly the messages the prompt showed.
-  const [ignoring, setIgnoring] = useState<FailedWhatsAppMessage[] | null>(null);
-  const [isIgnoring, setIsIgnoring] = useState(false);
-  const [ignoreError, setIgnoreError] = useState<string | null>(null);
   const loadFailed = useCallback(
     () =>
       fetchFailedWhatsAppMessages()
@@ -236,21 +230,6 @@ export default function WhatsAppInbox() {
       })
       .catch((e) => setResendError(e instanceof Error ? e.message : "Failed to resend messages"))
       .finally(() => setIsResending(false));
-  }
-
-  function handleIgnoreFailed() {
-    if (!ignoring) return;
-    setIsIgnoring(true);
-    setIgnoreError(null);
-    ignoreFailedWhatsAppMessages(ignoring)
-      .then(({ ignored }) => {
-        setIgnoring(null);
-        setResendNotice(`Ignored ${ignored} failed message${ignored === 1 ? "" : "s"}. ${ignored === 1 ? "It" : "They"} won't be offered again.`);
-        loadChats();
-        loadFailed();
-      })
-      .catch((e) => setIgnoreError(e instanceof Error ? e.message : "Failed to ignore the messages"))
-      .finally(() => setIsIgnoring(false));
   }
 
   // Last-message previews, with local deletes applied. Re-read whenever the
@@ -441,31 +420,6 @@ export default function WhatsAppInbox() {
           isConfirming={isResending}
           onConfirm={handleResendFailed}
           onCancel={() => setIsFailedPromptOpen(false)}
-          secondaryAction={{
-            label: `Ignore ${failed.length === 1 ? "it" : "these"}…`,
-            onClick: () => {
-              setIsFailedPromptOpen(false);
-              setIgnoreError(null);
-              setIgnoring(failed);
-            },
-          }}
-        />
-      )}
-
-      {ignoring && ignoring.length > 0 && (
-        <ConfirmModal
-          title={`Ignore ${ignoring.length} failed message${ignoring.length === 1 ? "" : "s"}?`}
-          message={`${ignoring.length === 1 ? "It" : "They"} will be removed from this list for good and can't be resent, from here or from the chat. The customer${
-            ignoring.length === 1 ? " won't get it" : "s won't get them"
-          }. This can't be undone.`}
-          confirmLabel={isIgnoring ? "Ignoring..." : `Ignore ${ignoring.length}`}
-          cancelLabel="Keep"
-          requireDoubleTap
-          armedLabel="Tap again to ignore"
-          error={ignoreError}
-          isConfirming={isIgnoring}
-          onConfirm={handleIgnoreFailed}
-          onCancel={() => setIgnoring(null)}
         />
       )}
 

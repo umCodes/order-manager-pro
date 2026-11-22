@@ -5,9 +5,8 @@ import {
   splitInvoiceToSelectedItems,
 } from "../../services/zoho/invoices/index.js";
 import {
-  heldInvoice,
-  postOrHoldInvoiceTelegramMessage,
-  retireInvoiceTelegramThread,
+  sendInvoiceTelegramMessage,
+  updateInvoiceDateTelegramMessage,
 } from "../../services/telegram/invoices/index.js";
 import { redisClient } from "../../config/redis.js";
 import { businessDayKey } from "../../utils/businessDate.js";
@@ -16,16 +15,13 @@ import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
-import { notifyGeneralItems } from "../../services/generalItemsWhatsApp.js";
 import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
- * Moves an invoice to another day. Its Telegram message follows (see
- * telegram/invoices/schedule.ts): one still held is moved to the new day, or
- * posted now once it's for today; one already posted is taken down (see
- * retireInvoiceTelegramThread) and posted again now, or held when the new
- * day is a later one. An unchanged date leaves Telegram alone. An empty date
- * resets it to the current business day (4am to 4am).
+ * Reschedules an invoice and edits its existing channel message in place, so
+ * the team sees the new day on the original message rather than a duplicate.
+ * An empty date resets it to the current business day (4am to 4am). When the message couldn't be edited a
+ * fresh one is sent and its id stored instead.
  */
 export async function updateInvoiceDate(req: Request, res: Response) {
   const id  = req.params.id as string;
@@ -35,10 +31,6 @@ export async function updateInvoiceDate(req: Request, res: Response) {
   try {
     const access_token = requireAccessToken(req, "A problem occured updating the invoice");
     if (!id) throw new Error("id not provided");
-
-    const held = await heldInvoice(id);
-    const existingMessageId = held ? null : await redisClient.get(id);
-    const previousDate = existingMessageId ? (await ZohoGetInvoiceById(access_token, id))?.date : null;
 
     const newDate = date || businessDayKey();
     await ZohoUpdateInvoice(access_token, id, {
@@ -50,19 +42,21 @@ export async function updateInvoiceDate(req: Request, res: Response) {
     if (!date) invoice.date = undefined
 
     const telegramLineItems = excludeInternalLineItems(invoice.line_items);
-    let telegram_held = held;
 
-    if (held || !existingMessageId) {
-      telegram_held = await postOrHoldInvoiceTelegramMessage(invoice, telegramLineItems);
-    } else if (previousDate !== newDate) {
-      await retireInvoiceTelegramThread(id, newDate);
-      telegram_held = await postOrHoldInvoiceTelegramMessage(invoice, telegramLineItems);
+    const existingMessageId = await redisClient.get(String(invoice.invoice_id));
+
+    const { message, edited } = await updateInvoiceDateTelegramMessage(
+      invoice,
+      telegramLineItems,
+      existingMessageId ? Number(existingMessageId) : null,
+    );
+
+    if (!edited) {
+      await redisClient.set(String(invoice.invoice_id), String(message.message_id));
     }
 
-    // General items not sent for this day yet go now (nothing while it's held for a later day).
-    void notifyGeneralItems(invoice);
     await refreshReportInvoice(invoice);
-    res.status(200).json({ invoice, telegram_held });
+    res.status(200).json({ invoice });
   } catch (error) {
     console.error(error);
     res.status(400).json({
@@ -150,8 +144,7 @@ export async function updateInvoiceCustomer(req: Request, res: Response) {
 
 /**
  * Trims an invoice down to the selected line items. With `create_new_draft`
- * the leftovers become a new draft, which gets its own channel message
- * (held, when it's for a later day).
+ * the leftovers become a new draft, which gets its own channel message.
  */
 export async function splitInvoice(req: Request, res: Response) {
   const id = req.params.id as string;
@@ -176,7 +169,8 @@ export async function splitInvoice(req: Request, res: Response) {
     if (newDraft) {
       await recordReportDraft(newDraft);
       const newDraftTelegramLineItems = excludeInternalLineItems(newDraft.line_items);
-      await postOrHoldInvoiceTelegramMessage(newDraft, newDraftTelegramLineItems);
+      const telegramMessage = await sendInvoiceTelegramMessage(newDraft, newDraftTelegramLineItems);
+      await redisClient.set(String(newDraft.invoice_id), String(telegramMessage.message_id));
     }
 
     res.status(200).json({ invoice, newDraft });

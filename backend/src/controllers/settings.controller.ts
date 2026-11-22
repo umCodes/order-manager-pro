@@ -21,9 +21,6 @@ import {
     getGeneralItemsWhatsAppSettings,
     saveGeneralItemsWhatsAppSettings,
 } from '../services/generalItemsWhatsApp.js';
-import { getTelegramScheduleSetting, saveTelegramScheduleSetting } from '../services/telegram/invoices/schedule.js';
-import { planNextScheduledSend } from '../services/telegram/invoices/scheduledSends.js';
-import { getTelegramDestinations, hasGroup, saveTelegramDestinations } from '../services/telegram/destinations.js';
 
 /**
  * The notification template settings: what's chosen per notification and
@@ -172,35 +169,6 @@ export async function getInvoiceSentNotify(_req: Request, res: Response) {
 export async function updateInvoiceSentNotify(req: Request, res: Response) {
     try {
         res.status(200).json(await saveInvoiceSentNotifySetting(req.body));
-    } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save" });
-    }
-}
-
-/** When invoices dated a later day are posted to Telegram on their day (business time, "HH:MM"). */
-export async function getTelegramSchedule(_req: Request, res: Response) {
-    res.status(200).json(await getTelegramScheduleSetting());
-}
-
-/** Saves the send time, moves every held invoice to it, and re-plans the daily runs. */
-export async function updateTelegramSchedule(req: Request, res: Response) {
-    try {
-        const setting = await saveTelegramScheduleSetting(req.body);
-        await planNextScheduledSend();
-        res.status(200).json(setting);
-    } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save" });
-    }
-}
-
-/** Where bot messages caused by app actions go (channel / group), and whether a group is set up at all. */
-export async function getTelegramDestinationsSetting(_req: Request, res: Response) {
-    res.status(200).json({ ...(await getTelegramDestinations()), groupAvailable: hasGroup() });
-}
-
-export async function updateTelegramDestinationsSetting(req: Request, res: Response) {
-    try {
-        res.status(200).json({ ...(await saveTelegramDestinations(req.body)), groupAvailable: hasGroup() });
     } catch (error) {
         res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save" });
     }

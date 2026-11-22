@@ -8,4 +8,3 @@ Ground rules from that plan:
 - The group is the new workflow. The channel keeps its current job unchanged, but new features never read from or depend on it unless the owner asks.
 - Only a Telegram Reply to an order message in the group counts; plain group text is ignored. The bot doesn't answer in the chat unless a step says so.
 - Work in small steps on `claude/daily-report` (the testing branch), each deployed before the next starts.
-- **Dated invoices** (scheduled Telegram sends) were built on `main` and then merged into `claude/daily-report` with the owner's OK. On the free testing instance the timed runs only happen while it's awake; the start-up run catches up when it wakes. See that section of the plan.

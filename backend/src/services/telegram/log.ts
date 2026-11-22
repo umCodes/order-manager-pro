@@ -61,29 +61,15 @@ export async function listTelegramMessages(): Promise<TelegramMessageLogEntry[]>
 }
 
 /** Records that a logged message was edited, so the tab shows the new text. */
-export async function updateTelegramMessageLogText(messageId: number, text: string, chatId?: string | number) {
+export async function updateTelegramMessageLogText(messageId: number, text: string) {
     const existing = await readLog();
-    const next = existing.map((e) => (isEntry(e, messageId, chatId) ? { ...e, text, edited: true } : e));
+    const next = existing.map((e) => (e.message_id === messageId ? { ...e, text, edited: true } : e));
     await writeLog(next);
 }
 
 /** Forgets a message — deleted from the channel, or no longer wanted in the history. */
-export async function removeTelegramMessageFromLog(messageId: number, chatId?: string | number) {
+export async function removeTelegramMessageFromLog(messageId: number) {
     const existing = await readLog();
-    const next = existing.filter((e) => !isEntry(e, messageId, chatId));
+    const next = existing.filter((e) => e.message_id !== messageId);
     await writeLog(next);
-}
-
-/**
- * Whether a log entry is message `messageId` of `chatId`: message ids are per
- * chat, so the channel and the group (when it's posted to directly) can both
- * have the same one. Without `chatId`, any chat matches.
- */
-function isEntry(entry: TelegramMessageLogEntry, messageId: number, chatId?: string | number) {
-    return entry.message_id === messageId && (chatId === undefined || String(entry.chat_id) === String(chatId));
-}
-
-/** A logged message, in `chatId`'s chat (any chat when not given). */
-export async function findLoggedTelegramMessage(messageId: number, chatId?: string | number) {
-    return (await readLog()).find((entry) => isEntry(entry, messageId, chatId)) ?? null;
 }

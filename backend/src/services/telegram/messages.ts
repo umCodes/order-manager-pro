@@ -66,7 +66,7 @@ export async function TelegramReplyToMessage(text: string, replyToMessageId: num
 export async function TelegramEditMessage(text: string, messageId: number, chatId: string | number = String(ENV.TELEGRAM_CHATID)) {
     try {
         if (isGroupChat(chatId)) {
-            // Posted to the group directly: edited like a group copy, keeping its loading marks.
+            // Posted to the group directly: edited like a group copy.
             const result = await editGroupMessage(text, messageId)
             await updateTelegramMessageLogText(messageId, text, chatId)
             return result

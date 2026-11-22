@@ -5,7 +5,6 @@ import {
     listTelegramMessages,
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
-import { confirmOrderLoading, orderLoadingView, readOrderLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
 import { listHeldInvoices } from "../../services/telegram/invoices/schedule.js";
 import { invoiceTelegramState } from "../../services/telegram/invoices/notifications.js";
 
@@ -144,19 +143,18 @@ export async function getOrderPreparation(req: Request, res: Response) {
     }
 }
 
-/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items, loading, telegram } } } (`telegram`: the invoice message scheduled / sent, see invoiceTelegramState). */
+/** Several orders' preparation at once, for the drafts list and the Items tab: `?ids=a,b,c` → { statuses: { id: { status, confirmed, items, telegram } } } (`telegram`: the invoice message scheduled / sent, see invoiceTelegramState). */
 export async function listOrderPreparationStatuses(req: Request, res: Response) {
     try {
         const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean).slice(0, 300);
         const results = await Promise.all(
             ids.map(async (id) => ({
                 ...(await orderPreparation(id)),
-                loading: loadingSummary(await readOrderLoading(id).catch(() => null)),
                 telegram: await telegramStateOf(id),
             })),
         );
         res.status(200).json({
-            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, loading, telegram }) => [order_id, { status, confirmed, items, loading, telegram }])),
+            statuses: Object.fromEntries(results.map(({ order_id, status, confirmed, items, telegram }) => [order_id, { status, confirmed, items, telegram }])),
         });
     } catch (error) {
         console.error('Error reading preparation statuses:', error);
@@ -181,52 +179,6 @@ export async function postAppliedReport(req: Request, res: Response) {
     } catch (error) {
         console.error('Error recording an applied report:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to record the change' });
-    }
-}
-
-/** What a list needs to show an order's loading: when, and whether anything was short. */
-export function loadingSummary(loading: OrderLoading | null) {
-    if (!loading) return null
-    const short = loading.items.filter((item) => item.received < item.ordered).length
-    return { at: loading.at, mode: loading.mode, short_items: short }
-}
-
-/** An order's loading (invoice id or BK- id): its current items, the loading if confirmed, and what changed since. */
-export async function getOrderLoading(req: Request, res: Response) {
-    try {
-        res.status(200).json(await orderLoadingView(String(req.params.orderId)));
-    } catch (error) {
-        console.error('Error reading order loading:', error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read the loading' });
-    }
-}
-
-/**
- * Confirms (or changes) what was loaded for an order: body { mode: "as_reported" }
- * or { mode: "checked", received: { <item key>: quantity } } (in each item's
- * own unit). Saved in Redis and marked on the order's group messages only.
- */
-export async function postOrderLoading(req: Request, res: Response) {
-    try {
-        const { mode, received } = req.body ?? {};
-        if (mode !== "as_reported" && mode !== "checked") throw new Error('mode must be "as_reported" or "checked"')
-        if (mode === "checked" && (typeof received !== "object" || received === null)) throw new Error("received is required")
-        const result = await confirmOrderLoading(String(req.params.orderId), mode, mode === "checked" ? received : {});
-        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
-    } catch (error) {
-        console.error('Error confirming order loading:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to confirm the loading' });
-    }
-}
-
-/** Takes an order's loading back, and removes its marks from the group messages. */
-export async function deleteOrderLoading(req: Request, res: Response) {
-    try {
-        const result = await undoOrderLoading(String(req.params.orderId));
-        res.status(200).json({ ...(await orderLoadingView(String(req.params.orderId))), telegram: result.telegram });
-    } catch (error) {
-        console.error('Error undoing order loading:', error);
-        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to undo the loading' });
     }
 }
 

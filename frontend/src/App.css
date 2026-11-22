@@ -873,12 +873,6 @@
   color: var(--color-white);
 }
 
-/* ConfirmModal "loaded" state: first tap armed it, the next tap fires. */
-.btn--primary.btn--armed {
-  background: var(--color-red-600);
-  color: var(--color-white);
-}
-
 .btn--secondary {
   background: var(--color-white);
   border-color: var(--color-gray-300);
@@ -4459,6 +4453,94 @@ label {
   }
 }
 
+/* The driver's loading of an order (LoadingPanel): not loaded / loaded, what wasn't received, Change / Undo. */
+.loading-panel {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-gray-200, #e5e7eb);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loading-panel--loaded {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.loading-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.loading-panel__title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.loading-panel__when,
+.loading-panel__mode {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-gray-500);
+}
+
+.loading-panel__actions {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.loading-panel__undo {
+  color: var(--color-red-600);
+}
+
+.loading-panel__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.loading-panel__buttons .btn {
+  flex: 1;
+}
+
+.loading-panel__ok {
+  font-size: 12px;
+  color: var(--color-green-700);
+}
+
+.loading-panel__warning {
+  font-size: 12px;
+  color: #92400e;
+}
+
+.loading-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+
+.loading-note--partial {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.loading-note--missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
 /* Received in full, though the preparers had reported it short. */
 .loading-note--extra {
   color: #1e40af;
@@ -4518,3 +4600,13 @@ label {
   color: var(--color-gray-500);
 }
 
+/* A 🚚 next to an order's preparation badge once it was loaded. */
+.loading-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-green-700);
+}
+
+.loading-mark--short {
+  color: #b45309;
+}

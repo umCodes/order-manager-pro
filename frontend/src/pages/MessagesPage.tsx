@@ -40,12 +40,12 @@ export default function MessagesPage() {
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
 
-  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingMessage, setEditingMessage] = useState<TelegramLogMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState<TelegramLogMessage | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
@@ -87,24 +87,24 @@ export default function MessagesPage() {
   }
 
   function startEdit(message: TelegramLogMessage) {
-    setEditingMessageId(message.message_id);
+    setEditingMessage(message);
     setEditText(message.text);
     setEditError(null);
   }
 
   function cancelEdit() {
-    setEditingMessageId(null);
+    setEditingMessage(null);
     setEditText("");
     setEditError(null);
   }
 
   function saveEdit() {
-    if (editingMessageId === null || !editText.trim()) return;
+    if (editingMessage === null || !editText.trim()) return;
     setIsSavingEdit(true);
     setEditError(null);
-    editTelegramMessage(editingMessageId, editText)
+    editTelegramMessage(editingMessage.message_id, editText, editingMessage.chat_id)
       .then(() => {
-        setEditingMessageId(null);
+        setEditingMessage(null);
         setEditText("");
         loadMessages();
       })
@@ -113,11 +113,11 @@ export default function MessagesPage() {
   }
 
   function handleDelete() {
-    if (deletingMessageId === null) return;
+    if (deletingMessage === null) return;
     setIsDeleting(true);
     setDeleteError(null);
     setDeleteNotice(null);
-    deleteTelegramMessage(deletingMessageId)
+    deleteTelegramMessage(deletingMessage.message_id, deletingMessage.chat_id)
       .then((result) => {
         if (!result.deleted_from_telegram) {
           setDeleteNotice(
@@ -126,7 +126,7 @@ export default function MessagesPage() {
             } — remove it there by hand if needed.`,
           );
         }
-        setDeletingMessageId(null);
+        setDeletingMessage(null);
         loadMessages();
       })
       .catch((e) => setDeleteError(e instanceof Error ? e.message : "Failed to delete message"))
@@ -221,8 +221,8 @@ export default function MessagesPage() {
           ) : (
             <div className="telegram-log">
               {logMessages.map((message) => (
-                <div key={message.message_id} className="telegram-log__row">
-                  {editingMessageId === message.message_id ? (
+                <div key={`${message.chat_id}:${message.message_id}`} className="telegram-log__row">
+                  {editingMessage?.message_id === message.message_id && editingMessage.chat_id === message.chat_id ? (
                     <div className="telegram-log__edit">
                       <textarea
                         className="textarea"
@@ -257,6 +257,7 @@ export default function MessagesPage() {
                         <div className="telegram-log__meta">
                           {new Date(message.created_at).toLocaleString()}
                           {message.edited && <span className="badge">edited</span>}
+                          {message.in_group && <span className="badge">group</span>}
                         </div>
                       </div>
                       <div className="telegram-log__actions">
@@ -276,7 +277,7 @@ export default function MessagesPage() {
                           title="Delete message"
                           onClick={() => {
                             setDeleteError(null);
-                            setDeletingMessageId(message.message_id);
+                            setDeletingMessage(message);
                           }}
                         >
                           <Trash2 size={14} />
@@ -291,7 +292,7 @@ export default function MessagesPage() {
         </>
       )}
 
-      {deletingMessageId !== null && (
+      {deletingMessage !== null && (
         <ConfirmModal
           title="Delete message"
           message="Delete this message from the Telegram channel and the history? This can't be undone."
@@ -299,7 +300,7 @@ export default function MessagesPage() {
           error={deleteError}
           isConfirming={isDeleting}
           onConfirm={handleDelete}
-          onCancel={() => setDeletingMessageId(null)}
+          onCancel={() => setDeletingMessage(null)}
         />
       )}
     </div>

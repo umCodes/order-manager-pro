@@ -7,6 +7,7 @@ import InvoiceSentNotifySettings from "../components/InvoiceSentNotifySettings";
 import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import GeneralItemsWhatsAppSettings from "../components/GeneralItemsWhatsAppSettings";
 import NotificationTemplateSettings from "../components/NotificationTemplateSettings";
+import TelegramDestinationsSettings from "../components/TelegramDestinationsSettings";
 import TelegramScheduleSettings from "../components/TelegramScheduleSettings";
 
 type Props = {
@@ -48,8 +49,13 @@ const SECTIONS: { key: SectionKey; title: string; description: string; render: (
   {
     key: "telegram",
     title: "Telegram",
-    description: "When invoices dated a later day are sent to the preparers",
-    render: () => <TelegramScheduleSettings />,
+    description: "When dated invoices are sent, and whether messages go to the channel, the group or both",
+    render: () => (
+      <>
+        <TelegramScheduleSettings />
+        <TelegramDestinationsSettings />
+      </>
+    ),
   },
   {
     key: "notifications",

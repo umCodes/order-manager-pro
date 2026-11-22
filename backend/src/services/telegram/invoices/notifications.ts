@@ -1,6 +1,7 @@
 import type { ItemWithQuantity } from "../../zoho/types.js"
 import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, TelegramDeleteMessage } from "../messages.js"
-import { listTelegramMessages } from "../log.js"
+import { findLoggedTelegramMessage } from "../log.js"
+import { LEGACY_ROUTE, routeForNewOrder, type InvoiceRoute } from "../destinations.js"
 import { redisClient } from "../../../config/redis.js"
 import {
     HAS_CHANGES_BELOW_NOTICE_AMHARIC,
@@ -37,17 +38,44 @@ async function saveItemNumbers(invoiceId: string, numbers: ItemNumbers) {
 }
 
 /**
- * Posts an invoice to the fulfillment channel as a brand-new message, its
- * items numbered: the numbers the invoice already has, the next free ones
- * for the rest (all of them, for a new invoice).
+ * Where an invoice's thread lives (see destinations.ts): the chat it was
+ * posted to and whether it's copied to the group, kept as long as the
+ * thread. An invoice posted before this was kept is on the channel, copied.
  */
-export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[]) {
+const routeKey = (invoiceId: string) => `telegram:invoice-route:${invoiceId}`
+
+export async function readRoute(invoiceId: string): Promise<InvoiceRoute> {
+    const raw = await redisClient.get(routeKey(invoiceId))
+    if (!raw) return LEGACY_ROUTE
     try {
-        console.log("Sending a fresh telegram message")
+        return JSON.parse(raw) as InvoiceRoute
+    } catch {
+        return LEGACY_ROUTE
+    }
+}
+
+/**
+ * Posts an invoice as a brand-new message, its items numbered: the numbers
+ * the invoice already has, the next free ones for the rest (all of them, for
+ * a new invoice). It goes where Settings says (channel and/or group, see
+ * destinations.ts), or along `route` to stay in an existing thread's chat.
+ * Stores the message as the invoice's current one, with its route. Returns
+ * null, posting nothing, when Settings has both the channel and the group off.
+ */
+export async function sendInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[], route?: InvoiceRoute) {
+    try {
         const invoiceId = String(invoice.invoice_id)
+        const to = route ?? (await routeForNewOrder())
+        if (!to) {
+            console.log(`Telegram: channel and group are both off in Settings, invoice ${invoice.invoice_number ?? invoiceId} not posted`)
+            return null
+        }
+        console.log("Sending a fresh telegram message")
         const keyOf = await orderItemKeys()
         const numbers = numberItems(line_items, await readItemNumbers(invoiceId), keyOf)
-        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers, keyOf));
+        const message = await TelegramSendMessage(invoiceMessageText(invoice, line_items, undefined, numbers, keyOf), to.chatId, { mirror: to.mirror });
+        await redisClient.set(invoiceId, String(message.message_id))
+        await redisClient.set(routeKey(invoiceId), JSON.stringify(to), { EX: THREAD_TTL_SECONDS })
         await saveItemNumbers(invoiceId, numbers)
         await saveGroupOrderMessage(message.group_message_id, {
             kind: "invoice",
@@ -82,8 +110,8 @@ async function addToThread(invoiceId: string, messageId: number) {
 }
 
 /** A logged message's current text, or null once it's aged out of the log. */
-async function loggedText(messageId: number) {
-    return (await listTelegramMessages()).find((entry) => entry.message_id === messageId)?.text ?? null
+async function loggedText(messageId: number, chatId: string) {
+    return (await findLoggedTelegramMessage(messageId, chatId))?.text ?? null
 }
 
 /**
@@ -111,12 +139,14 @@ export async function replyWithInvoiceChangesTelegramMessage(
     if (!text) return null
 
     let message;
+    // Replies stay in the thread's own chat, whatever Settings says now.
+    const route = await readRoute(invoiceId)
 
     try {
-        message = await TelegramReplyToMessage(text, messageId);
+        message = await TelegramReplyToMessage(text, messageId, route.chatId, { mirror: route.mirror });
     } catch (error) {
         console.error('Error replying to previous invoice message, sending a new one instead:', error);
-        return await sendInvoiceTelegramMessage(invoice, line_items);
+        return await sendInvoiceTelegramMessage(invoice, line_items, route);
     }
 
     if (numbers) {
@@ -133,9 +163,9 @@ export async function replyWithInvoiceChangesTelegramMessage(
     await addToThread(invoiceId, messageId)
 
     try {
-        const previousText = await loggedText(messageId)
+        const previousText = await loggedText(messageId, route.chatId)
         if (previousText && !previousText.endsWith(`\n\n${HAS_CHANGES_BELOW_NOTICE_AMHARIC}`)) {
-            await TelegramEditMessage(`${previousText}\n\n${HAS_CHANGES_BELOW_NOTICE_AMHARIC}`, messageId)
+            await TelegramEditMessage(`${previousText}\n\n${HAS_CHANGES_BELOW_NOTICE_AMHARIC}`, messageId, route.chatId)
         }
     } catch (error) {
         console.error('Error marking previous invoice message as changed:', error);
@@ -154,8 +184,7 @@ export async function postOrHoldInvoiceTelegramMessage(invoice: any, line_items:
     const invoiceId = String(invoice.invoice_id)
     if (isLaterDay(invoice.date)) return holdInvoiceMessage(invoice)
     await releaseHeldInvoice(invoiceId)
-    const message = await sendInvoiceTelegramMessage(invoice, line_items)
-    await redisClient.set(invoiceId, String(message.message_id))
+    await sendInvoiceTelegramMessage(invoice, line_items)
     return null
 }
 
@@ -176,21 +205,21 @@ export async function retireInvoiceTelegramThread(invoiceId: string, newDate: st
         const messageId = await redisClient.get(invoiceId)
         const ids = [...(messageId ? [Number(messageId)] : []), ...(await earlierThreadMessageIds(invoiceId))]
         if (ids.length === 0) return
-        const log = await listTelegramMessages()
+        const { chatId } = await readRoute(invoiceId)
         for (const id of ids) {
-            const entry = log.find((logged) => logged.message_id === id)
+            const entry = await findLoggedTelegramMessage(id, chatId)
             if (entry && Date.now() - entry.created_at > DELETABLE_FOR_MS) {
                 try {
                     const notice = movedToDayNotice(newDate)
-                    if (!entry.text.endsWith(notice)) await TelegramEditMessage(`${entry.text}\n\n${notice}`, id)
+                    if (!entry.text.endsWith(notice)) await TelegramEditMessage(`${entry.text}\n\n${notice}`, id, chatId)
                 } catch (error) {
                     console.error(`Error marking old invoice message ${id} as moved:`, error)
                 }
             } else {
-                await TelegramDeleteMessage(id)
+                await TelegramDeleteMessage(id, chatId)
             }
         }
-        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId)])
+        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId), routeKey(invoiceId)])
     } catch (error) {
         console.error(`Error taking down invoice ${invoiceId}'s messages after it moved:`, error)
     }
@@ -213,10 +242,11 @@ export async function deleteInvoiceTelegramMessage(invoiceId: string) {
         const earlierIds = await earlierThreadMessageIds(invoiceId)
         if (!messageId && earlierIds.length === 0) return
 
+        const { chatId } = await readRoute(invoiceId)
         for (const id of [...(messageId ? [Number(messageId)] : []), ...earlierIds]) {
-            await TelegramDeleteMessage(id)
+            await TelegramDeleteMessage(id, chatId)
         }
-        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId)])
+        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId), routeKey(invoiceId)])
     } catch (error) {
         console.error('Error deleting invoice message after it left draft:', error);
     }

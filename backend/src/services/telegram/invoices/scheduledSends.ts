@@ -72,8 +72,7 @@ async function postHeldInvoice(headers: string, invoiceId: string) {
             return
         }
         const lineItems = excludeInternalLineItems(await sortLineItemsByCategory(headers, invoice.line_items))
-        const message = await sendInvoiceTelegramMessage(invoice, lineItems)
-        await redisClient.set(invoiceId, String(message.message_id))
+        await sendInvoiceTelegramMessage(invoice, lineItems)
         await forgetHeldInvoiceInfo(invoiceId)
         // Its general items wait for the same moment (see generalItemsWhatsApp.ts).
         void notifyGeneralItems(invoice)

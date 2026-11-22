@@ -7,6 +7,7 @@ import {
 import { removeBackupListByMessage } from '../../services/backupLists.js';
 import { confirmOrderLoading, orderLoadingView, readOrderLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
 import { listHeldInvoices } from "../../services/telegram/invoices/schedule.js";
+import { ENV } from '../../constants/env.js';
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -15,9 +16,18 @@ import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orde
  * this can only ever cover messages the app itself sent, edited, or deleted
  * — not messages posted by anyone else.
  */
+/** The chat a Messages-tab action is for: `chat_id` in the query or body, the channel when not given. */
+function chatIdFrom(req: Request): string {
+    const chatId = req.query.chat_id ?? req.body?.chat_id;
+    return chatId ? String(chatId) : String(ENV.TELEGRAM_CHATID);
+}
+
 export async function listMessages(req: Request, res: Response) {
     try {
-        const messages = await listTelegramMessages();
+        const messages = (await listTelegramMessages()).map((message) => ({
+            ...message,
+            in_group: message.chat_id !== String(ENV.TELEGRAM_CHATID),
+        }));
         res.status(200).json({ messages });
     } catch (error) {
         console.error('Error listing messages:', error);
@@ -35,7 +45,8 @@ export async function editMessage(req: Request, res: Response) {
         if (!text) throw new Error("Text not provided")
         if (!messageId) throw new Error("messageId not provided")
 
-        const message = await TelegramEditMessage(text, Number(messageId));
+        // Message ids are per chat: one posted to the group directly says so.
+        const message = await TelegramEditMessage(text, Number(messageId), chatIdFrom(req));
         res.status(200).json({ message });
         return
     } catch (error) {
@@ -59,9 +70,10 @@ export async function deleteMessage(req: Request, res: Response) {
 
         if (!messageId) throw new Error("messageId not provided")
 
-        const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId));
-        // A backup list's message going means the list is done with too.
-        await removeBackupListByMessage(Number(messageId)).catch((err) => console.error('Error removing backup list for deleted message:', err));
+        const chatId = chatIdFrom(req);
+        const { deletedFromTelegram, error } = await TelegramDeleteMessage(Number(messageId), chatId);
+        // A backup list's message (always on the channel) going means the list is done with too.
+        if (chatId === String(ENV.TELEGRAM_CHATID)) await removeBackupListByMessage(Number(messageId)).catch((err) => console.error('Error removing backup list for deleted message:', err));
         res.status(200).json({ ok: true, deleted_from_telegram: deletedFromTelegram, telegram_error: error });
         return
     } catch (error) {

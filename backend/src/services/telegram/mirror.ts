@@ -19,7 +19,7 @@ const toChannelKey = (groupMessageId: number) => `telegram:mirror:group:${groupM
 /** The plain text a group copy was last posted or edited with (before any loading marks), so the marks can be redrawn on it. */
 const groupTextKey = (groupMessageId: number) => `telegram:mirror:group-text:${groupMessageId}`
 
-async function rememberGroupText(groupMessageId: number, text: string) {
+export async function rememberGroupText(groupMessageId: number, text: string) {
     await redisClient.set(groupTextKey(groupMessageId), text, { EX: KEEP_SECONDS })
 }
 
@@ -34,6 +34,11 @@ export async function groupCopyText(groupMessageId: number): Promise<string | nu
     if (!channelId) return null
     const { listTelegramMessages } = await import("./log.js")
     return (await listTelegramMessages()).find((entry) => entry.message_id === channelId)?.text ?? null
+}
+
+/** Whether `chatId` is the preparers' group (a message posted there directly, not as a copy). */
+export function isGroupChat(chatId: string | number) {
+    return !!TELEGRAM_GROUP_CHATID && String(chatId) === String(TELEGRAM_GROUP_CHATID)
 }
 
 /** Whether an action on `chatId` should be copied: it's the channel, and a group is set. */
@@ -84,19 +89,35 @@ export async function mirrorEdit(text: string, channelMessageId: number) {
     try {
         const copyId = await groupMessageId(channelMessageId)
         if (!copyId) return
-        await rememberGroupText(copyId, text)
-        const { loadingMarksFor } = await import("./loading.js")
-        const marked = await loadingMarksFor(copyId, text)
-        const response = await TelegramApi("editMessageText", "POST", {
-            chat_id: TELEGRAM_GROUP_CHATID,
-            message_id: copyId,
-            text: marked.text,
-            ...(marked.entities.length ? { entities: marked.entities } : {}),
-        })
-        if (!response.ok) throw response
+        await editGroupMessage(text, copyId)
     } catch (error) {
         console.error(`Telegram group copy: couldn't edit the copy of message ${channelMessageId}:`, error)
     }
+}
+
+/**
+ * Edits a message in the group — a copy, or one posted there directly (the
+ * channel turned off in Settings) — keeping its loading marks. Throws when
+ * Telegram refuses.
+ */
+export async function editGroupMessage(text: string, groupMessageId: number) {
+    await rememberGroupText(groupMessageId, text)
+    const { loadingMarksFor } = await import("./loading.js")
+    const marked = await loadingMarksFor(groupMessageId, text)
+    const response = await TelegramApi("editMessageText", "POST", {
+        chat_id: TELEGRAM_GROUP_CHATID,
+        message_id: groupMessageId,
+        text: marked.text,
+        ...(marked.entities.length ? { entities: marked.entities } : {}),
+    })
+    if (!response.ok) throw response
+    return response.result
+}
+
+/** Forgets what's kept about a group message posted directly (not a copy) once it's deleted. */
+export async function forgetGroupMessage(groupMessageId: number) {
+    await redisClient.del(groupTextKey(groupMessageId))
+    await forgetGroupOrderMessage(groupMessageId)
 }
 
 /** Deletes the copy of a channel message, if it has one, and forgets it. */

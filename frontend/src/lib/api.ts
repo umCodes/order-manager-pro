@@ -659,6 +659,8 @@ export type TelegramLogMessage = {
   text: string;
   created_at: number;
   edited?: boolean;
+  /** Posted to the preparers' group directly (the channel was turned off in Settings), not to the channel. */
+  in_group?: boolean;
 };
 
 /**
@@ -677,13 +679,14 @@ export async function fetchTelegramMessages(): Promise<TelegramLogMessage[]> {
   return data.messages;
 }
 
-export async function editTelegramMessage(messageId: number, text: string) {
+/** `chatId`: the chat the message is in (message ids are per chat); the channel when not given. */
+export async function editTelegramMessage(messageId: number, text: string, chatId?: string) {
   const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, ...(chatId ? { chat_id: chatId } : {}) }),
   });
 
   if (!response.ok) {
@@ -701,8 +704,10 @@ export async function editTelegramMessage(messageId: number, text: string) {
  */
 export async function deleteTelegramMessage(
   messageId: number,
+  chatId?: string,
 ): Promise<{ ok: true; deleted_from_telegram: boolean; telegram_error?: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}`, {
+  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : "";
+  const response = await apiFetch(`${API_BASE_URL}/api/telegram/messages/${messageId}${query}`, {
     method: "DELETE",
   });
 
@@ -1933,5 +1938,29 @@ export async function saveTelegramScheduleSetting(setting: TelegramScheduleSetti
     "PUT",
     setting,
     "Failed to save the Telegram send time",
+  );
+}
+
+/**
+ * Where bot messages caused by an action in the app go: the channel and/or the
+ * preparers' group (both by default). `groupAvailable` is false when no group is set up.
+ */
+export type TelegramDestinationsSetting = { channel: boolean; group: boolean; groupAvailable?: boolean };
+
+export async function fetchTelegramDestinations(): Promise<TelegramDestinationsSetting> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/telegram-destinations`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load where Telegram messages go (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveTelegramDestinations(setting: { channel: boolean; group: boolean }): Promise<TelegramDestinationsSetting> {
+  return postJson<TelegramDestinationsSetting>(
+    `${API_BASE_URL}/api/settings/telegram-destinations`,
+    "PUT",
+    setting,
+    "Failed to save where Telegram messages go",
   );
 }

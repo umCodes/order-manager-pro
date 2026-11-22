@@ -125,7 +125,10 @@ function App() {
   return (
     <div className={`app-frame${screenOrder.length ? " app-frame--covered" : ""}`}>
       <header className="app-header">
-        <span className="app-header__title">Order Manager Pro</span>
+        <span className="app-header__title">
+          <img className="app-header__logo" src="/logo.svg" alt="" width={22} height={22} />
+          Order Manager Pro
+        </span>
         <div className="app-header__actions">
           <ZohoUsageBadge refreshKey={activeTab} />
           <button

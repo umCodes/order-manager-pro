@@ -6,6 +6,7 @@ import {
 } from '../../services/telegram/index.js';
 import { removeBackupListByMessage } from '../../services/backupLists.js';
 import { confirmOrderLoading, orderLoadingView, readOrderLoading, undoOrderLoading, type OrderLoading } from '../../services/telegram/loading.js';
+import { listHeldInvoices } from "../../services/telegram/invoices/schedule.js";
 import { readGroupOrderMessage, listRecognisedGroupReplies, orderShortages, orderPreparation, recordAppliedReport } from '../../services/telegram/groupOrders.js';
 
 /**
@@ -205,5 +206,15 @@ export async function deleteOrderLoading(req: Request, res: Response) {
     } catch (error) {
         console.error('Error undoing order loading:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to undo the loading' });
+    }
+}
+
+/** Invoices held for a later day (see telegram/invoices/schedule.ts), soonest first. */
+export async function listHeldInvoiceMessages(_req: Request, res: Response) {
+    try {
+        res.status(200).json({ held: await listHeldInvoices() });
+    } catch (error) {
+        console.error("Error listing held invoice messages:", error);
+        res.status(500).json({ error: "Failed to list held invoice messages" });
     }
 }

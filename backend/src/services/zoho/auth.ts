@@ -30,3 +30,17 @@ export async function mintZohoAccessToken(): Promise<ZohoTokenResponse> {
 
     return { access_token: data.access_token, expires_in: data.expires_in };
 }
+
+// One access token shared by every /api request and background job (the
+// scheduled Telegram sends), reused until a minute before it expires.
+let cachedHeader = "";
+let cachedUntil = 0;
+
+/** A current Zoho "Bearer …" Authorization header, minting a new token only when the cached one is about to expire. */
+export async function zohoAuthHeader(): Promise<string> {
+    if (cachedHeader && cachedUntil > Date.now()) return cachedHeader;
+    const token = await mintZohoAccessToken();
+    cachedHeader = `Bearer ${token.access_token}`;
+    cachedUntil = Date.now() + (token.expires_in - 60) * 1000;
+    return cachedHeader;
+}

@@ -3,15 +3,15 @@ import { TelegramSendMessage, TelegramEditMessage, TelegramReplyToMessage, Teleg
 import { listTelegramMessages } from "../log.js"
 import { redisClient } from "../../../config/redis.js"
 import {
-    EDITED_NOTICE_AMHARIC,
     HAS_CHANGES_BELOW_NOTICE_AMHARIC,
     invoiceChangesMessageText,
     invoiceMessageText,
-    withDayLine,
+    movedToDayNotice,
 } from "./messageText.js"
 import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
 import { getGeneralItemIds } from "../../generalItems.js"
 import { changesMessageItems, orderMessageItems, saveGroupOrderMessage } from "../groupOrders.js"
+import { holdInvoiceMessage, isLaterDay, releaseHeldInvoice, type HeldInvoice } from "./schedule.js"
 
 /** How this order's items are told apart: general items by their description too (see itemKeyFor). */
 const orderItemKeys = async () => itemKeyFor(await getGeneralItemIds())
@@ -144,48 +144,51 @@ export async function replyWithInvoiceChangesTelegramMessage(
 }
 
 /**
- * Moves an invoice's channel thread to its new day: the day line on every
- * message in the thread is swapped in place, then an "edited" notice is
- * replied to the current one so the team sees it moved. The rest of each
- * message is left as posted. Returns `edited: false` when there was no
- * message to edit (or editing failed) and a fresh one was sent instead —
- * the caller then stores the new message id.
+ * Posts an invoice's message now, or holds it for its day when it's dated a
+ * later day (see schedule.ts). Stores the posted message's id under the
+ * invoice id, as every posted invoice has. Returns the hold, or null when
+ * it was posted.
  */
-export async function updateInvoiceDateTelegramMessage(
-    invoice: any,
-    line_items: ItemWithQuantity[],
-    messageId: number | null,
-) {
-    if (!messageId) {
-        return { message: await sendInvoiceTelegramMessage(invoice, line_items), edited: false };
-    }
-
-    try {
-        const currentText = await loggedText(messageId)
-        const text = currentText
-            ? withDayLine(currentText, invoice)
-            : invoiceMessageText(invoice, line_items, undefined, await readItemNumbers(String(invoice.invoice_id)), await orderItemKeys())
-        const message = text === currentText ? null : await TelegramEditMessage(text, messageId);
-        await TelegramReplyToMessage(EDITED_NOTICE_AMHARIC, messageId);
-        await moveEarlierThreadMessagesToNewDay(invoice)
-        return { message, edited: true };
-    } catch (error) {
-        console.error('Error editing invoice message, resending as a new message:', error);
-        return { message: await sendInvoiceTelegramMessage(invoice, line_items), edited: false };
-    }
+export async function postOrHoldInvoiceTelegramMessage(invoice: any, line_items: ItemWithQuantity[]): Promise<HeldInvoice | null> {
+    const invoiceId = String(invoice.invoice_id)
+    if (isLaterDay(invoice.date)) return holdInvoiceMessage(invoice)
+    await releaseHeldInvoice(invoiceId)
+    const message = await sendInvoiceTelegramMessage(invoice, line_items)
+    await redisClient.set(invoiceId, String(message.message_id))
+    return null
 }
 
-/** Best-effort: swaps the day line on the thread's earlier messages that are still in the log. */
-async function moveEarlierThreadMessagesToNewDay(invoice: any) {
-    for (const messageId of await earlierThreadMessageIds(String(invoice.invoice_id))) {
-        try {
-            const text = await loggedText(messageId)
-            if (!text) continue
-            const moved = withDayLine(text, invoice)
-            if (moved !== text) await TelegramEditMessage(moved, messageId)
-        } catch (error) {
-            console.error(`Error moving earlier invoice message ${messageId} to the new day:`, error);
+/** Bots can delete their messages for 48 hours; older ones are marked as moved instead (an hour's margin). */
+const DELETABLE_FOR_MS = 47 * 60 * 60 * 1000
+
+/**
+ * Takes down an invoice's posted thread because it moved to `newDate`: each
+ * message is deleted (channel and group), or — once too old to delete — has
+ * "❌ moved to <day>" added. Its message id, thread and item numbers are
+ * forgotten either way, so the next post starts afresh. Best-effort.
+ */
+export async function retireInvoiceTelegramThread(invoiceId: string, newDate: string) {
+    try {
+        const messageId = await redisClient.get(invoiceId)
+        const ids = [...(messageId ? [Number(messageId)] : []), ...(await earlierThreadMessageIds(invoiceId))]
+        if (ids.length === 0) return
+        const log = await listTelegramMessages()
+        for (const id of ids) {
+            const entry = log.find((logged) => logged.message_id === id)
+            if (entry && Date.now() - entry.created_at > DELETABLE_FOR_MS) {
+                try {
+                    const notice = movedToDayNotice(newDate)
+                    if (!entry.text.endsWith(notice)) await TelegramEditMessage(`${entry.text}\n\n${notice}`, id)
+                } catch (error) {
+                    console.error(`Error marking old invoice message ${id} as moved:`, error)
+                }
+            } else {
+                await TelegramDeleteMessage(id)
+            }
         }
+        await redisClient.del([invoiceId, threadKey(invoiceId), numbersKey(invoiceId)])
+    } catch (error) {
+        console.error(`Error taking down invoice ${invoiceId}'s messages after it moved:`, error)
     }
 }
 
@@ -196,10 +199,12 @@ async function moveEarlierThreadMessagesToNewDay(invoice: any) {
  * entries are forgotten even when Telegram refuses the delete, so a stale
  * message never lingers in the app. Best-effort: a
  * failure is logged, not thrown, since the invoice's own state change in Zoho
- * is what actually matters.
+ * is what actually matters. A message still held for a later day is cancelled.
  */
 export async function deleteInvoiceTelegramMessage(invoiceId: string) {
     try {
+        // One still held for a later day is simply never posted.
+        await releaseHeldInvoice(invoiceId)
         const messageId = await redisClient.get(invoiceId)
         const earlierIds = await earlierThreadMessageIds(invoiceId)
         if (!messageId && earlierIds.length === 0) return

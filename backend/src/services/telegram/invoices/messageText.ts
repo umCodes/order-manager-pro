@@ -38,6 +38,16 @@ export function invoiceDayName(date: string) {
     return isToday ? "ለዛሬ" : `ለ${AMHARIC_WEEKDAYS[weekday]}`;
 }
 
+/**
+ * Added to an order message that couldn't be deleted (bots can only delete
+ * their messages for 48 hours) when the order moved to another day:
+ * "❌ moved to Thursday" / "❌ moved to today". The new message follows.
+ */
+export function movedToDayNotice(date: string) {
+    const { isToday, weekday } = describeBusinessDate(date);
+    return `❌ ወደ ${isToday ? "ዛሬ" : AMHARIC_WEEKDAYS[weekday]} ተዛውሯል`;
+}
+
 function invoiceMessage(invoice: any, bodyLines: string[], headerNotice?: string, suffixNotice?: string) {
     const dayLine = invoiceDayLine(invoice);
     return [

@@ -1914,3 +1914,24 @@ export async function saveInvoiceSentNotifySetting(setting: InvoiceSentNotifySet
     "Failed to save the WhatsApp setting",
   );
 }
+
+/** When invoices dated a later day are posted to Telegram on their day ("HH:MM", 24-hour, business time). */
+export type TelegramScheduleSetting = { sendTime: string };
+
+export async function fetchTelegramScheduleSetting(): Promise<TelegramScheduleSetting> {
+  const response = await apiFetch(`${API_BASE_URL}/api/settings/telegram-schedule`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load the Telegram send time (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function saveTelegramScheduleSetting(setting: TelegramScheduleSetting): Promise<TelegramScheduleSetting> {
+  return postJson<TelegramScheduleSetting>(
+    `${API_BASE_URL}/api/settings/telegram-schedule`,
+    "PUT",
+    setting,
+    "Failed to save the Telegram send time",
+  );
+}

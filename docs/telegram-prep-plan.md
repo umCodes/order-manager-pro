@@ -52,6 +52,25 @@ Preparers work in a Telegram **group**. They reply to an order to report missing
 - Orders go to the group only, and the channel copy ends.
 - The Lambda deploy workflow switches from `claude/daily-report` to `main` after merging.
 
+## Dated invoices (scheduled Telegram sends) — on `main` only
+Owner's decision: this feature is built and deployed on **`main` only**, not `claude/daily-report` (the testing branch runs on a free Render instance that sleeps, so a timed send can't work there). Don't merge `main` into `claude/daily-report` without the owner's say-so.
+
+**Rules (approved plan):**
+- **When:** an invoice with no date, today's date or a past date is posted at once, as before. One dated a **later calendar day** (business time, UTC+3; not the 4am business day) is **held** and posted at the **send time** on that day — midnight by default, changed in Settings → Telegram. The message is built when it's posted (items read from Zoho then).
+- **Before it's posted:** a draft update changes what will be posted (nothing goes to Telegram); a date change moves it, or posts it now once it's for today; void / mark as sent / paid / deleted cancels it.
+- **After it's posted:** a draft update replies with the changes, as before. Moving it to another day (date change, reschedule button, or a draft update with a new later date) **takes the posted messages down** (channel and group) and posts again now, or holds it for the later day. Telegram lets bots delete only for 48 hours: older messages get `❌ ወደ <day> ተዛውሯል` added instead.
+- **Runs:** twice a day — at the send time, and a backup run 30 minutes later that posts only what's still held — plus once on every server start. A Redis run lock and a per-invoice claim stop double posts while Render runs two servers during a deploy. No polling in between.
+- **Settings:** send time; **Send to channel** / **Send to group** toggles (both on by default) for bot messages caused by an action in the app (invoices, change replies, reschedules, cancellations) — not automatic messages (backup lists, daily reports) or anything caused by the preparers' replies.
+- **Badges:** "⏰ Scheduled · Thu 12:00 AM" / "Sent" on the Drafts/Invoices tab, the invoice page and the Messages tab; held invoices listed on the Messages tab.
+- Zoho is changed only as it already was (the invoice's date). Held state lives in Redis (`telegram:held-invoices`, `telegram:held-invoice:<id>`, `settings:telegram-schedule`).
+
+| | Step | |
+|---|---|---|
+| ✅ | **1. Hold and post at the send time:** hold/move/cancel, the twice-daily runs + start-up run, delete-or-mark-moved when a posted invoice changes day, send time in Settings → Telegram. `GET /api/telegram/held` lists what's held | backend + app |
+| | **2. General items on WhatsApp** held and sent the same way (a WhatsApp message can't be deleted; a rescheduled invoice's general items are sent again on the new day) | backend |
+| | **3. Channel / group toggles** (group gets its own message when the channel is off) | backend + app |
+| | **4. Badges** and held invoices on the Messages tab | app |
+
 ## Decisions
 - **Everything in Telegram is in Amharic,** including the bot's replies.
 - **Reports are read in what the Telegram message shows, not Zoho's units:** kilograms by default (a box shows as 10ኪሎ, so `1 15` on it is 15kg); a plain count when the message has no ኪሎ after the number (packs); for an item shown in grams (ግራም), a whole number is grams and a fraction kilograms. The app shows shortages in each item's own unit, as on the invoice (a box stays a box: 15kg available of 2 box shows as 1.5 box).

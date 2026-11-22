@@ -7,12 +7,13 @@ import InvoiceSentNotifySettings from "../components/InvoiceSentNotifySettings";
 import GeneralItemsSettings from "../components/GeneralItemsSettings";
 import GeneralItemsWhatsAppSettings from "../components/GeneralItemsWhatsAppSettings";
 import NotificationTemplateSettings from "../components/NotificationTemplateSettings";
+import TelegramScheduleSettings from "../components/TelegramScheduleSettings";
 
 type Props = {
   onBack: () => void;
 };
 
-type SectionKey = "categories" | "general-items" | "invoices" | "notifications" | "daily-report";
+type SectionKey = "categories" | "general-items" | "invoices" | "notifications" | "daily-report" | "telegram";
 
 /** The Settings menu, top to bottom: each entry opens a page of its own. */
 const SECTIONS: { key: SectionKey; title: string; description: string; render: () => ReactNode }[] = [
@@ -43,6 +44,12 @@ const SECTIONS: { key: SectionKey; title: string; description: string; render: (
         <InvoiceSentNotifySettings />
       </>
     ),
+  },
+  {
+    key: "telegram",
+    title: "Telegram",
+    description: "When invoices dated a later day are sent to the preparers",
+    render: () => <TelegramScheduleSettings />,
   },
   {
     key: "notifications",

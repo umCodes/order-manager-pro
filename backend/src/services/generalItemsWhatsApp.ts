@@ -6,6 +6,7 @@ import { getGeneralItemIds } from "./generalItems.js"
 import { invoiceDayName } from "./telegram/invoices/messageText.js"
 import { quantityCalc } from "../utils/quantity.js"
 import { businessDayKey } from "../utils/businessDate.js"
+import { isLaterDay } from "./telegram/invoices/schedule.js"
 
 /**
  * General items on WhatsApp: whenever an invoice has general item lines (see
@@ -19,6 +20,12 @@ import { businessDayKey } from "../utils/businessDate.js"
  * Each line is sent once per invoice — a draft updated later only lists the
  * general lines it didn't have before (by item and description). Best-effort:
  * a failure is logged and never fails the invoice.
+ *
+ * Dated invoices (see telegram/invoices/schedule.ts): like its Telegram
+ * message, an invoice for a later day sends nothing yet; its lines go out
+ * when the held message is posted on its day. A WhatsApp message can't be
+ * taken back, so when a posted invoice moves to another day its lines are
+ * forgotten as sent (forgetSentGeneralItems) and sent again for the new day.
  */
 
 const SETTINGS_KEY = "settings:general-items-whatsapp"
@@ -97,11 +104,13 @@ export function splitItems(items: string[]): [string, string] {
 /**
  * Sends one message with the invoice's general item lines that haven't been
  * sent for it yet. Does nothing (quietly) when Settings has no template or
- * number, or there's nothing new; never throws. `invoice.date` is the day
- * it's for (today's business day when missing).
+ * number, or there's nothing new, or the invoice is for a later day (it's
+ * sent when the invoice is posted on its day); never throws. `invoice.date`
+ * is the day it's for (today's business day when missing).
  */
 export async function notifyGeneralItems(invoice: any): Promise<void> {
     try {
+        if (isLaterDay(invoice?.date)) return
         const invoiceId = String(invoice?.invoice_id ?? "")
         const generalIds = new Set(await getGeneralItemIds())
         const lines = (invoice?.line_items ?? []).filter((line: any) => generalIds.has(String(line.item_id)))
@@ -153,4 +162,9 @@ export async function notifyGeneralItems(invoice: any): Promise<void> {
     } catch (error) {
         console.error("General items: failed to send the WhatsApp notice", error)
     }
+}
+
+/** Forgets which of an invoice's general lines were sent, so they're all sent again (for its new day). */
+export async function forgetSentGeneralItems(invoiceId: string) {
+    await redisClient.del(SENT_KEY(invoiceId))
 }

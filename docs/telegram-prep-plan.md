@@ -67,7 +67,7 @@ Owner's decision: this feature is built and deployed on **`main` only**, not `cl
 | | Step | |
 |---|---|---|
 | ✅ | **1. Hold and post at the send time:** hold/move/cancel, the twice-daily runs + start-up run, delete-or-mark-moved when a posted invoice changes day, send time in Settings → Telegram. `GET /api/telegram/held` lists what's held | backend + app |
-| | **2. General items on WhatsApp** held and sent the same way (a WhatsApp message can't be deleted; a rescheduled invoice's general items are sent again on the new day) | backend |
+| ✅ | **2. General items on WhatsApp** follow the invoice: nothing is sent while it's held for a later day; its lines go out when the held message is posted. A WhatsApp message can't be deleted, so when a posted invoice moves to another day its lines are forgotten as sent and go out again for the new day (now, or when it's posted). Date change and reschedule also send any unsent lines | backend |
 | | **3. Channel / group toggles** (group gets its own message when the channel is off) | backend + app |
 | | **4. Badges** and held invoices on the Messages tab | app |
 

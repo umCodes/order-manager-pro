@@ -10,6 +10,7 @@ import {
 } from "./messageText.js"
 import { itemKeyFor, numberItems, type ItemNumbers } from "./itemNumbers.js"
 import { getGeneralItemIds } from "../../generalItems.js"
+import { forgetSentGeneralItems } from "../../generalItemsWhatsApp.js"
 import { changesMessageItems, orderMessageItems, saveGroupOrderMessage } from "../groupOrders.js"
 import { holdInvoiceMessage, isLaterDay, releaseHeldInvoice, type HeldInvoice } from "./schedule.js"
 
@@ -165,10 +166,13 @@ const DELETABLE_FOR_MS = 47 * 60 * 60 * 1000
  * Takes down an invoice's posted thread because it moved to `newDate`: each
  * message is deleted (channel and group), or — once too old to delete — has
  * "❌ moved to <day>" added. Its message id, thread and item numbers are
- * forgotten either way, so the next post starts afresh. Best-effort.
+ * forgotten either way, so the next post starts afresh. Its general items
+ * on WhatsApp are forgotten as sent too, so they go out again for the new
+ * day (see generalItemsWhatsApp.ts). Best-effort.
  */
 export async function retireInvoiceTelegramThread(invoiceId: string, newDate: string) {
     try {
+        await forgetSentGeneralItems(invoiceId)
         const messageId = await redisClient.get(invoiceId)
         const ids = [...(messageId ? [Number(messageId)] : []), ...(await earlierThreadMessageIds(invoiceId))]
         if (ids.length === 0) return

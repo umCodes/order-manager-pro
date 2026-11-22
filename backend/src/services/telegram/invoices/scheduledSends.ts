@@ -5,6 +5,7 @@ import { zohoAuthHeader } from "../../zoho/auth.js"
 import { ZohoGetInvoiceById } from "../../zoho/invoices/index.js"
 import { sortLineItemsByCategory } from "../../lineItemOrder.js"
 import { sendInvoiceTelegramMessage } from "./notifications.js"
+import { notifyGeneralItems } from "../../generalItemsWhatsApp.js"
 import {
     claimHeldInvoice,
     dueAt,
@@ -74,6 +75,8 @@ async function postHeldInvoice(headers: string, invoiceId: string) {
         const message = await sendInvoiceTelegramMessage(invoice, lineItems)
         await redisClient.set(invoiceId, String(message.message_id))
         await forgetHeldInvoiceInfo(invoiceId)
+        // Its general items wait for the same moment (see generalItemsWhatsApp.ts).
+        void notifyGeneralItems(invoice)
         console.log(`Telegram: posted held invoice ${invoice.invoice_number ?? invoiceId}`)
     } catch (error) {
         console.error(`Telegram: couldn't post held invoice ${invoiceId}, the next run will try again:`, error)

@@ -16,6 +16,7 @@ import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { deleteCache } from "../../utils/cache.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
+import { notifyGeneralItems } from "../../services/generalItemsWhatsApp.js";
 import { recordReportDraft, refreshReportInvoice } from "../../services/dailyReport/store.js";
 
 /**
@@ -58,6 +59,8 @@ export async function updateInvoiceDate(req: Request, res: Response) {
       telegram_held = await postOrHoldInvoiceTelegramMessage(invoice, telegramLineItems);
     }
 
+    // General items not sent for this day yet go now (nothing while it's held for a later day).
+    void notifyGeneralItems(invoice);
     await refreshReportInvoice(invoice);
     res.status(200).json({ invoice, telegram_held });
   } catch (error) {

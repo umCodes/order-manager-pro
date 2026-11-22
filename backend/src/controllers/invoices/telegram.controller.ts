@@ -5,6 +5,7 @@ import { businessDayKey } from "../../utils/businessDate.js";
 import { excludeInternalLineItems } from "../../utils/internalLineItems.js";
 import { requireAccessToken } from "../../utils/requireAccessToken.js";
 import { sortLineItemsByCategory } from "../../services/lineItemOrder.js";
+import { notifyGeneralItems } from "../../services/generalItemsWhatsApp.js";
 import { invoiceUpdateReason } from "../../utils/invoiceUpdateReason.js";
 
 /**
@@ -35,6 +36,8 @@ export async function resendInvoiceTelegramMessage(req: Request, res: Response) 
 
     if (!(await heldInvoice(id))) await retireInvoiceTelegramThread(id, newDate);
     const telegram_held = await postOrHoldInvoiceTelegramMessage(invoice, telegramLineItems);
+    // General items not sent for this day yet go now (nothing while it's held for a later day).
+    void notifyGeneralItems(invoice);
 
     res.status(200).json({ invoice, telegram_held });
   } catch (error) {

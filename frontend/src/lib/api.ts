@@ -1363,6 +1363,22 @@ export async function fetchFailedWhatsAppMessages(): Promise<FailedWhatsAppMessa
  * already resent elsewhere is skipped. `failed` lists the ones WhatsApp
  * refused again, with its reason.
  */
+/**
+ * Forgets failed messages for good: they leave the failed list and can't be
+ * resent (from the prompt or the chat). Only the messages passed are ignored.
+ * The server refuses without the explicit confirmation sent here. Can't be undone.
+ */
+export async function ignoreFailedWhatsAppMessages(
+  messages: { phone: string; id: string }[],
+): Promise<{ ignored: number; skipped: number }> {
+  return postJson<{ ignored: number; skipped: number }>(
+    `${API_BASE_URL}/api/whatsapp/failed/ignore`,
+    "POST",
+    { messages: messages.map(({ phone, id }) => ({ phone, id })), confirm: "ignore" },
+    "Failed to ignore the messages",
+  );
+}
+
 export async function resendFailedWhatsAppMessages(
   messages: { phone: string; id: string }[],
 ): Promise<{ sent: number; skipped: number; failed: { phone: string; id: string; error: string }[] }> {

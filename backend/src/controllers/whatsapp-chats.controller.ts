@@ -50,7 +50,8 @@ const UNDELIVERED_RETRY_AFTER_MS = 60 * 60 * 1000
  * already been retried. Needs the stored components to rebuild the send.
  */
 function canRetry(message: StoredChatMessage) {
-    if (message.direction !== "out" || message.type !== "template" || message.retried_at) return false
+    // An ignored failure (see ignoreFailedWhatsAppMessages) is never offered again.
+    if (message.direction !== "out" || message.type !== "template" || message.retried_at || message.ignored_at) return false
     if (!message.template?.name || !Array.isArray(message.template?.components)) return false
     if (message.status === "failed") return true
     return message.status === "sent" && Date.now() - message.timestamp > UNDELIVERED_RETRY_AFTER_MS
@@ -575,6 +576,36 @@ export async function resendFailedWhatsAppMessages(req: Request, res: Response) 
     } catch (error) {
         console.error('Error resending failed WhatsApp messages:', error);
         res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to resend messages' });
+    }
+}
+
+/** What a request to ignore failed messages must carry, so nothing is ignored by a stray or mistaken call. */
+const IGNORE_CONFIRMATION = "ignore"
+
+/**
+ * Forgets failed messages for good (body `messages`: [{ phone, id }], and
+ * `confirm: "ignore"`): each is marked ignored, so it leaves the failed list
+ * and the prompt, and can't be resent — from the prompt or from the chat. It
+ * stays in the conversation's history, marked failed. Only the messages
+ * named are ignored, and only while they're still in the failed list (one
+ * resent meanwhile is skipped); one that fails later isn't affected. Can't
+ * be undone. Answers how many were ignored.
+ */
+export async function ignoreFailedWhatsAppMessages(req: Request, res: Response) {
+    try {
+        if (req.body?.confirm !== IGNORE_CONFIRMATION) throw new Error('Ignoring failed messages needs confirm: "ignore"')
+        const requested: { phone: string; id: string }[] = Array.isArray(req.body?.messages) ? req.body.messages : []
+        if (requested.length === 0) throw new Error("messages (non-empty array) is required")
+        const wanted = new Set(requested.map((entry) => `${toWaId(String(entry.phone))}:${String(entry.id)}`))
+        const failed = (await failedMessages()).filter(({ phone, message }) => wanted.has(`${phone}:${message.id}`))
+
+        const ignoredAt = Date.now()
+        for (const { phone, message } of failed) await updateChatMessage(phone, message.id, { ignored_at: ignoredAt })
+        console.log(`WhatsApp: ${failed.length} failed message(s) ignored: ${failed.map(({ phone, message }) => `${phone}:${message.id}`).join(", ")}`)
+        res.status(200).json({ ignored: failed.length, skipped: requested.length - failed.length })
+    } catch (error) {
+        console.error('Error ignoring failed WhatsApp messages:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to ignore messages' });
     }
 }
 

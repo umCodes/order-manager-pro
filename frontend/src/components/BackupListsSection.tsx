@@ -3,7 +3,6 @@ import { Trash2 } from "lucide-react";
 import { deleteBackupList } from "../lib/api";
 import ConfirmModal from "./ConfirmModal";
 import PreparationBadge from "./PreparationBadge";
-import LoadingPanel from "./LoadingPanel";
 import { sentLabel } from "../lib/backupLists";
 import ShortageBadge from "./ShortageBadge";
 import type { BackupList } from "../types";
@@ -102,7 +101,6 @@ export default function BackupListsSection({ lists, onRemoved }: { lists: Backup
               </div>
             ))}
           </div>
-          <LoadingPanel orderId={list.id} orderLabel={list.id} />
         </div>
       ))}
       {removing && (

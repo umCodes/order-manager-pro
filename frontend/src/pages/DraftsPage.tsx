@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Search, Truck } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import {
   fetchDraftInvoices,
   fetchPreparationStatuses,
@@ -28,7 +28,7 @@ import { BusinessTypeIcon } from "../components/CustomerTags";
 import DayGroupHeader from "../components/DayGroupHeader";
 import PreparationBadge from "../components/PreparationBadge";
 import TelegramStateBadge from "../components/TelegramStateBadge";
-import type { DraftInvoice, InvoiceTelegramState, LoadingSummary, PreparationStatus } from "../types";
+import type { DraftInvoice, InvoiceTelegramState, PreparationStatus } from "../types";
 import Skeleton from "../components/Skeleton";
 
 type SortKey = "invoice_number" | "customer" | "total" | "scheduled";
@@ -106,8 +106,6 @@ export default function DraftsPage({
   // Each draft's preparation in the Telegram group (👍 and shortages), read
   // fresh with every load of the drafts; missing ones show nothing.
   const [preparation, setPreparation] = useState<Record<string, PreparationStatus>>({});
-  // Each draft's loading by the driver (🚚), when confirmed.
-  const [loadings, setLoadings] = useState<Record<string, LoadingSummary>>({});
   // Each draft's Telegram message: held for a later day (⏰) or sent.
   const [telegramStates, setTelegramStates] = useState<Record<string, InvoiceTelegramState>>({});
 
@@ -119,11 +117,6 @@ export default function DraftsPage({
           .then((statuses) => {
             setPreparation(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status])));
             setTelegramStates(Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.telegram ?? null])));
-            setLoadings(
-              Object.fromEntries(
-                Object.entries(statuses).flatMap(([id, entry]) => (entry.loading ? [[id, entry.loading]] : [])),
-              ),
-            );
           })
           .catch(() => {});
       })
@@ -327,18 +320,6 @@ export default function DraftsPage({
                             {/* Nothing to prepare yet while its message is held for a later day. */}
                             {preparation[invoice.invoice_id] && telegramStates[invoice.invoice_id]?.state !== "scheduled" && (
                               <PreparationBadge status={preparation[invoice.invoice_id]} />
-                            )}
-                            {loadings[invoice.invoice_id] && (
-                              <span
-                                className={`loading-mark${loadings[invoice.invoice_id].short_items > 0 ? " loading-mark--short" : ""}`}
-                                title={
-                                  loadings[invoice.invoice_id].short_items > 0
-                                    ? `Loaded, ${loadings[invoice.invoice_id].short_items} item(s) not all received`
-                                    : "Loaded"
-                                }
-                              >
-                                <Truck size={14} />
-                              </span>
                             )}
                             <span className="draft-card__status">{formatStatus(invoice.status)}</span>
                             <DownloadInvoiceButton invoiceId={invoice.invoice_id} invoiceNumber={invoice.invoice_number} />

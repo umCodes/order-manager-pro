@@ -4,7 +4,7 @@ import { businessDayWindow, businessTimeParts } from "../utils/businessDate.js";
 import { lineWeightKg } from "../utils/packWeight.js";
 import { toAmharicUnit } from "../utils/units.js";
 import { drawMixedLine, registerArabicFonts } from "./mixedText.js";
-import type { DailyReportData, InvoiceStatus } from "../services/dailyReport/report.js";
+import type { DailyReportData, DistrictActivity, InvoiceStatus } from "../services/dailyReport/report.js";
 import type { ReportLine } from "../services/dailyReport/store.js";
 
 /**
@@ -12,7 +12,9 @@ import type { ReportLine } from "../services/dailyReport/store.js";
  * Each section starts on a page of its own under a large underlined title:
  * payments collected, items sold, invoices issued (orders delivered), the
  * invoice register with balances, returns, orders not yet delivered, and
- * the items of the backup lists (BK-) still open when the day ended, totalled.
+ * the items of the backup lists (BK-) still open when the day ended, totalled,
+ * and the districts gone to (customers delivered to, paid by, returning
+ * items or visited), each with its customers and what was done there.
  * Item names are the Amharic description with the English (Zoho) name under
  * it; item tables show the quantity with its unit and the weight in kilograms
  * (from the pack size in the English name, see packWeight.ts). Names in
@@ -33,6 +35,13 @@ const STATUS: Record<InvoiceStatus, { text: string; fill: string; ink: string }>
   paid: { text: "ተከፍሏል", fill: "#dcfce7", ink: "#14532d" },
   partial: { text: "በከፊል", fill: "#fef3c7", ink: "#78350f" },
   unpaid: { text: "አልተከፈለም", fill: "#fee2e2", ink: "#7f1d1d" },
+};
+
+const ACTIVITIES: Record<DistrictActivity, string> = {
+  delivery: "ትዕዛዝ ደርሷል",
+  payment: "ክፍያ",
+  return: "ተመላሽ",
+  visit: "ጉብኝት",
 };
 
 const INK = "#000000";
@@ -221,7 +230,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
     doc.y += 18;
 
-    const nothing = !report.payments.length && !report.invoices.length && !report.returns.length && !report.drafts.length && !report.backupLists.length;
+    const nothing = !report.payments.length && !report.invoices.length && !report.returns.length && !report.drafts.length && !report.backupLists.length && !report.districts.length;
 
     if (nothing) {
       const y = doc.y + 10;
@@ -378,6 +387,27 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
           row(cols, [itemCell(item), qtyWithUnit(item.quantity, item.unit), kgText(kg)], i % 2 === 1);
         });
         totalBox([["ጠቅላላ ኪሎ", `${round3(totalKg)} ኪሎ`]]);
+      }
+
+      // ---------- 8. districts gone to ----------
+      section(8, "የተሄደባቸው ሰፈሮች", "በሥራ ቀኑ የተሄደባቸው ሰፈሮች፦ ትዕዛዝ የደረሳቸው፣ የከፈሉ፣ ተመላሽ የሰጡ ወይም የተጎበኙ ደንበኞች፣ በሰፈር ተከፋፍለው።");
+      if (!report.districts.length) empty();
+      else {
+        const cols: Col[] = [{ w: 260 }, { w: W - 260 }];
+        for (const place of report.districts) {
+          ensure(130);
+          const count = `${place.customers.length} ደንበኛ`;
+          customerHeading(place.district || "አድራሻ ያልተመዘገበ", place.city ? `${place.city} · ${count}` : count);
+          header(cols, ["ደንበኛ", "የተሰራው"]);
+          place.customers.forEach((customer, i) =>
+            row(cols, [customer.name, customer.activities.map((kind) => ACTIVITIES[kind]).join("፣ ")], i % 2 === 1),
+          );
+        }
+        const known = report.districts.filter((place) => place.district).length;
+        totalBox([
+          ["ጠቅላላ ሰፈሮች", String(known)],
+          ["ጠቅላላ ደንበኞች", String(report.districts.reduce((sum, place) => sum + place.customers.length, 0))],
+        ]);
       }
     }
 

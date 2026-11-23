@@ -5,8 +5,21 @@ import { backupListsRemainingAt, type BackupList } from "../backupLists.js"
 import { remainingBackup } from "../backupUsage.js"
 import { readReportDay, type ReportDraft, type ReportLine, type ReportReturn } from "./store.js"
 import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
+import { ZohoGetCustomersCached, getContactAddress } from "../zoho/customers/index.js"
+import { listDoneVisits } from "../visits.js"
 
 export type InvoiceStatus = "paid" | "partial" | "unpaid"
+
+/** What was done at a customer on the day: delivered an invoice, took a payment, took a return, or marked a visit done. */
+export type DistrictActivity = "delivery" | "payment" | "return" | "visit"
+
+/** A district gone to on the day, with the customers there and what was done at each. */
+export type ReportDistrict = {
+    /** Empty when the customer has no address saved (all such customers are grouped together). */
+    district: string
+    city: string
+    customers: { name: string; activities: DistrictActivity[] }[]
+}
 
 /** Everything the daily report PDF shows, already worked out. */
 export type DailyReportData = {
@@ -26,6 +39,8 @@ export type DailyReportData = {
     drafts: { number: string; customer: string; at: string; date?: string; total: number }[]
     /** Backup lists still open when the day ended (or now, while it's running), oldest first — each item cut to what's left (reported available, less what quick invoices took). */
     backupLists: BackupList[]
+    /** The districts gone to on the day (deliveries, payments, returns, visits done), most customers first. */
+    districts: ReportDistrict[]
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
@@ -115,6 +130,72 @@ async function undeliveredOrders(accessToken: string, day: string, recordedDraft
         .map(({ id: _id, ...order }) => order)
 }
 
+const ACTIVITY_ORDER: DistrictActivity[] = ["delivery", "payment", "return", "visit"]
+const nameKey = (name: string) => name.trim().toLowerCase()
+
+/**
+ * The districts gone to on `day`: every customer an invoice was delivered
+ * to, a payment taken from, a return taken from, or a visit marked done for
+ * that day, grouped by the district and city in their Zoho address (one
+ * read of the cached customer list). Customers are matched by id where the
+ * record has one (visits), else by name (Zoho display names are unique);
+ * those with no address saved are grouped under an empty district.
+ */
+async function districtsGoneTo(
+    accessToken: string,
+    day: string,
+    activity: { delivery: string[]; payment: string[]; return: string[] },
+): Promise<ReportDistrict[]> {
+    const { start, end } = businessDayWindow(day)
+    const visits = (await listDoneVisits(500).catch((error) => {
+        console.error("Daily report: couldn't read the visits", error)
+        return []
+    })).filter((visit) => {
+        const at = Date.parse(visit.visited_at)
+        return at >= start.getTime() && at < end.getTime()
+    })
+
+    let contacts: any[] = []
+    try {
+        contacts = ((await ZohoGetCustomersCached(accessToken)) as any[]) ?? []
+    } catch (error) {
+        console.error("Daily report: couldn't read the customers for districts", error)
+    }
+    const byId = new Map(contacts.map((contact) => [String(contact.contact_id), contact]))
+    const byName = new Map(contacts.map((contact) => [nameKey(String(contact.contact_name ?? "")), contact]))
+
+    // One entry per customer: their name and everything done there.
+    const customers = new Map<string, { name: string; contact: any; activities: Set<DistrictActivity> }>()
+    function add(name: string, kind: DistrictActivity, customerId?: string) {
+        const contact = (customerId && byId.get(customerId)) || byName.get(nameKey(name))
+        const key = contact ? `id:${contact.contact_id}` : `name:${nameKey(name)}`
+        if (!name.trim() && !contact) return
+        const entry = customers.get(key) ?? { name: String(contact?.contact_name ?? name), contact, activities: new Set() }
+        entry.activities.add(kind)
+        customers.set(key, entry)
+    }
+    for (const name of activity.delivery) add(name, "delivery")
+    for (const name of activity.payment) add(name, "payment")
+    for (const name of activity.return) add(name, "return")
+    for (const visit of visits) add(visit.customer_name, "visit", visit.customer_id)
+
+    const districts = new Map<string, ReportDistrict>()
+    for (const { name, contact, activities } of customers.values()) {
+        const address = contact ? getContactAddress(contact) : undefined
+        const district = address?.district?.trim() ?? ""
+        const city = district ? (address?.city?.trim() ?? "") : ""
+        const key = `${district.toLowerCase()}|${city.toLowerCase()}`
+        const entry = districts.get(key) ?? { district, city, customers: [] }
+        entry.customers.push({ name, activities: ACTIVITY_ORDER.filter((kind) => activities.has(kind)) })
+        districts.set(key, entry)
+    }
+    for (const entry of districts.values()) entry.customers.sort((a, b) => a.name.localeCompare(b.name))
+    // Known districts first (most customers first), customers with no address last.
+    return [...districts.values()].sort(
+        (a, b) => Number(!a.district) - Number(!b.district) || b.customers.length - a.customers.length || a.district.localeCompare(b.district),
+    )
+}
+
 function statusOf(total: number, balance: number): InvoiceStatus {
     if (balance <= 0.004) return "paid"
     return balance < total - 0.004 ? "partial" : "unpaid"
@@ -180,6 +261,15 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         }
     }
 
+    const districts = await districtsGoneTo(accessToken, day, {
+        delivery: invoices.map((invoice) => invoice.customer),
+        payment: recorded.payments.map((payment) => payment.customer),
+        return: recorded.returns.map((ret) => ret.customer),
+    }).catch((error) => {
+        console.error("Daily report: couldn't work out the districts", error)
+        return [] as ReportDistrict[]
+    })
+
     return {
         day,
         generatedAt: new Date(),
@@ -198,5 +288,6 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         returns: recorded.returns,
         drafts,
         backupLists,
+        districts,
     }
 }

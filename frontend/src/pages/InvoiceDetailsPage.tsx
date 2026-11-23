@@ -45,7 +45,6 @@ import { customerChangeReason, dateChangeReason, lineItemsChangeReason } from ".
 import AddItemModal from "../components/AddItemModal";
 import ShortageNote from "../components/ShortageNote";
 import PreparationBadge from "../components/PreparationBadge";
-import LoadingPanel from "../components/LoadingPanel";
 import { linesWithReportApplied, matchShortagesToLines } from "../lib/shortages";
 import type { DraftForm } from "../components/AddItemRow";
 import type { Cart, CatalogItem, Contact, InvoiceDetail, InvoiceDetailLineItem, OrderPreparation, OrderShortageItem } from "../types";
@@ -1049,7 +1048,6 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
             <ShortageNote key={shortage.item_key} shortage={shortage} title={shortage.description || "Removed item"} />
           ))}
 
-          {isDraft && <LoadingPanel orderId={invoice.invoice_id} orderLabel={invoice.invoice_number} reloadToken={invoice} />}
 
           <div className="invoice-details__totals">
             <div className="invoice-details__totals-row">
@@ -1230,6 +1228,8 @@ function InvoiceDetailsView({ invoiceId, onBack, onSelectCustomer }: Props) {
           confirmLabel={isVoiding ? "Voiding..." : "Void invoice"}
           error={voidError}
           isConfirming={isVoiding}
+          requireDoubleTap
+          armedLabel="Tap again to void"
           onConfirm={handleVoidConfirm}
           onCancel={() => setIsVoidConfirmOpen(false)}
         />

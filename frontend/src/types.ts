@@ -233,46 +233,7 @@ export type OrderPreparation = {
   status: PreparationStatus;
   confirmed: PreparationConfirmation | null;
   items: OrderShortageItem[];
-  /** Only from the statuses list: the order's loading, if confirmed. */
-  loading?: LoadingSummary | null;
 };
-
-/**
- * What the driver loaded for an order (an invoice or a backup list), as
- * confirmed in the app: "as_reported" (what the preparers reported
- * available) or "checked" item by item. Shown on the order's Telegram group
- * messages (🚚) and saved nowhere else. Quantities in each item's own unit.
- */
-export type LoadingItem = {
-  number: number;
-  item_key: string;
-  item_id: string;
-  description: string;
-  unit: string;
-  /** What the order asks for now, and what the preparers reported available. */
-  ordered: number;
-  reported: number;
-};
-export type LoadedItem = LoadingItem & { received: number };
-export type LoadingMode = "as_reported" | "checked";
-export type OrderLoading = {
-  order_id: string;
-  order_number: string;
-  mode: LoadingMode;
-  at: string;
-  first_at: string;
-  items: LoadedItem[];
-};
-export type OrderLoadingView = {
-  order_id: string;
-  items: LoadingItem[];
-  loading: OrderLoading | null;
-  /** Item keys whose quantity on the order changed (or that were added) after it was loaded. */
-  changed_since: string[];
-  /** After a confirm or undo: how the Telegram messages went. */
-  telegram?: { edited: number; failed: { message_id: number; error: string }[] };
-};
-export type LoadingSummary = { at: string; mode: LoadingMode; short_items: number };
 
 export type InvoiceDetail = {
   invoice_id: string;

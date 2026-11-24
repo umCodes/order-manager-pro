@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AudioLines, Loader2, Pause, Play, RotateCw } from "lucide-react";
+import { AudioLines, Check, Copy, Loader2, Pause, Play, RotateCw } from "lucide-react";
 import { transcribeWhatsAppVoiceNote, type VoiceNoteTranscript, type WhatsAppMessage } from "../lib/api";
 
 const BAR_COUNT = 34;
@@ -76,6 +76,20 @@ export default function VoiceNote({ phone, message, url, blob }: { phone: string
   const transcript = requested ?? message.transcript;
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+
+  const copyTranscript = (text: string) => {
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopied(true);
+        window.clearTimeout(copiedTimer.current);
+        copiedTimer.current = window.setTimeout(() => setCopied(false), 1600);
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!blob) return;
@@ -225,6 +239,17 @@ export default function VoiceNote({ phone, message, url, blob }: { phone: string
             <AudioLines size={12} />
             {transcript.status === "no_speech" ? "No clear speech" : "Transcript"}
             {languageName && transcript.status === "ok" && <span className="wa-voice__lang">{languageName}</span>}
+            {transcript.status === "ok" && transcript.text && (
+              <button
+                type="button"
+                className={`wa-voice__copy${copied ? " wa-voice__copy--done" : ""}`}
+                onClick={() => copyTranscript(transcript.text)}
+                aria-label={copied ? "Transcript copied" : "Copy transcript"}
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
           </div>
           {transcript.status === "ok" && (
             <p className="wa-voice__transcript-text" dir="auto">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useConfirmArmedAction } from "../hooks/useConfirmArmedAction";
 
 type Props = {
   title: string;
@@ -10,9 +10,11 @@ type Props = {
   /** Disables both buttons while a confirm is in flight. */
   isConfirming?: boolean;
   /**
-   * "Load then shoot": the first tap only arms the confirm button (it turns red and
-   * shows `armedLabel`); a second tap actually confirms. Disarms itself after a few seconds.
-   * Use for actions that are hard to undo, like voiding an invoice.
+   * "Load then shoot": the first tap only loads the confirm button. For a
+   * moment ("Wait...") taps are ignored, so a quick double-tap can't confirm;
+   * then it turns red and shows `armedLabel`, and a tap confirms. Disarms
+   * itself after a few seconds. Use for actions that are hard to undo, like
+   * voiding an invoice. Same pattern as useConfirmArmedAction (payments).
    */
   requireDoubleTap?: boolean;
   armedLabel?: string;
@@ -22,7 +24,8 @@ type Props = {
   onCancel: () => void;
 };
 
-const ARM_TIMEOUT_MS = 4000;
+/** How long the loaded button waits for its second tap, once the pause is over. */
+const ARM_WINDOW_MS = 4000;
 
 /** Generic yes/no confirmation modal, styled to match the app's other modals — never use window.confirm. */
 export default function ConfirmModal({
@@ -38,26 +41,12 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }: Props) {
-  const [isArmed, setIsArmed] = useState(false);
-
-  useEffect(() => {
-    if (!isArmed) return;
-    const t = setTimeout(() => setIsArmed(false), ARM_TIMEOUT_MS);
-    return () => clearTimeout(t);
-  }, [isArmed]);
-
-  // A failed attempt should need re-arming before the next try.
-  useEffect(() => {
-    if (error) setIsArmed(false);
-  }, [error]);
+  // Disarmed before onConfirm runs, so a failed attempt has to be loaded again.
+  const { isArmed, isCoolingDown, trigger } = useConfirmArmedAction(onConfirm, ARM_WINDOW_MS);
 
   function handleConfirmClick() {
-    if (requireDoubleTap && !isArmed) {
-      setIsArmed(true);
-      return;
-    }
-    setIsArmed(false);
-    onConfirm();
+    if (requireDoubleTap) trigger();
+    else onConfirm();
   }
 
   const showArmed = requireDoubleTap && isArmed && !isConfirming;
@@ -78,10 +67,10 @@ export default function ConfirmModal({
           <button
             type="button"
             className={`btn btn--primary${showArmed ? " btn--armed" : ""}`}
-            disabled={isConfirming}
+            disabled={isConfirming || (requireDoubleTap && isCoolingDown)}
             onClick={handleConfirmClick}
           >
-            {showArmed ? armedLabel : confirmLabel}
+            {requireDoubleTap && isCoolingDown && !isConfirming ? "Wait..." : showArmed ? armedLabel : confirmLabel}
           </button>
         </div>
         {secondaryAction && (

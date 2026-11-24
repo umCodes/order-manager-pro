@@ -153,6 +153,13 @@ export async function updateChatMessage(phone: string, messageId: string, patch:
     return updated as StoredChatMessage
 }
 
+/** Removes one stored message from the conversation for good (both its day hash and the msgday index). */
+export async function deleteChatMessage(phone: string, messageId: string) {
+    const day = await redisClient.hGet(`chats:${phone}:msgday`, messageId)
+    if (day) await redisClient.hDel(`chats:${phone}:${day}`, messageId)
+    await redisClient.hDel(`chats:${phone}:msgday`, messageId)
+}
+
 /** A short plain-text rendering of a stored message, for previews and chat bubbles. */
 export function describeChatMessage(message: StoredChatMessage): string {
     switch (message.type) {

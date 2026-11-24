@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { FileText, ImageOff } from "lucide-react";
 import { fetchWhatsAppMedia, type WhatsAppMessage } from "../lib/api";
+import VoiceNote from "./VoiceNote";
 
 /**
  * Loads a message's media as a blob URL (through the backend, which fetches
@@ -9,6 +10,7 @@ import { fetchWhatsAppMedia, type WhatsAppMessage } from "../lib/api";
  */
 function useMediaUrl(phone: string, messageId: string) {
   const [url, setUrl] = useState<string | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -18,6 +20,7 @@ function useMediaUrl(phone: string, messageId: string) {
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
+        setBlob(blob);
         setUrl(objectUrl);
       })
       .catch(() => {
@@ -29,12 +32,12 @@ function useMediaUrl(phone: string, messageId: string) {
     };
   }, [phone, messageId]);
 
-  return { url, failed };
+  return { url, blob, failed };
 }
 
 /** The image / voice note / video / file inside a chat bubble. */
 export default function WhatsAppMedia({ phone, message }: { phone: string; message: WhatsAppMessage }) {
-  const { url, failed } = useMediaUrl(phone, message.id);
+  const { url, blob, failed } = useMediaUrl(phone, message.id);
   const filename = message.media?.filename ?? (message.type === "document" ? "Document" : message.type);
 
   if (failed) {
@@ -56,11 +59,7 @@ export default function WhatsAppMedia({ phone, message }: { phone: string; messa
   }
 
   if (message.type === "audio") {
-    return url ? (
-      <audio controls src={url} className="wa-media__audio" preload="metadata" />
-    ) : (
-      <div className="wa-media__placeholder wa-media__placeholder--audio" />
-    );
+    return <VoiceNote phone={phone} message={message} url={url} blob={blob} />;
   }
 
   if (message.type === "video") {

@@ -8,6 +8,7 @@ import {
     resendFailedWhatsAppMessages,
     sendWhatsAppChatMedia,
     getWhatsAppChatMedia,
+    transcribeWhatsAppVoiceNote,
     getWhatsAppUnread,
     markWhatsAppChatRead,
     saveWhatsAppContact,
@@ -48,3 +49,4 @@ whatsappRouter.post(
     sendWhatsAppChatMedia,
 );
 whatsappRouter.get('/whatsapp/chats/:phone/messages/:messageId/media', getWhatsAppChatMedia);
+whatsappRouter.post('/whatsapp/chats/:phone/messages/:messageId/transcribe', transcribeWhatsAppVoiceNote);

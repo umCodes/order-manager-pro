@@ -2940,14 +2940,6 @@
   border-radius: var(--radius-lg);
 }
 
-.wa-media__audio {
-  display: block;
-  width: 240px;
-  max-width: 100%;
-  height: 40px;
-  margin-bottom: 2px;
-}
-
 .wa-media__placeholder {
   border-radius: var(--radius-lg);
   background: rgba(127, 127, 127, 0.25);
@@ -2958,13 +2950,6 @@
   max-width: 100%;
   height: 160px;
   margin-bottom: 4px;
-}
-
-.wa-media__placeholder--audio {
-  width: 240px;
-  max-width: 100%;
-  height: 40px;
-  margin-bottom: 2px;
 }
 
 .wa-media__file {
@@ -3000,6 +2985,211 @@
   margin-bottom: 4px;
   font-size: 13px;
   opacity: 0.75;
+}
+
+/* A voice note in a chat bubble (components/VoiceNote.tsx): round play button,
+   a waveform that fills as it plays, time and speed, then its transcript.
+   Colours follow the bubble: dark on the light incoming bubble, light on the dark outgoing one. */
+.wa-voice {
+  --wa-voice-accent: var(--color-blue-600);
+  --wa-voice-button-fg: var(--color-white);
+  width: 260px;
+  max-width: 100%;
+  margin-bottom: 2px;
+}
+
+.wa-bubble--out .wa-voice {
+  --wa-voice-accent: #93c5fd;
+  --wa-voice-button-fg: var(--color-gray-900);
+}
+
+.wa-voice__player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.wa-voice__play {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  /* Buttons don't inherit the bubble's text colour on their own. */
+  color: inherit;
+  background: currentColor;
+  cursor: pointer;
+  transition: transform 120ms var(--ease-out-native, ease-out), opacity 120ms;
+}
+
+.wa-voice__play svg {
+  color: var(--wa-voice-button-fg);
+}
+
+.wa-voice__play:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.wa-voice__play:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Play's triangle looks off-centre when centred by its box. */
+.wa-voice__play-icon {
+  margin-left: 2px;
+}
+
+.wa-voice__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-voice__wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.wa-voice__wave:focus-visible {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--wa-voice-accent);
+}
+
+.wa-voice__bar {
+  flex: 1;
+  min-width: 2px;
+  min-height: 3px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  opacity: 0.28;
+  transition: opacity 120ms, background-color 120ms;
+}
+
+.wa-voice__bar--played {
+  background: var(--wa-voice-accent);
+  opacity: 1;
+}
+
+.wa-voice__times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+
+.wa-voice__speed {
+  padding: 1px 7px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(127, 127, 127, 0.22);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wa-voice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 6px;
+}
+
+.wa-voice__transcribe {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wa-voice__transcribe:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.wa-voice__error {
+  font-size: 11px;
+  color: var(--color-red-600);
+}
+
+.wa-bubble--out .wa-voice__error {
+  color: #fca5a5;
+}
+
+.wa-voice__transcript {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(127, 127, 127, 0.3);
+}
+
+.wa-voice__transcript-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.wa-voice__lang {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: rgba(127, 127, 127, 0.2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.wa-voice__transcript-text {
+  margin: 4px 0 0;
+  font-family: "Noto Sans Ethiopic", "Noto Sans Arabic", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wa-voice__transcript--empty .wa-voice__transcript-label {
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wa-voice__spin {
+  animation: wa-voice-spin 0.9s linear infinite;
+}
+
+@keyframes wa-voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* City / district filter chips above the WhatsApp contact list: one scrollable row each. */

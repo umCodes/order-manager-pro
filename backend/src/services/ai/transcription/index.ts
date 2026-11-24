@@ -3,7 +3,7 @@ import { getSavedContacts } from "../../whatsapp/chatStore.js"
 import { ZohoGetCustomerById, findCustomerByPhone, getContactPreferredLanguage } from "../../zoho/customers/index.js"
 import { ELEVENLABS_STT_MODEL } from "../../../constants/env.js"
 import { speechToText, type SpeechToTextResult } from "./elevenlabs.js"
-import { getTranscript, saveTranscript, type Transcript } from "./store.js"
+import { CURRENT_LANGUAGE_MODE, getTranscript, saveTranscript, type Transcript } from "./store.js"
 
 export { getTranscript, getTranscripts, type Transcript } from "./store.js"
 export { TranscriptionNotConfiguredError } from "./elevenlabs.js"
@@ -55,7 +55,7 @@ export async function transcribeVoiceNote(accessToken: string, phone: string, me
     const work = (async () => {
         const [{ buffer, mimeType }, language] = await Promise.all([
             downloadWhatsAppMedia(mediaId),
-            customerLanguage(accessToken, phone),
+            CURRENT_LANGUAGE_MODE === "customer" ? customerLanguage(accessToken, phone) : undefined,
         ])
         const result = await speechToText(buffer, mimeType, language)
         const transcript: Transcript = {
@@ -64,10 +64,11 @@ export async function transcribeVoiceNote(accessToken: string, phone: string, me
             ...(result.language_code && { language: result.language_code }),
             ...(language && { requested_language: language }),
             model: ELEVENLABS_STT_MODEL,
+            language_mode: CURRENT_LANGUAGE_MODE,
             transcribed_at: Date.now(),
         }
         await saveTranscript(messageId, transcript)
-        console.log(`[AI] Transcribed voice note ${messageId} (${phone}): ${transcript.status}, language=${transcript.language ?? "?"} (asked ${language ?? "auto"})`)
+        console.log(`[AI] Transcribed voice note ${messageId} (${phone}) with ${ELEVENLABS_STT_MODEL}: ${transcript.status}, language=${transcript.language ?? "?"} (asked ${language ?? "detect"})`)
         return transcript
     })()
 

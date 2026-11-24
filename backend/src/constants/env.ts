@@ -78,3 +78,9 @@ export const TELEGRAM_GROUP_CHATID = process.env.TELEGRAM_GROUP_CHATID;
 export const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 /** ElevenLabs speech-to-text model. Optional, defaults to their newest, "scribe_v2". */
 export const ELEVENLABS_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || "scribe_v2";
+/**
+ * "1": tell ElevenLabs the customer's Zoho preferred_language. Optional,
+ * off by default: ElevenLabs detects the language itself, as its website
+ * does — which transcribed better in practice.
+ */
+export const ELEVENLABS_USE_CUSTOMER_LANGUAGE = process.env.ELEVENLABS_USE_CUSTOMER_LANGUAGE === "1";

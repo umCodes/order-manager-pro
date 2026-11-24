@@ -55,7 +55,7 @@ Backend (`backend/src/constants/env.ts`), loaded via `dotenv`:
 | `REDIS_URL` | Redis connection string |
 | `TELEGRAM_GROUP_CHATID` | Optional. The preparers' Telegram group: while the group features are built, every message the app posts to the channel is copied there too (sent, replied to, edited and deleted alongside it — `services/telegram/mirror.ts`, copies mapped both ways in Redis under `telegram:mirror:*` for 30 days). Unset, nothing is copied |
 | `ELEVENLABS_API_KEY` | Optional. ElevenLabs key for transcribing WhatsApp voice notes (the Transcribe button). Unset, the button answers that transcription isn't set up; nothing else is affected |
-| `ELEVENLABS_STT_MODEL` | Optional. ElevenLabs speech-to-text model (default `scribe_v2`, their newest). Changing it offers Transcribe again on voice notes done with another model |
+| `ELEVENLABS_STT_MODEL` | Optional. ElevenLabs speech-to-text model (default `scribe_v3`, their newest). Changing it offers Transcribe again on voice notes done with another model |
 | `PORT` | Backend port (default `3000`) |
 
 ## Architecture notes

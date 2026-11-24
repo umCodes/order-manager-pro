@@ -76,5 +76,5 @@ export const TELEGRAM_GROUP_CHATID = process.env.TELEGRAM_GROUP_CHATID;
  * set up, and nothing else is affected.
  */
 export const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-/** ElevenLabs speech-to-text model. Optional, defaults to "scribe_v1". */
-export const ELEVENLABS_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || "scribe_v1";
+/** ElevenLabs speech-to-text model. Optional, defaults to their newest, "scribe_v2". */
+export const ELEVENLABS_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || "scribe_v2";

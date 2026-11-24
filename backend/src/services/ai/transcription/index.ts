@@ -1,6 +1,7 @@
 import { downloadWhatsAppMedia } from "../../whatsapp/client.js"
 import { getSavedContacts } from "../../whatsapp/chatStore.js"
 import { ZohoGetCustomerById, findCustomerByPhone, getContactPreferredLanguage } from "../../zoho/customers/index.js"
+import { ELEVENLABS_STT_MODEL } from "../../../constants/env.js"
 import { speechToText, type SpeechToTextResult } from "./elevenlabs.js"
 import { getTranscript, saveTranscript, type Transcript } from "./store.js"
 
@@ -62,6 +63,7 @@ export async function transcribeVoiceNote(accessToken: string, phone: string, me
             text: result.text.trim(),
             ...(result.language_code && { language: result.language_code }),
             ...(language && { requested_language: language }),
+            model: ELEVENLABS_STT_MODEL,
             transcribed_at: Date.now(),
         }
         await saveTranscript(messageId, transcript)

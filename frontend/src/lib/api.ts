@@ -1193,6 +1193,19 @@ export type WhatsAppMessage = {
   reply_to?: string;
   /** Template messages: the template's own wording with the sent values filled in, as the recipient sees it. */
   template?: SentWhatsAppTemplate;
+  /** A voice note's transcript, once someone has asked for it (the Transcribe button). */
+  transcript?: VoiceNoteTranscript;
+};
+
+/** What ElevenLabs heard in a voice note. "no_speech": nothing understandable (silence, noise, only sounds). */
+export type VoiceNoteTranscript = {
+  status: "ok" | "no_speech";
+  text: string;
+  /** Language it was transcribed in (ISO 639, e.g. "am" / "amh"). */
+  language?: string;
+  /** The customer's language it was told to expect, if the number is a customer's. */
+  requested_language?: string;
+  transcribed_at: number;
 };
 
 /** A sent template, rendered from its definition: header (text or a file), body, footer and buttons. */
@@ -1549,6 +1562,17 @@ export async function fetchWhatsAppUnread(): Promise<WhatsAppUnread> {
 }
 
 /** Marks a chat as read in the app (on every device). */
+/** Transcribes a voice note (ElevenLabs, once per voice note — asking again returns the saved transcript). */
+export async function transcribeWhatsAppVoiceNote(phone: string, messageId: string): Promise<VoiceNoteTranscript> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/messages/${encodeURIComponent(messageId)}/transcribe`,
+    { method: "POST" },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? `Failed to transcribe (${response.status})`);
+  return body.transcript;
+}
+
 export async function markWhatsAppChatRead(phone: string): Promise<void> {
   const response = await apiFetch(`${API_BASE_URL}/api/whatsapp/chats/${encodeURIComponent(phone)}/read`, { method: "POST" });
   if (!response.ok) throw new Error(`Failed to mark chat as read (${response.status})`);

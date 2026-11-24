@@ -36,6 +36,7 @@ import { getDailyReportWhatsAppSettings } from '../services/dailyReport/whatsapp
 import { requireAccessToken } from '../utils/requireAccessToken.js';
 import { getCache, setTTLCache } from '../utils/cache.js';
 import { redisClient } from '../config/redis.js';
+import { getTranscripts, transcribeVoiceNote, TranscriptionNotConfiguredError, type Transcript } from '../services/ai/index.js';
 
 /** WhatsApp only accepts free-form (non-template) messages within 24h of the customer's last message. */
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -159,7 +160,7 @@ async function loadTemplatesFor(messages: StoredChatMessage[]) {
     }
 }
 
-function toMessageView(message: StoredChatMessage) {
+function toMessageView(message: StoredChatMessage, transcript?: Transcript) {
     const media = getMedia(message)
     const template = templateView(message)
     return {
@@ -180,6 +181,8 @@ function toMessageView(message: StoredChatMessage) {
         ...(message.status && { status: message.status }),
         ...(message.error && { error: message.error }),
         ...(message.reaction && { reaction: message.reaction }),
+        // A voice note's transcript, once someone has asked for it (services/ai).
+        ...(transcript && { transcript }),
         // The message this one replies to (set by WhatsApp on inbound replies, and by us on ours).
         ...(message.context?.id && { reply_to: String(message.context.id) }),
         can_retry: canRetry(message),
@@ -409,10 +412,11 @@ export async function removeWhatsAppContact(req: Request, res: Response) {
 async function buildConversation(phone: string) {
     const messages = await getChatMessages(phone)
     await loadTemplatesFor(messages)
+    const transcripts = await getTranscripts(messages.filter((m) => m.type === "audio").map((m) => m.id))
     const lastInbound = [...messages].reverse().find((m) => m.direction === "in")
     const windowExpiresAt = lastInbound ? lastInbound.timestamp + REPLY_WINDOW_MS : undefined
     return {
-        messages: messages.map(toMessageView),
+        messages: messages.map((m) => toMessageView(m, transcripts[m.id])),
         can_reply: !!windowExpiresAt && windowExpiresAt > Date.now(),
         ...(windowExpiresAt && { reply_window_expires_at: windowExpiresAt }),
     }
@@ -648,6 +652,31 @@ export async function getWhatsAppChatMedia(req: Request, res: Response) {
     } catch (error) {
         console.error('Error downloading WhatsApp media:', error);
         res.status(502).json({ error: describeSendError(error) });
+    }
+}
+
+/**
+ * Transcribes a voice note in this chat with ElevenLabs, on request (the
+ * Transcribe button under it), and returns the transcript. Done once per
+ * voice note: asking again returns the saved one.
+ */
+export async function transcribeWhatsAppVoiceNote(req: Request, res: Response) {
+    try {
+        const accessToken = requireAccessToken(req, "A problem occured transcribing the voice note")
+        const phone = readPhoneParam(req)
+        const messageId = String(req.params.messageId ?? "")
+        const message = (await getChatMessages(phone)).find((m) => m.id === messageId)
+        const mediaId = message?.type === "audio" ? getMedia(message)?.id : undefined
+        if (!message || !mediaId) {
+            res.status(404).json({ error: "Voice note not found (history is kept for 7 days)" })
+            return
+        }
+
+        res.status(200).json({ transcript: await transcribeVoiceNote(accessToken, phone, messageId, mediaId) })
+    } catch (error) {
+        console.error('Error transcribing WhatsApp voice note:', error);
+        const notConfigured = error instanceof TranscriptionNotConfiguredError
+        res.status(notConfigured ? 503 : 502).json({ error: error instanceof Error ? error.message : 'Failed to transcribe the voice note' });
     }
 }
 

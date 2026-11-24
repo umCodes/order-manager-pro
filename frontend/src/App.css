@@ -3165,6 +3165,36 @@
   text-transform: none;
 }
 
+.wa-voice__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(127, 127, 127, 0.2);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+/* Right end of the header; right after the language tag when there is one. */
+.wa-voice__copy {
+  margin-left: auto;
+}
+
+.wa-voice__lang + .wa-voice__copy {
+  margin-left: 0;
+}
+
+.wa-voice__copy--done {
+  background: var(--wa-voice-accent);
+  color: var(--wa-voice-button-fg);
+}
+
 .wa-voice__transcript-text {
   margin: 4px 0 0;
   font-family: "Noto Sans Ethiopic", "Noto Sans Arabic", "Helvetica Neue", Arial, sans-serif;

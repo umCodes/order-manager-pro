@@ -89,6 +89,12 @@ function formatDayDivider(timestamp: number) {
   return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
 }
 
+/** The text "Copy" takes from a message: its own text, else a voice note's transcript. */
+function copyableText(message: WhatsAppMessage) {
+  if (message.text) return message.text;
+  return message.transcript?.status === "ok" ? message.transcript.text : "";
+}
+
 /** One line describing a message, for a reply's quote: its text, or what kind of file it is. */
 function quoteText(message: WhatsAppMessage) {
   if (message.media) {
@@ -604,7 +610,7 @@ export function ChatView({
   }
 
   function handleCopyMessage(message: WhatsAppMessage) {
-    navigator.clipboard?.writeText(message.text).catch(() => {});
+    navigator.clipboard?.writeText(copyableText(message)).catch(() => {});
     setActionMessage(null);
   }
 
@@ -797,9 +803,9 @@ export function ChatView({
                   Reply
                 </button>
               )}
-              {actionMessage.text && (
+              {copyableText(actionMessage) && (
                 <button type="button" className="btn btn--secondary" onClick={() => handleCopyMessage(actionMessage)}>
-                  Copy text
+                  {actionMessage.text ? "Copy text" : "Copy transcript"}
                 </button>
               )}
               <button type="button" className="btn btn--secondary" onClick={() => handleDeleteMessage(actionMessage)}>

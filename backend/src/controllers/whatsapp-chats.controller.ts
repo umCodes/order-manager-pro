@@ -14,6 +14,7 @@ import {
     getSavedContacts,
     saveContact,
     removeSavedContact,
+    deleteChatMessage,
     type SavedContact,
     type StoredChatMessage,
 } from '../services/whatsapp/chatStore.js';
@@ -42,6 +43,8 @@ import { getTranscripts, transcribeVoiceNote, TranscriptionNotConfiguredError, t
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
 const MAX_TEXT_LENGTH = 4096
 const UNKNOWN_SENDER_NAME_TTL_SECONDS = 12 * 60 * 60
+/** A message of ours that failed is kept this long, then deleted (it was never sent). */
+const FAILED_KEEP_MS = 4 * 24 * 60 * 60 * 1000
 /** A template still only "sent" (never delivered) this long after sending can be retried. */
 const UNDELIVERED_RETRY_AFTER_MS = 60 * 60 * 1000
 
@@ -410,8 +413,29 @@ export async function removeWhatsAppContact(req: Request, res: Response) {
 }
 
 /** Builds the chat-history response: messages oldest first, and whether a free-form reply is currently allowed. */
-async function buildConversation(phone: string) {
+/**
+ * A number's stored messages, with failed messages of ours older than
+ * FAILED_KEEP_MS deleted for good on the way — they never reached the
+ * customer, so they stop being offered for resending (and leave the chat)
+ * after a few days instead of lasting the history's full 7.
+ */
+async function getChatMessagesDroppingOldFailures(phone: string) {
     const messages = await getChatMessages(phone)
+    const cutoff = Date.now() - FAILED_KEEP_MS
+    const expired = messages.filter((m) => m.direction === "out" && m.status === "failed" && m.timestamp < cutoff)
+    if (expired.length === 0) return messages
+    try {
+        for (const message of expired) await deleteChatMessage(phone, message.id)
+        console.log(`WhatsApp: deleted ${expired.length} failed message(s) older than 4 days for ${phone}: ${expired.map((m) => m.id).join(", ")}`)
+    } catch (error) {
+        console.error(`Failed to delete old failed WhatsApp messages for ${phone}:`, error)
+    }
+    const expiredIds = new Set(expired.map((m) => m.id))
+    return messages.filter((m) => !expiredIds.has(m.id))
+}
+
+async function buildConversation(phone: string) {
+    const messages = await getChatMessagesDroppingOldFailures(phone)
     await loadTemplatesFor(messages)
     const transcripts = await getTranscripts(messages.filter((m) => m.type === "audio").map((m) => m.id))
     const lastInbound = [...messages].reverse().find((m) => m.direction === "in")
@@ -526,14 +550,16 @@ function isResendable(message: StoredChatMessage) {
 async function failedMessages(): Promise<{ phone: string; message: StoredChatMessage }[]> {
     const phones = await listChatPhones()
     const perPhone = await Promise.all(
-        phones.map(async ({ phone }) => (await getChatMessages(phone)).filter(isResendable).map((message) => ({ phone, message }))),
+        phones.map(async ({ phone }) =>
+            (await getChatMessagesDroppingOldFailures(phone)).filter(isResendable).map((message) => ({ phone, message })),
+        ),
     )
     return perPhone.flat().sort((a, b) => a.message.timestamp - b.message.timestamp)
 }
 
 /**
- * Template messages that failed in the last 7 days (the chat history's
- * span) and can be resent — for the prompt the WhatsApp tab shows on opening.
+ * Template messages that failed in the last 4 days (older ones are deleted,
+ * see FAILED_KEEP_MS) and can be resent — for the prompt the WhatsApp tab shows on opening.
  */
 export async function listFailedWhatsAppMessages(_req: Request, res: Response) {
     try {

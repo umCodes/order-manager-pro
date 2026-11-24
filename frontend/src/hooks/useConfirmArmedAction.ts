@@ -13,7 +13,7 @@ type Stage = "idle" | "cooldown" | "armed";
  * idle. Used for destructive/money actions (recording a payment) where a
  * single misclick, or two rapid clicks, shouldn't be enough to submit.
  */
-export function useConfirmArmedAction(onConfirm: () => void) {
+export function useConfirmArmedAction(onConfirm: () => void, confirmWindowMs = CONFIRM_WINDOW_MS) {
   const [stage, setStage] = useState<Stage>("idle");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -37,7 +37,7 @@ export function useConfirmArmedAction(onConfirm: () => void) {
       setStage("cooldown");
       timeoutRef.current = setTimeout(() => {
         setStage("armed");
-        timeoutRef.current = setTimeout(() => setStage("idle"), CONFIRM_WINDOW_MS);
+        timeoutRef.current = setTimeout(() => setStage("idle"), confirmWindowMs);
       }, COOLDOWN_MS);
       return;
     }

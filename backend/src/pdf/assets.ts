@@ -25,3 +25,7 @@ export const FONT_ETHIOPIC_MERGED_REGULAR = path.join(__dirname, "../assets/font
 export const FONT_ETHIOPIC_MERGED_BOLD = path.join(__dirname, "../assets/fonts/NotoSansEthiopic-Merged-Bold.ttf");
 export const FONT_ARABIC_MERGED_REGULAR = path.join(__dirname, "../assets/fonts/NotoSansArabic-Merged-Regular.ttf");
 export const FONT_ARABIC_MERGED_BOLD = path.join(__dirname, "../assets/fonts/NotoSansArabic-Merged-Bold.ttf");
+
+/** Menbere (SIL Open Font License, see Menbere-OFL.txt): the driver's day pages of the daily report. Static 400/700 cuts of the variable font. */
+export const FONT_MENBERE_REGULAR = path.join(__dirname, "../assets/fonts/Menbere-Regular.ttf");
+export const FONT_MENBERE_BOLD = path.join(__dirname, "../assets/fonts/Menbere-Bold.ttf");

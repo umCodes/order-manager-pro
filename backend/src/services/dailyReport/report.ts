@@ -6,7 +6,7 @@ import { remainingBackup } from "../backupUsage.js"
 import { readReportDay, type ReportDraft, type ReportLine, type ReportReturn } from "./store.js"
 import { checkZohoTimezone, type ZohoTimezoneCheck } from "../zoho/orgTimezone.js"
 import { ZohoGetCustomersCached, getContactAddress } from "../zoho/customers/index.js"
-import { listDoneVisits } from "../visits.js"
+import { listDoneVisits, type DoneVisit } from "../visits.js"
 
 export type InvoiceStatus = "paid" | "partial" | "unpaid"
 
@@ -20,6 +20,24 @@ export type ReportDistrict = {
     city: string
     customers: { name: string; activities: DistrictActivity[] }[]
 }
+
+/** One thing done at a customer, for the driver's day: an invoice delivered, a return taken or a payment taken. */
+export type DriverDayAction = {
+    kind: "invoice" | "return" | "payment"
+    at: string
+    /** The invoice or credit note number; empty for payments. */
+    number: string
+    amount: number
+    /** Invoices and returns: the quantities of their lines added up. */
+    items?: number
+}
+
+/**
+ * One stop of the driver's day: a customer, from the first thing recorded
+ * there, with everything done there in order. A customer marked visited by
+ * hand with nothing else done is a stop with no actions.
+ */
+export type DriverDayStop = { customer: string; at: string; actions: DriverDayAction[] }
 
 /** Everything the daily report PDF shows, already worked out. */
 export type DailyReportData = {
@@ -41,6 +59,8 @@ export type DailyReportData = {
     backupLists: BackupList[]
     /** The districts gone to on the day (deliveries, payments, returns, visits done), most customers first. */
     districts: ReportDistrict[]
+    /** The driver's day: each stop at a customer in the order it happened (see driverDayStops). */
+    driverDay: DriverDayStop[]
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
@@ -143,17 +163,9 @@ const nameKey = (name: string) => name.trim().toLowerCase()
  */
 async function districtsGoneTo(
     accessToken: string,
-    day: string,
     activity: { delivery: string[]; payment: string[]; return: string[] },
+    visits: DoneVisit[],
 ): Promise<ReportDistrict[]> {
-    const { start, end } = businessDayWindow(day)
-    const visits = (await listDoneVisits(500).catch((error) => {
-        console.error("Daily report: couldn't read the visits", error)
-        return []
-    })).filter((visit) => {
-        const at = Date.parse(visit.visited_at)
-        return at >= start.getTime() && at < end.getTime()
-    })
 
     let contacts: any[] = []
     try {
@@ -194,6 +206,66 @@ async function districtsGoneTo(
     return [...districts.values()].sort(
         (a, b) => Number(!a.district) - Number(!b.district) || b.customers.length - a.customers.length || a.district.localeCompare(b.district),
     )
+}
+
+/** The visits marked done during `day`, oldest first. */
+async function visitsOn(day: string): Promise<DoneVisit[]> {
+    const { start, end } = businessDayWindow(day)
+    const visits = await listDoneVisits(500).catch((error) => {
+        console.error("Daily report: couldn't read the visits", error)
+        return [] as DoneVisit[]
+    })
+    return visits
+        .filter((visit) => {
+            const at = Date.parse(visit.visited_at)
+            return at >= start.getTime() && at < end.getTime()
+        })
+        .sort((a, b) => a.visited_at.localeCompare(b.visited_at))
+}
+
+/** Visits closed by a payment, delivery or return are that action already; only visits marked by hand stand on their own. */
+const MARKED_BY_HAND = new Set<DoneVisit["confirmation"]>(["at_location", "away_from_location", "no_customer_location", "location_not_checked"])
+
+/** Things done at the same customer within this long of the last one are the same stop. */
+const SAME_STOP_MS = 60 * 60 * 1000
+
+/**
+ * The driver's day: every invoice delivered (marked as sent), return and
+ * payment recorded on the day, and every visit marked by hand, as stops in
+ * the order they happened. Something done at a customer joins their latest
+ * stop if it's within SAME_STOP_MS of the last thing done there (even if
+ * another customer was recorded in between), else starts a new stop — so a
+ * second trip to the same customer later in the day shows twice.
+ */
+export function driverDayStops(
+    invoices: { customer: string; at: string; number: string; total: number; lines: ReportLine[] }[],
+    returns: { customer: string; at: string; number: string; total: number; lines: ReportLine[] }[],
+    payments: { customer: string; at: string; amount: number }[],
+    visits: { customer_name: string; visited_at: string; confirmation: DoneVisit["confirmation"] }[],
+): DriverDayStop[] {
+    const items = (lines: ReportLine[]) => round3(lines.reduce((sum, line) => sum + line.quantity, 0))
+    const events: { customer: string; at: string; action?: DriverDayAction }[] = [
+        ...invoices.map((invoice) => ({ customer: invoice.customer, at: invoice.at, action: { kind: "invoice" as const, at: invoice.at, number: invoice.number, amount: invoice.total, items: items(invoice.lines) } })),
+        ...returns.map((ret) => ({ customer: ret.customer, at: ret.at, action: { kind: "return" as const, at: ret.at, number: ret.number, amount: ret.total, items: items(ret.lines) } })),
+        ...payments.map((payment) => ({ customer: payment.customer, at: payment.at, action: { kind: "payment" as const, at: payment.at, number: "", amount: payment.amount } })),
+        ...visits.filter((visit) => MARKED_BY_HAND.has(visit.confirmation)).map((visit) => ({ customer: visit.customer_name, at: visit.visited_at })),
+    ]
+        .filter((event) => event.customer.trim() && !Number.isNaN(Date.parse(event.at)))
+        .sort((a, b) => a.at.localeCompare(b.at))
+
+    const stops: (DriverDayStop & { key: string; last: number })[] = []
+    for (const event of events) {
+        const key = nameKey(event.customer)
+        const time = Date.parse(event.at)
+        let stop = [...stops].reverse().find((candidate) => candidate.key === key)
+        if (!stop || time - stop.last > SAME_STOP_MS) {
+            stop = { key, last: time, customer: event.customer.trim(), at: event.at, actions: [] }
+            stops.push(stop)
+        }
+        stop.last = time
+        if (event.action) stop.actions.push(event.action)
+    }
+    return stops.map(({ key: _key, last: _last, ...stop }) => stop)
 }
 
 function statusOf(total: number, balance: number): InvoiceStatus {
@@ -261,11 +333,12 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         }
     }
 
-    const districts = await districtsGoneTo(accessToken, day, {
+    const visits = await visitsOn(day)
+    const districts = await districtsGoneTo(accessToken, {
         delivery: invoices.map((invoice) => invoice.customer),
         payment: recorded.payments.map((payment) => payment.customer),
         return: recorded.returns.map((ret) => ret.customer),
-    }).catch((error) => {
+    }, visits).catch((error) => {
         console.error("Daily report: couldn't work out the districts", error)
         return [] as ReportDistrict[]
     })
@@ -289,5 +362,6 @@ export async function buildDailyReport(accessToken: string, day: string): Promis
         drafts,
         backupLists,
         districts,
+        driverDay: driverDayStops(invoices, recorded.returns, recorded.payments, visits),
     }
 }

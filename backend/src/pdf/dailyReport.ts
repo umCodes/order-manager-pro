@@ -4,13 +4,16 @@ import { businessDayWindow, businessTimeParts } from "../utils/businessDate.js";
 import { lineWeightKg } from "../utils/packWeight.js";
 import { toAmharicUnit } from "../utils/units.js";
 import { drawMixedLine, registerArabicFonts } from "./mixedText.js";
+import { DRIVER_DAY_PAGE, drawDriverDay } from "./driverDay.js";
 import type { DailyReportData, DistrictActivity, InvoiceStatus } from "../services/dailyReport/report.js";
 import type { ReportLine } from "../services/dailyReport/store.js";
 
 /**
  * The daily business report (A4, Amharic, large print for easy reading).
- * Each section starts on a page of its own under a large underlined title:
- * payments collected, items sold, invoices issued (orders delivered), the
+ * It opens with the driver's day (phone-sized dark pages, see driverDay.ts)
+ * when anything was done at a customer that day. Each A4 section then
+ * starts on a page of its own under a large underlined title: payments
+ * collected, items sold, invoices issued (orders delivered), the
  * invoice register with balances, returns, orders not yet delivered, and
  * the items of the backup lists (BK-) still open when the day ended, totalled,
  * and the districts gone to (customers delivered to, paid by, returning
@@ -76,18 +79,32 @@ type Col = { w: number; align?: "left" | "right" | "center" };
 /** A table cell: plain text, or text with a smaller second line, bold, or a status badge. */
 type Cell = string | { main: string; sub?: string | undefined; bold?: boolean; badge?: InvoiceStatus };
 
+/** The report's own pages; every page it adds says so, since the document may open with driver's day pages. */
+const A4_PAGE: PDFKit.PDFDocumentOptions = { size: "A4", margin: MARGIN };
+
 export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buffer> {
-  return renderToBuffer({ size: "A4", margin: MARGIN, bufferPages: true }, (doc) => {
+  const hasDriverDay = report.driverDay.length > 0;
+  const first = hasDriverDay ? { size: DRIVER_DAY_PAGE, margin: 0 } : A4_PAGE;
+  return renderToBuffer({ ...first, bufferPages: true }, (doc) => {
     doc.registerFont("R", FONT_ETHIOPIC_MERGED_REGULAR);
     doc.registerFont("B", FONT_ETHIOPIC_MERGED_BOLD);
     registerArabicFonts(doc);
+
+    // ---------- the driver's day (opens the report) ----------
+    if (hasDriverDay) {
+      const start = businessTimeParts(businessDayWindow(report.day).start);
+      drawDriverDay(doc, report.driverDay, { weekday: WEEKDAYS[start.weekday] ?? "", date: `${start.day} ${MONTHS[start.month]} ${start.year}` });
+      doc.addPage(A4_PAGE);
+      doc.y = MARGIN;
+    }
+
     const L = MARGIN;
     const W = doc.page.width - MARGIN * 2;
     const BOTTOM = doc.page.height - 56;
 
     function ensure(height: number) {
       if (doc.y + height > BOTTOM) {
-        doc.addPage();
+        doc.addPage(A4_PAGE);
         doc.y = MARGIN;
       }
     }
@@ -153,7 +170,7 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     /** Every section starts on a page of its own; its title is the largest text there, underlined. */
     function section(n: number, title: string, note: string) {
       if (sectionsDrawn++ > 0) {
-        doc.addPage();
+        doc.addPage(A4_PAGE);
         doc.y = MARGIN;
       }
       const y = doc.y;
@@ -416,11 +433,14 @@ export function createDailyReportPdfBuffer(report: DailyReportData): Promise<Buf
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
       doc.page.margins.bottom = 0;
+      // Driver's day pages are the narrow dark ones.
+      const dark = doc.page.width < 400;
+      const side = dark ? 24 : L;
       doc
         .font("B")
-        .fontSize(11)
-        .fillColor(SECOND)
-        .text(`ገጽ ${i + 1} ከ ${range.count}`, L, doc.page.height - 36, { width: W, align: "center", lineBreak: false });
+        .fontSize(dark ? 9.5 : 11)
+        .fillColor(dark ? "#7d8590" : SECOND)
+        .text(`ገጽ ${i + 1} ከ ${range.count}`, side, doc.page.height - (dark ? 28 : 36), { width: doc.page.width - side * 2, align: "center", lineBreak: false });
     }
   });
 }
